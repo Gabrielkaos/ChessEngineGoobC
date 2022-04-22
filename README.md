@@ -6,6 +6,8 @@ vice code + bbc code + stackoverflow = goob
 ###### 2000+ elo
 ###### simple evaluation
 ###### passes perfts testing
+###### bitboard representation
+###### no piecelists
 
 ## Links
 ***Bluefever Software Youtube***
