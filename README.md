@@ -1,6 +1,10 @@
 # ChessEngineGoobC
 vice code + bbc code + stackoverflow = goob
 
+## How to Use
+Just compile the code in the src directory using the makefile. It should work without any problem.
+I've tested it in windows and it works, don't know in Linux.
+
 ## About
 #### Current Version 1.0.0
 A uci chess engine written in C. Uses the traditional MinMax algorithm in Negamax fashion. Uses few pruning techniques like AlphaBeta, LMR, futility pruning. 
