@@ -23,5 +23,5 @@ I watched CodeMonkeyKings's tutorial on BBC, after implementing the bitboards, I
 ##### [Chess Programming's channel](https://www.youtube.com/channel/UCB9-prLkPwgvlKKqDgXhsMQ)
 ***Chess wiki***
 ##### [Chessprogrammingwiki](https://www.chessprogramming.org/Main_Page)
-***SebastianLeague Chess Coding Adventure(this vid helped me too)***
+***Sebastian Lague's Chess Coding Adventure(this vid helped me too)***
 ##### [Chess Coding Adventure](https://youtu.be/U4ogK0MIzqk)
