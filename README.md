@@ -1,6 +1,10 @@
 # ChessEngineGoobC
 An UCI playing Chess Engine written in C
 
+## Update - July 18, 2022
+Just uploaded older_versions directory, all the beta versions of the latest build of the code are here, they are all experimental.
+I've been studying Ethereal's Multithreading code for a while now. If I can finally(hopefully) understand the code, I will implement it and upload it here.
+
 ## How to Use
 Just compile the code in the src directory using the makefile. It should work without any problem.
 I've tested it in windows and it works, don't know in Linux.
