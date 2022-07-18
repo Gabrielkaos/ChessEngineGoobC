@@ -1,5 +1,5 @@
 # ChessEngineGoobC
-vice code + bbc code + stackoverflow = goob
+An UCI playing Chess Engine written in C
 
 ## How to Use
 Just compile the code in the src directory using the makefile. It should work without any problem.
