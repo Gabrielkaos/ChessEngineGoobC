@@ -5,7 +5,7 @@ An UCI playing Chess Engine written in C
 Just uploaded older_versions directory, all the beta versions of the latest build of the code are here, they are all experimental.
 I've been studying Ethereal's Multithreading code for a while now. If I can finally(hopefully) understand the code, I will implement it and upload it here.
 
-##GOOBGUI
+## GOOBGUI
 Just something I made in python for fun, based on Vice code
 
 ## How to Use
