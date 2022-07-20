@@ -14,7 +14,7 @@ I've tested it in windows and it works, don't know in Linux.
 
 ## About
 #### Current Version 1.0.0
-* A uci chess engine written in C. Uses the traditional MinMax algorithm in Negamax fashion. Uses few pruning techniques like AlphaBeta, LMR, futility pruning. 
+* Uses the traditional MinMax algorithm in Negamax fashion. Uses few pruning techniques like AlphaBeta, LMR, futility pruning. 
 * Has a simple evaluation code.
 * It is currently stable in Windows 64 bit machines, don't know in Linux or Mac.
 
