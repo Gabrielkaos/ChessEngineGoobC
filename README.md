@@ -1,6 +1,9 @@
 # ChessEngineGoobC
 An UCI playing Chess Engine written in C
 
+## Update - July 25, 2023
+I was able to embed ethereal's evaluation to GOOB, but I don't really like it because its not my code and it looks like I'm just copying the whole evaluation of Ethereal's. I'm currently studying NNUEs but I'm going to be busy for a while. It's my first year in college and I took computer science, hope I can survive. That's all thanks for testing the engine btw. Big thanks to CCRL.
+
 ## Update - July 18, 2022
 Just uploaded older_versions directory, all the beta versions of the latest build of the code are here, they are all experimental.
 I've been studying Ethereal's Multithreading code for a while now. If I can finally(hopefully) understand the code, I will implement it and upload it here.
