@@ -12,7 +12,7 @@ Compile the code in the src directory using the makefile. It should work without
 I've tested it in windows and it works, don't know in Linux.
 
 ## About
-* all in the comments in main.c in the code
+* all in the comments in main.c in the code from line 168 to 1558
 
 ## Future plans
 * Addind a **NNUE**(I'm still trying to understand how NNUE works, I might be able to understand it in maybe 6 years.)
