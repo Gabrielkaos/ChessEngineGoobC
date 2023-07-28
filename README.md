@@ -8,11 +8,10 @@ Been busy during highschool graduation, and now probably going to be more busy i
 Just something I made in python for fun, based on Vice code
 
 ## How to Use
-Compile the code in the src directory using the makefile. It should work without any problem.
-I've tested it in windows and it works, don't know in Linux.
+Compile the code in the src directory using the makefile.
 
 ## About
-* all in the comments in main.c in the code from line 168 to 1558
+Check all in the comments in main.c from line 168 to 1558
 
 ## Future plans
 * Addind a **NNUE**(I'm still trying to understand how NNUE works, I might be able to understand it in maybe 6 years.)
