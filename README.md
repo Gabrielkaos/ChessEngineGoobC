@@ -32,11 +32,11 @@ I watched CodeMonkeyKings's tutorial on BBC, after implementing the bitboards, I
 
 
 ## Links
-***Bluefever Software Youtube***
+* Bluefever Software Youtube***
 ##### [Bluefever's channel](https://www.youtube.com/user/BlueFeverSoft)
-***Chess Programming Youtube***
+* Chess Programming Youtube***
 ##### [Chess Programming's channel](https://www.youtube.com/channel/UCB9-prLkPwgvlKKqDgXhsMQ)
-***Chess wiki***
+* Chess wiki***
 ##### [Chessprogrammingwiki](https://www.chessprogramming.org/Main_Page)
-***Sebastian Lague's Chess Coding Adventure(this vid helped me too)***
+* Sebastian Lague's Chess Coding Adventure(this vid helped me too)***
 ##### [Chess Coding Adventure](https://youtu.be/U4ogK0MIzqk)
