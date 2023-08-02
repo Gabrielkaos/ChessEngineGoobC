@@ -1,5 +1,5 @@
 # ChessEngineGoobC
-An UCI playing Chess Engine written in C
+UCI playing Chess Engine written in C
 
 ## Update - July 28 2023
 Been busy during highschool graduation, and now probably going to be more busy in college. Will soon be releasing version 2
