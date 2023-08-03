@@ -1,8 +1,8 @@
 # ChessEngineGoobC
 UCI playing Chess Engine written in C
 
-## Update - July 28 2023
-Been busy during highschool graduation, and now probably going to be more busy in college. Will soon be releasing version 2
+## Update - August 3 2023
+Still busy in college. GOOB updates will probably slow down. 
 
 ## GOOBGUI
 Just something I made in python for fun, based on Vice code
