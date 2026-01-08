@@ -1,6 +1,9 @@
+
 #include "stdio.h"
 #include "defs.h"
-#include "see.h"
+#include "movegen.h"
+#include "attacks.h"
+#include "validate.h"
 
 INLINE void AddMovee(const S_BOARD *pos, int move,S_MOVELIST *list){
 

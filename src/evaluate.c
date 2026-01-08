@@ -3,13 +3,14 @@
     Got the piece evaluation from Ethereal 12.75, credit to Andrew Grant
 */
 
-#include "defs.h"
+
 #include "stdio.h"
 #include "math.h"
 #include "evaluate.h"
 #include "bitboards.h"
 #include "some_maths.h"
 #include "tt_eval.h"
+#include "attacks.h"
 
 
 /*General*/
@@ -26,6 +27,46 @@ void initDistancesForEval(){
     }
 }
 
+/*// Closedness Evaluation Terms
+
+const int ClosednessKnightAdjustment[9] = {
+    S(  -7,  10), S(  -7,  29), S(  -9,  37), S(  -5,  37),
+    S(  -3,  44), S(  -1,  36), S(   1,  33), S( -10,  51),
+    S(  -7,  30),
+};
+
+const int ClosednessRookAdjustment[9] = {
+    S(  42,  43), S(  -6,  80), S(   3,  59), S(  -5,  47),
+    S(  -7,  41), S(  -3,  23), S(  -6,  11), S( -17,  11),
+    S( -34, -12),
+};
+
+// Complexity Evaluation Terms
+
+const int ComplexityTotalPawns  = S(   0,   8);
+const int ComplexityPawnFlanks  = S(   0,  82);
+const int ComplexityPawnEndgame = S(   0,  76);
+const int ComplexityAdjustment  = S(   0,-157);
+
+//Threat
+
+const int ThreatWeakPawn             = S( -11, -38);
+const int ThreatMinorAttackedByPawn  = S( -55, -83);
+const int ThreatMinorAttackedByMinor = S( -25, -45);
+const int ThreatMinorAttackedByMajor = S( -30, -55);
+const int ThreatRookAttackedByLesser = S( -48, -28);
+const int ThreatMinorAttackedByKing  = S( -43, -21);
+const int ThreatRookAttackedByKing   = S( -33, -18);
+const int ThreatQueenAttackedByOne   = S( -50,  -7);
+const int ThreatOverloadedPieces     = S(  -7, -16);
+const int ThreatByPawnPush           = S(  15,  32);
+
+// Space
+
+const int SpaceRestrictPiece = S(  -4,  -1);
+const int SpaceRestrictEmpty = S(  -4,  -2);
+const int SpaceCenterControl = S(   3,   0);
+*/
 /*Variables*/
 
 //Piece Values
@@ -349,6 +390,182 @@ const int tempo = 20;
 
 
 /*Functions*/
+/*
+INLINE int evaluateComplexity(S_BOARD *pos, int eval) {
+
+    //penalty for drawish positions.
+
+    int complexity;
+    int eg = ScoreEG(eval);
+    int sign = (eg > 0) - (eg < 0);
+
+    int pawnsOnBothFlanks = ((pos->bitboards[wP] | pos->bitboards[bP]) & (FileBBMask[FILE_A] | FileBBMask[FILE_B] | FileBBMask[FILE_C] | FileBBMask[FILE_D]) )
+                         && ((pos->bitboards[wP] | pos->bitboards[bP]) & (FileBBMask[FILE_E] | FileBBMask[FILE_F] | FileBBMask[FILE_G] | FileBBMask[FILE_H]));
+
+    U64 knights = pos->bitboards[wN] | pos->bitboards[bN];
+    U64 rooks = pos->bitboards[wR] | pos->bitboards[bR];
+    U64 bishops = pos->bitboards[wB] | pos->bitboards[bB];
+    U64 queens = pos->bitboards[wQ] | pos->bitboards[bQ];
+
+    // Compute the initiative bonus or malus for the attacking side
+    complexity =  ComplexityTotalPawns  * COUNTBIT((pos->bitboards[wP] | pos->bitboards[bP]))
+               +  ComplexityPawnFlanks  * pawnsOnBothFlanks
+               +  ComplexityPawnEndgame * !(knights | bishops | rooks | queens)
+               +  ComplexityAdjustment;
+
+
+    // Avoid changing which side has the advantage
+    int v = sign * MAX(ScoreEG(complexity), -abs(eg));
+
+    return MakeScore(0, v);
+}
+
+
+INLINE int evaluateClosedness(S_BOARD *pos) {
+
+    int closedness, count, eval = 0;
+
+    U64 white = pos->occupancy[WHITE];
+    U64 black = pos->occupancy[BLACK];
+
+    U64 knights = pos->bitboards[wN] | pos->bitboards[bN];
+    U64 rooks   = pos->bitboards[wR] | pos->bitboards[bR];
+
+    // Compute Closedness factor for this position
+    closedness = 1 * COUNTBIT((pos->bitboards[wP] | pos->bitboards[bP]))
+               + 3 * COUNTBIT(pos->rammedPawns[WHITE])
+               - 4 * openFileCount((pos->bitboards[wP] | pos->bitboards[bP]));
+    closedness = MAX(0, MIN(8, closedness / 3));
+
+    // Evaluate Knights based on how Closed the position is
+    count = COUNTBIT(white & knights) - COUNTBIT(black & knights);
+    eval += count * ClosednessKnightAdjustment[closedness];
+
+    // Evaluate Rooks based on how Closed the position is
+    count = COUNTBIT(white & rooks) - COUNTBIT(black & rooks);
+    eval += count * ClosednessRookAdjustment[closedness];
+
+    return eval;
+}
+
+
+INLINE int evaluateSpace(S_BOARD *pos, int color){
+
+    const int US = color, THEM = !color;
+
+    int count, eval = 0;
+
+    U64 friendly = pos->occupancy[  US];
+    U64 enemy    = pos->occupancy[THEM];
+
+    // Squares we attack with more enemy attackers and no friendly pawn attacks
+    U64 uncontrolled =   pos->attackedBy2[THEM] & pos->attacked[US]
+                           & ~pos->attackedBy2[US  ] & ~pos->attacks_array_pawns[US];
+
+    // Penalty for restricted piece moves
+    count = COUNTBIT(uncontrolled & (friendly | enemy));
+    eval += count * SpaceRestrictPiece;
+
+    count = COUNTBIT(uncontrolled & ~friendly & ~enemy);
+    eval += count * SpaceRestrictEmpty;
+
+    // Bonus for uncontested central squares
+    // This is mostly relevant in the opening and the early middlegame, while rarely correct
+    // in the endgame where one rook or queen could control many uncontested squares.
+    // Thus we don't apply this term when below a threshold of minors/majors count.
+    if (      COUNTBIT((pos->bitboards[wN] | pos->bitboards[bN]) | (pos->bitboards[wB] | pos->bitboards[bB]))
+        + 2 * COUNTBIT((pos->bitboards[wR] | pos->bitboards[bR]) | (pos->bitboards[wQ] | pos->bitboards[bQ])) > 12) {
+        count = COUNTBIT(~pos->attacked[THEM] & (pos->attacked[US] | friendly) & CENTER_BIG);
+        eval += count * SpaceCenterControl;
+    }
+
+    return eval;
+}
+
+
+INLINE int evaluateThreats(S_BOARD *pos, int color){
+
+    const int US = color, THEM = !color;
+    const int Rank3Rel = color==WHITE ? RANK_3:RANK_6;
+
+    U64 enemy    = pos->occupancy[THEM];
+    U64 occupied = pos->occupancy[BOTH];
+
+    U64 KNIGHTS = pos->bitboards[wN] | pos->bitboards[bN];
+    U64 ROOKS = pos->bitboards[wR] | pos->bitboards[bR];
+    U64 BISHOPS = pos->bitboards[wB] | pos->bitboards[bB];
+    U64 QUEENS = pos->bitboards[wQ] | pos->bitboards[bQ];
+    U64 PAWNS = pos->bitboards[wP] | pos->bitboards[bP];
+
+    U64 attacksByPawn = pos->attacks_array_pawns[THEM];
+    U64 attacksByMinors = pos->attacks_array_minors[THEM];
+    U64 attacksByMajors = pos->attacks_array_queens[THEM] | pos->attacks_array_rooks[THEM];
+
+
+    // Squares with more attackers, few defenders, and no pawn support
+    U64 poorlyDefended = (pos->attacked[THEM] & ~pos->attacked[US])
+                            | (pos->attackedBy2[THEM] & ~pos->attackedBy2[US] & ~pos->attacks_array_pawns[US]);
+
+    U64 weakMinors = (KNIGHTS | BISHOPS) & poorlyDefended;
+
+    // A friendly minor or major is overloaded if attacked and defended by exactly one
+    U64 overloaded = (KNIGHTS | BISHOPS | ROOKS | QUEENS)
+                        & pos->attacked[  US] & ~pos->attackedBy2[  US]
+                        & pos->attacked[THEM] & ~pos->attackedBy2[THEM];
+
+    // Look for enemy non-pawn pieces which we may threaten with a pawn advance.
+    // Don't consider pieces we already threaten, pawn moves which would be countered
+    // by a pawn capture, and squares which are completely unprotected by our pieces.
+    U64 pushThreat  = pawnAdvance(PAWNS, occupied, US);
+    pushThreat |= pawnAdvance(pushThreat & ~attacksByPawn & Rank3Rel, occupied, US);
+    pushThreat &= ~attacksByPawn & (pos->attacked[US] | ~pos->attacked[THEM]);
+    pushThreat  = pawnAttackSpan(pushThreat, enemy & ~pos->attacks_array_pawns[US], US);
+
+    // Penalty for each of our poorly supported pawns
+    int eval = 0;
+    int count = COUNTBIT(PAWNS & ~attacksByPawn & poorlyDefended);
+    eval += count * ThreatWeakPawn;
+
+    // Penalty for pawn threats against our minors
+    count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByPawn);
+    eval += count * ThreatMinorAttackedByPawn;
+
+    // Penalty for any minor threat against minor pieces
+    count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByMinors);
+    eval += count * ThreatMinorAttackedByMinor;
+
+    // Penalty for all major threats against poorly supported minors
+    count = COUNTBIT(weakMinors & attacksByMajors);
+    eval += count * ThreatMinorAttackedByMajor;
+
+    // Penalty for pawn and minor threats against our rooks
+    count = COUNTBIT(ROOKS & (attacksByPawn | attacksByMinors));
+    eval += count * ThreatRookAttackedByLesser;
+
+    // Penalty for king threats against our poorly defended minors
+    count = COUNTBIT(weakMinors & king_attacks[pos->kingSq[THEM]]);
+    eval += count * ThreatMinorAttackedByKing;
+
+    // Penalty for king threats against our poorly defended rooks
+    count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[pos->kingSq[THEM]]);
+    eval += count * ThreatRookAttackedByKing;
+
+    // Penalty for any threat against our queens
+    count = COUNTBIT(QUEENS & pos->attacked[THEM]);
+    eval += count * ThreatQueenAttackedByOne;
+
+    // Penalty for any overloaded minors or majors
+    count = COUNTBIT(overloaded);
+    eval += count * ThreatOverloadedPieces;
+
+    // Bonus for giving threats by safe pawn pushes
+    count = COUNTBIT(pushThreat);
+    eval += count * ThreatByPawnPush;
+
+    return eval;
+}*/
+
+
 INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
         int evaluation=0;
         int oppRank=ranksBoard[oppKing];
@@ -360,6 +577,8 @@ INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
         return S(0,evaluation*2);
 
 }
+
+
 INLINE int evaluateChess960Trapped(S_BOARD *pos,int color){
 
     U64 ourBishop    = color==WHITE ? pos->bitboards[wB] : pos->bitboards[bB];
@@ -416,7 +635,9 @@ INLINE int evaluateChess960Trapped(S_BOARD *pos,int color){
 
     return eval;
 }
-INLINE int evaluateKingsPawns(S_BOARD *pos, int colour) {
+
+
+INLINE int evaluateKingsPawns(S_BOARD *pos,EVAL_INFO *eval_info, int colour) {
 
     const int US = colour, THEM = !colour;
 
@@ -427,7 +648,7 @@ INLINE int evaluateKingsPawns(S_BOARD *pos, int colour) {
     U64 myPawns     = pawns & pos->occupancy[  US];
     U64 enemyPawns  = pawns & pos->occupancy[THEM];
 
-    int kingSq = pos->kingSq[US];
+    int kingSq = eval_info->kingSq[US];
 
     dist = kingPawnFileDistance(pawns, kingSq);
     eval += KingPawnFileProximity[dist];
@@ -442,17 +663,19 @@ INLINE int evaluateKingsPawns(S_BOARD *pos, int colour) {
 
         eval += KingShelter[file == filesBoard[kingSq]][file][ourDist];
 
-        pos->pkSafety[US] += SafetyShelter[file == filesBoard[kingSq]][ourDist];
+        eval_info->pkSafety[US] += SafetyShelter[file == filesBoard[kingSq]][ourDist];
 
         blocked = (ourDist != 7 && (ourDist == theirDist - 1));
         eval += KingStorm[blocked][mirrorFile(file)][theirDist];
 
-        pos->pkSafety[US] += SafetyStorm[blocked][theirDist];
+        eval_info->pkSafety[US] += SafetyStorm[blocked][theirDist];
     }
 
     return eval;
 }
-INLINE void EvalPawn(S_BOARD *pos){
+
+
+INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
     int sq,pce;
     int file,rank;
     int flag;
@@ -473,9 +696,6 @@ INLINE void EvalPawn(S_BOARD *pos){
         file=filesBoard[sq];
         rank=ranksBoard[sq];
 
-        //psq table
-        //pos->pawnEval[WHITE]+=PawnTabless[sq];
-
         neighbors=friendlyPawn & IsolatedMask[file];
         backups=friendlyPawn & pawnPassedMark(THEM,sq);
         stoppers=enemyPawns & pawnPassedMark(US,sq);
@@ -487,36 +707,36 @@ INLINE void EvalPawn(S_BOARD *pos){
 
         //passed pawn
         if(!stoppers){
-            SETBIT(pos->passers[WHITE],sq);
+            SETBIT(eval_info->passers[WHITE],sq);
         }
 
         //candidate passers
         else if(!leftovers && COUNTBIT(pushSupport)>=COUNTBIT(pushThreats)){
             flag=COUNTBIT(supports)>=COUNTBIT(threats);
-            pos->pawnEval[WHITE]+=PawnCandidatePasser[flag][rank];
+            eval_info->pawnEval[WHITE]+=PawnCandidatePasser[flag][rank];
         }
 
         //isolated pawn
         if(!neighbors && !threats){
-            pos->pawnEval[WHITE]+=PawnIsolated[file];
+            eval_info->pawnEval[WHITE]+=PawnIsolated[file];
         }
 
         //doubled pawn
         if(several(FileBBMask[file] & pos->bitboards[wP])){
             flag=(stoppers && (threats || neighbors)) ||
                 (stoppers & ~ForwardFileMasks[WHITE][sq]);
-            pos->pawnEval[WHITE]+=PawnStacked[flag][file];
+            eval_info->pawnEval[WHITE]+=PawnStacked[flag][file];
         }
 
         //backwards pawn
         if(!backups && pushThreats && neighbors){
             flag=!(FileBBMask[file] & pos->bitboards[bP]);
-            pos->pawnEval[WHITE]+=PawnBackwards[flag][rank];
+            eval_info->pawnEval[WHITE]+=PawnBackwards[flag][rank];
         }
 
         //connected pawns
         else if(PawnConnectedMasks[WHITE][sq] & pos->bitboards[wP]){
-            pos->pawnEval[WHITE]+=PawnConnected32[relativeSquare32(WHITE,sq)];
+            eval_info->pawnEval[WHITE]+=PawnConnected32[relativeSquare32(WHITE,sq)];
         }
         POPBIT(bitboard,sq);
     }
@@ -534,8 +754,6 @@ INLINE void EvalPawn(S_BOARD *pos){
         file=filesBoard[sq];
         rank=ranksBoard[sq];
 
-        //psq table
-        //pos->pawnEval[BLACK]+=PawnTabless[MIRROR64(sq)];
 
         neighbors=friendlyPawn & IsolatedMask[file];
         backups=friendlyPawn & pawnPassedMark(THEM,sq);
@@ -548,41 +766,43 @@ INLINE void EvalPawn(S_BOARD *pos){
 
         //passed pawn
         if(!stoppers){
-            SETBIT(pos->passers[BLACK],sq);
+            SETBIT(eval_info->passers[BLACK],sq);
         }
 
         //candidate passers
         else if(!leftovers && COUNTBIT(pushSupport)>=COUNTBIT(pushThreats)){
             flag=COUNTBIT(supports)>=COUNTBIT(threats);
-            pos->pawnEval[BLACK]+=PawnCandidatePasser[flag][7-rank];
+            eval_info->pawnEval[BLACK]+=PawnCandidatePasser[flag][7-rank];
         }
 
         //isolated pawn
         if(!neighbors && !threats){
-            pos->pawnEval[BLACK]+=PawnIsolated[file];
+            eval_info->pawnEval[BLACK]+=PawnIsolated[file];
         }
 
         //doubled pawn
         if(several(FileBBMask[file] & pos->bitboards[bP])){
             flag=(stoppers && (threats || neighbors)) ||
                 (stoppers & ~ForwardFileMasks[BLACK][sq]);
-            pos->pawnEval[BLACK]+=PawnStacked[flag][file];
+            eval_info->pawnEval[BLACK]+=PawnStacked[flag][file];
         }
 
         //backwards pawn
         if(!backups && pushThreats && neighbors){
             flag=!(FileBBMask[file] & pos->bitboards[wP]);
-            pos->pawnEval[BLACK]+=PawnBackwards[flag][7-rank];
+            eval_info->pawnEval[BLACK]+=PawnBackwards[flag][7-rank];
         }
 
         //connected pawns
         else if(PawnConnectedMasks[BLACK][sq] & pos->bitboards[bP]){
-            pos->pawnEval[BLACK]+=PawnConnected32[relativeSquare32(BLACK,sq)];
+            eval_info->pawnEval[BLACK]+=PawnConnected32[relativeSquare32(BLACK,sq)];
         }
         POPBIT(bitboard,sq);
     }
 }
-INLINE int evalKnights(S_BOARD *pos,int color){
+
+
+INLINE int evalKnights(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int eval=0;
     int count;
     int kingDistance;
@@ -598,14 +818,11 @@ INLINE int evalKnights(S_BOARD *pos,int color){
 
         sq=LSBINDEX(bitboard);
 
-        //piece square tables
-        //eval+=color==WHITE ? KnightTabless[sq]:KnightTabless[MIRROR64(sq)];
-
         //knight outposts
         if(testBit(getOutpostRanksMasks(color),sq) &&
            !(getOutpostSquareMasks(color,sq) & enemyPawns)){
             outside  = testBit(FileBBMask[FILE_A] | FileBBMask[FILE_H], sq);
-            defended = testBit(pos->attacks_array_pawns[color], sq);
+            defended = testBit(eval_info->attacks_array_pawns[color], sq);
             eval += KnightOutpost[outside][defended];
            }
 
@@ -615,33 +832,35 @@ INLINE int evalKnights(S_BOARD *pos,int color){
         }
 
         //knight in siberia
-        kingDistance = MIN(distanceBetween(sq, pos->kingSq[!color]), distanceBetween(sq, pos->kingSq[color]));
+        kingDistance = MIN(distanceBetween(sq, eval_info->kingSq[!color]), distanceBetween(sq, eval_info->kingSq[color]));
         if (kingDistance >= 4) {
             eval += KnightInSiberia[kingDistance - 4];
         }
 
         attacks = knight_attacks[sq];
-        pos->attacks_array_minors[side] |= attacks;
-        pos->attackedBy2[side] |= attacks & pos->attacked[side];
-        pos->attacked[side] |= attacks;
-        pos->attackedByKnights[side] |= attacks;
+        eval_info->attacks_array_minors[side] |= attacks;
+        eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
+        eval_info->attacked[side] |= attacks;
+        eval_info->attackedByKnights[side] |= attacks;
 
         //mobility
-        count=COUNTBIT(pos->mobilityAreas[side] & attacks);
+        count=COUNTBIT(eval_info->mobilityAreas[side] & attacks);
         eval+=KnightMobility[count];
 
         //king safety calculation
-        if((attacks &= pos->kingAreas[!side] & ~pos->pawnAttackedBy2[!side])){
-            pos->kingAttacksCount[!side]+=COUNTBIT(attacks);
-            pos->attCnt[!side]+=1;
-            pos->attWeight[!side]+=SafetyKnightWeight;
+        if((attacks &= eval_info->kingAreas[!side] & ~eval_info->pawnAttackedBy2[!side])){
+            eval_info->kingAttacksCount[!side]+=COUNTBIT(attacks);
+            eval_info->attCnt[!side]+=1;
+            eval_info->attWeight[!side]+=SafetyKnightWeight;
         }
 
         POPBIT(bitboard,sq);
     }
     return eval;
 }
-INLINE int evalBishops(S_BOARD *pos,int color){
+
+
+INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     int eval=0;
     int side=color;
@@ -661,11 +880,8 @@ INLINE int evalBishops(S_BOARD *pos,int color){
     while(bitboard){
         sq=LSBINDEX(bitboard);
 
-        //piece square tables
-        //eval+=color==WHITE ? BishopTabless[sq]:BishopTabless[MIRROR64(sq)];
-
         //rammed pawns of same color
-        count=COUNTBIT(pos->rammedPawns[color] & squaresOfMatchingColour(sq));
+        count=COUNTBIT(eval_info->rammedPawns[color] & squaresOfMatchingColour(sq));
         eval+=count*BishopRammedPawns;
 
         // Long diagonal and center square control
@@ -678,7 +894,7 @@ INLINE int evalBishops(S_BOARD *pos,int color){
         if(testBit(getOutpostRanksMasks(color),sq) &&
            !(getOutpostSquareMasks(color,sq) & enemyPawns)){
             outside  = testBit(FileBBMask[FILE_A] | FileBBMask[FILE_H], sq);
-            defended = testBit(pos->attacks_array_pawns[color], sq);
+            defended = testBit(eval_info->attacks_array_pawns[color], sq);
             eval += BishopOutpost[outside][defended];
            }
 
@@ -687,21 +903,21 @@ INLINE int evalBishops(S_BOARD *pos,int color){
             eval += BishopBehindPawn;
         }
 
-        attacks = get_bishop_attacks(sq, pos->occupiedMinusBishops[side]);
-        pos->attacks_array_minors[side] |= attacks;
-        pos->attackedBy2[side] |= attacks & pos->attacked[side];
-        pos->attacked[side] |= attacks;
-        pos->attackedByBishops[side] |= attacks;
+        attacks = get_bishop_attacks(sq, eval_info->occupiedMinusBishops[side]);
+        eval_info->attacks_array_minors[side] |= attacks;
+        eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
+        eval_info->attacked[side] |= attacks;
+        eval_info->attackedByBishops[side] |= attacks;
 
         //mobility
-        count=COUNTBIT(pos->mobilityAreas[side] & attacks);
+        count=COUNTBIT(eval_info->mobilityAreas[side] & attacks);
         eval+=BishopMobility[count];
 
         //king safety calculation
-        if((attacks &= pos->kingAreas[!side] & ~pos->pawnAttackedBy2[!side])){
-            pos->kingAttacksCount[!side]+=COUNTBIT(attacks);
-            pos->attCnt[!side]+=1;
-            pos->attWeight[!side]+=SafetyBishopWeight;
+        if((attacks &= eval_info->kingAreas[!side] & ~eval_info->pawnAttackedBy2[!side])){
+            eval_info->kingAttacksCount[!side]+=COUNTBIT(attacks);
+            eval_info->attCnt[!side]+=1;
+            eval_info->attWeight[!side]+=SafetyBishopWeight;
         }
 
         POPBIT(bitboard,sq);
@@ -709,11 +925,13 @@ INLINE int evalBishops(S_BOARD *pos,int color){
 
     return eval;
 }
-INLINE int evalKing(S_BOARD *pos,int color){
+
+
+INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     int US=color;
     int THEM=!US;
-    int sq=pos->kingSq[US];
+    int sq=eval_info->kingSq[US];
     int safety, mg, eg;
     int eval=0;
 
@@ -723,28 +941,26 @@ INLINE int evalKing(S_BOARD *pos,int color){
     U64 bishops = pos->bitboards[wB] | pos->bitboards[bB];
 
     //endgame king usage
-    eval+=RewardForOppKingDistanceFromCenter(pos->kingSq[THEM],pos->kingSq[US]);
+    eval+=RewardForOppKingDistanceFromCenter(eval_info->kingSq[THEM],eval_info->kingSq[US]);
 
-    //piece square tables
-    //eval+=color==WHITE ? KingTabless[sq]:KingTabless[MIRROR64(sq)];
 
     //king defenders
     U64 defenders  = (pawns & pos->occupancy[US])
                         | (knights & pos->occupancy[US])
                         | (bishops & pos->occupancy[US]);
 
-    int count = COUNTBIT(defenders & pos->kingAreas[US]);
+    int count = COUNTBIT(defenders & eval_info->kingAreas[US]);
     eval += KingDefenders[count];
 
-    if(pos->attCnt[US]>1-COUNTBIT(enemyQueens)){
+    if(eval_info->attCnt[US]>1-COUNTBIT(enemyQueens)){
 
-        U64 weak = pos->attacked[THEM]
-                    & ~pos->attackedBy2[US]
-                    & (~pos->attacked[US] | pos->attacks_array_queens[US] | king_attacks[sq]);
-        int scaledAttackCounts = 9.0 * pos->kingAttacksCount[US] / COUNTBIT(pos->kingAreas[US]);
+        U64 weak = eval_info->attacked[THEM]
+                    & ~eval_info->attackedBy2[US]
+                    & (~eval_info->attacked[US] | eval_info->attacks_array_queens[US] | king_attacks[sq]);
+        int scaledAttackCounts = 9.0 * eval_info->kingAttacksCount[US] / COUNTBIT(eval_info->kingAreas[US]);
 
         U64 safe = ~pos->occupancy[THEM]
-                    & (~pos->attacked[US] | (weak & pos->attackedBy2[THEM]));
+                    & (~eval_info->attacked[US] | (weak & eval_info->attackedBy2[THEM]));
 
         U64 occupied = pos->occupancy[BOTH];
         U64 knightThreats = knight_attacks[sq];
@@ -752,21 +968,21 @@ INLINE int evalKing(S_BOARD *pos,int color){
         U64 rookThreats   = get_rook_attacks(sq,occupied);
         U64 queenThreats  = rookThreats | bishopThreats;
 
-        U64 knightChecks = knightThreats & safe & pos->attackedByKnights[THEM];
-        U64 rookChecks   = rookThreats & safe & pos->attacks_array_rooks[THEM];
-        U64 bishopChecks = bishopThreats & safe & pos->attackedByBishops[THEM];
-        U64 queenChecks  = queenThreats & safe & pos->attacks_array_queens[THEM];
+        U64 knightChecks = knightThreats & safe & eval_info->attackedByKnights[THEM];
+        U64 rookChecks   = rookThreats & safe & eval_info->attacks_array_rooks[THEM];
+        U64 bishopChecks = bishopThreats & safe & eval_info->attackedByBishops[THEM];
+        U64 queenChecks  = queenThreats & safe & eval_info->attacks_array_queens[THEM];
 
-        safety=pos->attWeight[US];
+        safety=eval_info->attWeight[US];
 
         safety+=SafetyAttackValue     * scaledAttackCounts
-                + SafetyWeakSquares     * COUNTBIT(weak & pos->kingAreas[US])
+                + SafetyWeakSquares     * COUNTBIT(weak & eval_info->kingAreas[US])
                 + SafetyNoEnemyQueens   * !enemyQueens
                 + SafetySafeQueenCheck  * COUNTBIT(queenChecks)
                 + SafetySafeRookCheck   * COUNTBIT(rookChecks)
                 + SafetySafeBishopCheck * COUNTBIT(bishopChecks)
                 + SafetySafeKnightCheck * COUNTBIT(knightChecks)
-                + pos->pkSafety[US]
+                + eval_info->pkSafety[US]
                 + SafetyAdjustment;
 
         mg = ScoreMG(safety), eg = ScoreEG(safety);
@@ -775,7 +991,9 @@ INLINE int evalKing(S_BOARD *pos,int color){
 
     return eval;
 }
-INLINE int evalQueens(S_BOARD *pos,int color){
+
+
+INLINE int evalQueens(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     int sq,count;
     int side=color;
@@ -788,35 +1006,34 @@ INLINE int evalQueens(S_BOARD *pos,int color){
 
         sq=LSBINDEX(bitboard);
 
-        //piece square tables
-        //eval+=color==WHITE ? QueenTabless[sq]:QueenTabless[MIRROR64(sq)];
-
         //pin risk
         if (discoveredAttacks(pos, sq, color)) {
             eval += QueenRelativePin;
         }
 
         attacks = get_queen_attacks(sq, pos->occupancy[BOTH]);
-        pos->attacks_array_queens[side] |= attacks;
-        pos->attackedBy2[side] |= attacks & pos->attacked[side];
-        pos->attacked[side] |= attacks;
+        eval_info->attacks_array_queens[side] |= attacks;
+        eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
+        eval_info->attacked[side] |= attacks;
 
         //mobility
-        count=COUNTBIT(pos->mobilityAreas[side] & attacks);
+        count=COUNTBIT(eval_info->mobilityAreas[side] & attacks);
         eval+=QueenMobility[count];
 
         //king safety calculation
-        if((attacks &= pos->kingAreas[!side] & ~pos->pawnAttackedBy2[!side])){
-            pos->kingAttacksCount[!side]+=COUNTBIT(attacks);
-            pos->attCnt[!side]+=1;
-            pos->attWeight[!side]+=SafetyQueenWeight;
+        if((attacks &= eval_info->kingAreas[!side] & ~eval_info->pawnAttackedBy2[!side])){
+            eval_info->kingAttacksCount[!side]+=COUNTBIT(attacks);
+            eval_info->attCnt[!side]+=1;
+            eval_info->attWeight[!side]+=SafetyQueenWeight;
         }
 
         POPBIT(bitboard,sq);
     }
     return eval;
 }
-INLINE int evalRooks(S_BOARD *pos,int color){
+
+
+INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     int sq,count;
     int open;
@@ -832,8 +1049,6 @@ INLINE int evalRooks(S_BOARD *pos,int color){
 
         sq=LSBINDEX(bitboard);
 
-        //piece square tables
-        //eval+=color==WHITE ? RookTabless[sq]:RookTabless[MIRROR64(sq)];
 
         //open files
         if (!(myPawns & FileBBMask[filesBoard[sq]])) {
@@ -843,30 +1058,32 @@ INLINE int evalRooks(S_BOARD *pos,int color){
 
         //rook on seventh
         if ( relativeRankOf(color, sq) == RANK_7
-            && relativeRankOf(color, pos->kingSq[!color]) >= RANK_7) {
+            && relativeRankOf(color, eval_info->kingSq[!color]) >= RANK_7) {
             eval += RookOnSeventh;
         }
 
-        attacks = get_rook_attacks(sq, pos->occupiedMinusRooks[side]);
-        pos->attacks_array_rooks[side] |= attacks;
-        pos->attackedBy2[side] |= attacks & pos->attacked[side];
-        pos->attacked[side] |= attacks;
+        attacks = get_rook_attacks(sq, eval_info->occupiedMinusRooks[side]);
+        eval_info->attacks_array_rooks[side] |= attacks;
+        eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
+        eval_info->attacked[side] |= attacks;
 
         //mobility
-        count=COUNTBIT(pos->mobilityAreas[side] & attacks);
+        count=COUNTBIT(eval_info->mobilityAreas[side] & attacks);
         eval+=RookMobility[count];
 
         //king safety calculation
-        if((attacks &= pos->kingAreas[!side] & ~pos->pawnAttackedBy2[!side])){
-            pos->kingAttacksCount[!side]+=COUNTBIT(attacks);
-            pos->attCnt[!side]+=1;
-            pos->attWeight[!side]+=SafetyRookWeight;
+        if((attacks &= eval_info->kingAreas[!side] & ~eval_info->pawnAttackedBy2[!side])){
+            eval_info->kingAttacksCount[!side]+=COUNTBIT(attacks);
+            eval_info->attCnt[!side]+=1;
+            eval_info->attWeight[!side]+=SafetyRookWeight;
         }
 
         POPBIT(bitboard,sq);
     }
     return eval;
 }
+
+
 INLINE int ScaleFactor(S_BOARD *pos,int eval){
 
     const U64 pawns   = pos->bitboards[wP] | pos->bitboards[bP];
@@ -925,7 +1142,9 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval){
     return SCALE_NORMAL;
 
 }
-INLINE int evaluatePassed(S_BOARD *pos, int colour) {
+
+
+INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
 
     const int US = colour, THEM = !colour;
 
@@ -933,7 +1152,7 @@ INLINE int evaluatePassed(S_BOARD *pos, int colour) {
 
     U64 bitboard;
     //U64 ourRooks = colour==WHITE ? pos->bitboards[wR]:pos->bitboards[bR];
-    U64 myPassers = colour==WHITE ? pos->passers[WHITE]:pos->passers[BLACK];
+    U64 myPassers = colour==WHITE ? eval_info->passers[WHITE]:eval_info->passers[BLACK];
     U64 occupied  = pos->occupancy[BOTH];
     U64 tempPawns = myPassers;
 
@@ -945,15 +1164,15 @@ INLINE int evaluatePassed(S_BOARD *pos, int colour) {
         bitboard = pawnAdvance(1ull << sq, 0ull, US);
 
         canAdvance = !(bitboard & occupied);
-        safeAdvance = !(bitboard & pos->attacked[THEM]);
+        safeAdvance = !(bitboard & eval_info->attacked[THEM]);
         eval += PassedPawn[canAdvance][safeAdvance][rank];
 
         if (several(ForwardFileMasks[US][sq] & myPassers)) continue;
 
-        dist = distanceBetween(sq, pos->kingSq[US]);
+        dist = distanceBetween(sq, eval_info->kingSq[US]);
         eval += dist * PassedFriendlyDistance[rank];
 
-        dist = distanceBetween(sq, pos->kingSq[THEM]);
+        dist = distanceBetween(sq, eval_info->kingSq[THEM]);
         eval += dist * PassedEnemyDistance[rank];
 
         //Apply a bonus if a rook is beneath this passed pawn
@@ -964,12 +1183,14 @@ INLINE int evaluatePassed(S_BOARD *pos, int colour) {
 
         // Apply a bonus when the path to promoting is uncontested
         bitboard = forwardRanksMasks(US, ranksBoard[sq]) & FileBBMask[filesBoard[sq]];
-        flag = !(bitboard & (pos->occupancy[THEM] | pos->attacked[THEM]));
+        flag = !(bitboard & (pos->occupancy[THEM] | eval_info->attacked[THEM]));
         eval += flag * PassedSafePromotionPath;
     }
 
     return eval;
 }
+
+
 INLINE int materialScore(S_BOARD *pos){
 
     //init
@@ -999,11 +1220,13 @@ INLINE int materialScore(S_BOARD *pos){
     return whiteMaterial - blackMaterial;
 
 }
-INLINE void initEvalThings(S_BOARD *pos){
+
+
+INLINE void initEvalThings(S_BOARD *pos, EVAL_INFO *eval_info){
     int index;
     //king sq
-    pos->kingSq[WHITE]=LSBINDEX(pos->bitboards[wK]);
-    pos->kingSq[BLACK]=LSBINDEX(pos->bitboards[bK]);
+    eval_info->kingSq[WHITE]=LSBINDEX(pos->bitboards[wK]);
+    eval_info->kingSq[BLACK]=LSBINDEX(pos->bitboards[bK]);
     //pos->pkEval = 0;
 
     U64 white=pos->occupancy[WHITE];
@@ -1013,62 +1236,64 @@ INLINE void initEvalThings(S_BOARD *pos){
     U64 rooks=pos->bitboards[wR] | pos->bitboards[bR];
     U64 bishops=pos->bitboards[wB] | pos->bitboards[bB];
     for(index=0;index<2;++index){
-        pos->attCnt[index]=0;
-        pos->passers[index]=0ULL;
-        pos->pkSafety[index]=0;
-        pos->attacks_array_minors[index]=0ULL;
-        pos->attacks_array_rooks[index]=0ULL;
-        pos->attacks_array_queens[index]=0ULL;
-        pos->attackedByBishops[index]=0ULL;
-        pos->attackedByKnights[index]=0ULL;
-        pos->attWeight[index]=0;
-        pos->kingAttacksCount[index]=0;
-        pos->pawnEval[index]=0;
+        eval_info->attCnt[index]=0;
+        eval_info->passers[index]=0ULL;
+        eval_info->pkSafety[index]=0;
+        eval_info->attacks_array_minors[index]=0ULL;
+        eval_info->attacks_array_rooks[index]=0ULL;
+        eval_info->attacks_array_queens[index]=0ULL;
+        eval_info->attackedByBishops[index]=0ULL;
+        eval_info->attackedByKnights[index]=0ULL;
+        eval_info->attWeight[index]=0;
+        eval_info->kingAttacksCount[index]=0;
+        eval_info->pawnEval[index]=0;
     }
 
     //king areas
-    pos->kingAreas[WHITE] = KingAreaMasks(WHITE,pos->kingSq[WHITE]);
-    pos->kingAreas[BLACK] = KingAreaMasks(BLACK,pos->kingSq[BLACK]);
+    eval_info->kingAreas[WHITE] = KingAreaMasks(WHITE,eval_info->kingSq[WHITE]);
+    eval_info->kingAreas[BLACK] = KingAreaMasks(BLACK,eval_info->kingSq[BLACK]);
 
     //init pawn things
-    pos->attacks_array_pawns[WHITE]    = pawnAttackSpan(white & pawns, ~0ull, WHITE);
-    pos->attacks_array_pawns[BLACK]    = pawnAttackSpan(black & pawns, ~0ull, BLACK);
-    pos->pawnAttackedBy2[WHITE] = pawnAttackDouble(white & pawns, ~0ull, WHITE);
-    pos->pawnAttackedBy2[BLACK] = pawnAttackDouble(black & pawns, ~0ull, BLACK);
-    pos->rammedPawns[WHITE]=pawnAdvance(pos->occupancy[BLACK] & pawns, ~(pos->occupancy[WHITE] & pawns), BLACK);
-    pos->rammedPawns[BLACK]=pawnAdvance(pos->occupancy[WHITE] & pawns, ~(pos->occupancy[BLACK] & pawns), WHITE);
+    eval_info->attacks_array_pawns[WHITE]    = pawnAttackSpan(white & pawns, ~0ull, WHITE);
+    eval_info->attacks_array_pawns[BLACK]    = pawnAttackSpan(black & pawns, ~0ull, BLACK);
+    eval_info->pawnAttackedBy2[WHITE] = pawnAttackDouble(white & pawns, ~0ull, WHITE);
+    eval_info->pawnAttackedBy2[BLACK] = pawnAttackDouble(black & pawns, ~0ull, BLACK);
+    eval_info->rammedPawns[WHITE]=pawnAdvance(pos->occupancy[BLACK] & pawns, ~(pos->occupancy[WHITE] & pawns), BLACK);
+    eval_info->rammedPawns[BLACK]=pawnAdvance(pos->occupancy[WHITE] & pawns, ~(pos->occupancy[BLACK] & pawns), WHITE);
     U64 BlockedPawnWhite  = pawnAdvance(white | black, ~(white & pawns), BLACK);
     U64 BlockedPawnBlack  = pawnAdvance(white | black, ~(black & pawns), WHITE);
 
     //init attacks
-    pos->attacked[WHITE]=king_attacks[pos->kingSq[WHITE]];
-    pos->attacked[BLACK]=king_attacks[pos->kingSq[BLACK]];
-    pos->attackedBy2[WHITE] = pos->attacks_array_pawns[WHITE] & pos->attacked[WHITE];
-    pos->attackedBy2[BLACK] = pos->attacks_array_pawns[BLACK] & pos->attacked[BLACK];
-    pos->attacked[WHITE] |= pos->attacks_array_pawns[WHITE];
-    pos->attacked[BLACK] |= pos->attacks_array_pawns[BLACK];
+    eval_info->attacked[WHITE]=king_attacks[eval_info->kingSq[WHITE]];
+    eval_info->attacked[BLACK]=king_attacks[eval_info->kingSq[BLACK]];
+    eval_info->attackedBy2[WHITE] = eval_info->attacks_array_pawns[WHITE] & eval_info->attacked[WHITE];
+    eval_info->attackedBy2[BLACK] = eval_info->attacks_array_pawns[BLACK] & eval_info->attacked[BLACK];
+    eval_info->attacked[WHITE] |= eval_info->attacks_array_pawns[WHITE];
+    eval_info->attacked[BLACK] |= eval_info->attacks_array_pawns[BLACK];
 
     //mobility areas
-    pos->mobilityAreas[WHITE] = ~(pos->attacks_array_pawns[BLACK] | (white & kings) | BlockedPawnWhite);
-    pos->mobilityAreas[BLACK] = ~(pos->attacks_array_pawns[WHITE] | (black & kings) | BlockedPawnBlack);
+    eval_info->mobilityAreas[WHITE] = ~(eval_info->attacks_array_pawns[BLACK] | (white & kings) | BlockedPawnWhite);
+    eval_info->mobilityAreas[BLACK] = ~(eval_info->attacks_array_pawns[WHITE] | (black & kings) | BlockedPawnBlack);
 
     //mobilityMinus
-    pos->occupiedMinusBishops[WHITE]=(white | black) ^ (white & bishops);
-    pos->occupiedMinusBishops[BLACK]=(white | black) ^ (black & bishops);
-    pos->occupiedMinusRooks[WHITE]=(white | black) ^ (white & rooks);
-    pos->occupiedMinusRooks[BLACK]=(white | black) ^ (black & rooks);
+    eval_info->occupiedMinusBishops[WHITE]=(white | black) ^ (white & bishops);
+    eval_info->occupiedMinusBishops[BLACK]=(white | black) ^ (black & bishops);
+    eval_info->occupiedMinusRooks[WHITE]=(white | black) ^ (white & rooks);
+    eval_info->occupiedMinusRooks[BLACK]=(white | black) ^ (black & rooks);
 }
-INLINE int evaluatePieces(S_BOARD *pos){
+
+
+INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     int eval=0;
 
-    eval+= pos->pawnEval[WHITE] - pos->pawnEval[BLACK];
-    eval+= evalKnights(pos,WHITE)- evalKnights(pos,BLACK);
-    eval+= evalBishops(pos,WHITE)- evalBishops(pos,BLACK);
-    eval+= evalRooks(pos,WHITE)  - evalRooks(pos,BLACK);
-    eval+= evalQueens(pos,WHITE) - evalQueens(pos,BLACK);
-    eval+= evaluateKingsPawns(pos,WHITE)-evaluateKingsPawns(pos,BLACK);
-    eval+= evalKing(pos,WHITE) - evalKing(pos,BLACK);
-    eval+= evaluatePassed(pos,WHITE) - evaluatePassed(pos,BLACK);
+    eval+= eval_info->pawnEval[WHITE] - eval_info->pawnEval[BLACK];
+    eval+= evalKnights(pos,eval_info,WHITE)- evalKnights(pos,eval_info,BLACK);
+    eval+= evalBishops(pos,eval_info,WHITE)- evalBishops(pos,eval_info,BLACK);
+    eval+= evalRooks(pos,eval_info,WHITE)  - evalRooks(pos,eval_info,BLACK);
+    eval+= evalQueens(pos,eval_info,WHITE) - evalQueens(pos,eval_info,BLACK);
+    eval+= evaluateKingsPawns(pos,eval_info,WHITE)-evaluateKingsPawns(pos,eval_info,BLACK);
+    eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
+    eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
     //eval+= evaluateSpace(pos,WHITE)-evaluateSpace(pos,BLACK);
     //eval+= evaluateThreats(pos,WHITE)-evaluateThreats(pos,BLACK);
 
@@ -1079,6 +1304,8 @@ INLINE int evaluatePieces(S_BOARD *pos){
 
     return eval;
 }
+
+
 INLINE int getPSQT(S_BOARD *pos,int col){
     int PSQT=0;
     U64 bitboard;
@@ -1112,18 +1339,20 @@ INLINE int getPSQT(S_BOARD *pos,int col){
 
     return PSQT;
 }
-INLINE int getClassicalEval(S_BOARD *pos){
+
+
+INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
     int eval=0;
 
     // store and probe pawns
-    if (!ProbePawnKingEval(pos)){
-        EvalPawn(pos);
-        StorePawnKingEval(pos);
+    if (!ProbePawnKingEval(pos, eval_info)){
+        EvalPawn(pos, eval_info);
+        StorePawnKingEval(pos, eval_info);
     }
 
     //pieces
-    eval+=evaluatePieces(pos);
+    eval+=evaluatePieces(pos, eval_info);
     //others
     eval+=pos->contempt+pos->psqtmat;
 
@@ -1132,6 +1361,8 @@ INLINE int getClassicalEval(S_BOARD *pos){
 
 
 int EvalPosition(S_BOARD *pos){
+
+    EVAL_INFO eval_info[1];
 
     int score;
 
@@ -1143,19 +1374,20 @@ int EvalPosition(S_BOARD *pos){
     //probing cached eval
     int hashedEval=ProbeTTEval(pos);
     if(hashedEval != VALUE_NONE){
-        //score = pos->USE_NNUE ? hashedEval:(pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
         score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
         return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100:score;
     }
 
     //Initialization
-    initEvalThings(pos);
+    initEvalThings(pos, eval_info);
 
     //get classical eval
-    int eval = getClassicalEval(pos);
+    int eval = getClassicalEval(pos, eval_info);
+    //eval += evaluateClosedness(pos);
+    //eval+=evaluateComplexity(pos,eval);
 
     //scale factor
-    int factor=ScaleFactor(pos,ScoreEG(eval));
+    int factor=ScaleFactor(pos, ScoreEG(eval));
 
     //phase
     pos->gamePhase = getGamePhase(pos);
@@ -1167,10 +1399,11 @@ int EvalPosition(S_BOARD *pos){
     //store score
     StoreTTEval(pos,score);
 
-    ASSERT((pos->side==WHITE ? score : -score)+tempo < INFINITE);
+    ASSERT((pos->side==WHITE ? score : -score)+tempo < AB_BOUND);
     score = (pos->side==WHITE ? score : -score)+tempo;
     return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100:score;
 }
+
 
 void initPQSTMAT(){
     int sq2;
@@ -1193,3 +1426,4 @@ void initPQSTMAT(){
         PSQTMATTABLE[bK][sq] = -PiecesVal[KING] - KingTabless[sq2];
     }
 }
+

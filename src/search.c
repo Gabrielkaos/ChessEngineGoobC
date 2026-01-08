@@ -1,8 +1,10 @@
+
 #include "defs.h"
+#include "string.h"
 #include "stdio.h"
-#include "math.h"
+#include <math.h>
 #include "search.h"
-#include "see.h"
+#include "pvtable.h"
 #include "some_maths.h"
 #include "recog.h"
 #include "inttypes.h"
@@ -11,11 +13,21 @@
 #include "uci.h"
 #include "movepicker.h"
 #include "history.h"
+#include "movegen.h"
+#include "misc.h"
+#include "makemove.h"
+#include "io.h"
+#include "attacks.h"
+#include "thread.h"
+#include "tinycthread.h"
 
 //NOTE
 /*
     Some Search code are based on Ethereal 12.75, big thanks credit to Andrew Grant
 */
+
+//for threading
+thrd_t workerThreads[MAXTHREADS];
 
 int LMRTable[MAXDEPTH][MAXPOSMOVES];
 void initLMRTable(){
@@ -27,22 +39,23 @@ void initLMRTable(){
     }
 }
 
-//search helper functions
+//function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
         if((!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
            (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
            (info->nodeSet==TRUE && info->nodes>=info->nodeLimit)){
-            info->stopped=TRUE;
+                info->stopped=TRUE;
            }
     }
 
-    ReadInput(info);
 }
-INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info){
+
+//initialize the search parameters and variables
+INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     int index=0;
     int index2=0;
-    updateAge(pos->pvTable);
+    updateAge(table);
 
     for(index=0;index<2;++index){
         for(index2=0;index2<MAXDEPTH;++index2){
@@ -60,9 +73,11 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info){
 
 
 //protos
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info,int ttValue,int depth,int beta,int ttMove,int *multiCut);
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut);
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
-//main search functions
+
+
+//Quiescence search function to check if there are captures that can change the game
 int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
 
     int value,moveInLoop,moveNum;
@@ -83,11 +98,11 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
     //pruning standing pat
     int eval      = pos->eval_stack[pos->ply] = EvalPosition(pos);
 
-    //Pruning
+    //if the eval is good enough we return early
     if(eval>=beta)return beta;
     alpha=MAX(alpha,eval);
 
-    //int threshold = MAX(1,alpha-eval-QSSeeMargin);
+
 
     S_MOVELIST list[1];
     GenerateAllNoisy(pos,list);
@@ -96,17 +111,18 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
         PickNextMove(moveNum,list);
         moveInLoop = list->moves[moveNum].move;
 
-        /*//SEE Pruning
-        if(!StaticExchangeEvaluation(pos, moveInLoop, threshold)){
-            continue;
-        }*/
+
         if(!info->bruteForceMode){
             //SEE Pruning
+            //if the score for this noisy move is lesser than zero we dont bother checking it
             if(list->moves[moveNum].score < 0){
                 continue;
             }
 
             //DELTA PRUNING
+            //to see if this capture has an effect
+            //if the capture barely improves the position plus a margin
+            //we dont bother checking the move
             if ((eval+SEEPieceValues[getCapturedPiece(moveInLoop)]+200<alpha) &&
                  PROMOTED(moveInLoop)==0 &&
                  getGamePhase(pos) < PHASE_ENDING){
@@ -127,14 +143,16 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
     }
     return alpha;
 }
-int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int doNULL){
+
+//main search function alpha beta
+int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int doNULL){
 
     int R,improving,quietMove,moveInLoop,newDepth,singular,extension,seeMargin[2];
     int fmhist          =0;
     int cmhist          =0;
     int multiCut        =FALSE;
     int value           =0;
-    int Score           =-INFINITE;
+    int Score           =-AB_BOUND;
     int pvNode          =(alpha != beta-1);
     int rootNode        =pos->ply==0;
     int quietsSeen      =0;
@@ -142,7 +160,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
     int oldAlpha        =alpha;
     int moveNum         =0;
     int Legal           =0;
-    int bestScore       =-INFINITE;
+    int bestScore       =-AB_BOUND;
     int inCheck         =!!attackersToKingSq(pos,pos->side);
     int ttDepth         =0;
     int ttBound         =HFNONE;
@@ -157,12 +175,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
     int hist            =0;
 
     //go to qsearch if depth<=0
+    //if in check dont go to q search
     if(depth<=0){
         if(!inCheck)return Quiescence(alpha,beta,pos,info);
         else depth = 1;
     }
 
-    //cleaning
+    //see if we should abort the search
     if((info->nodes & 2047)==0)checkUp(info);
 
     //for uci updates
@@ -176,13 +195,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         //to deep
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
         //mate pruning
-        int rAlpha = alpha > -INFINITE + pos->ply     ? alpha : -INFINITE + pos->ply;
-        int rBeta  =  beta <  INFINITE - pos->ply - 1 ?  beta :  INFINITE - pos->ply - 1;
+        int rAlpha = alpha > -AB_BOUND + pos->ply     ? alpha : -AB_BOUND + pos->ply;
+        int rBeta  =  beta <  AB_BOUND - pos->ply - 1 ?  beta :  AB_BOUND - pos->ply - 1;
         if (rAlpha >= rBeta) return rAlpha;
     }
 
     //probing Transposition Table
-    if((ttHit=ProbeHashEntry(pos, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
+    if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
 
         ttValue = valueFromTT(ttValue,pos->ply);
 
@@ -198,14 +217,20 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
 
     //store in eval_stack each staticEval
     int staticEval=pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval:EvalPosition(pos);
+
+    //see if we improved on the last position
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
 
+    // seemargin for this depth
     seeMargin[0] = SEENoisyMargin * depth * depth;
     seeMargin[1] = SEEQuietMargin * depth;
 
     if(!info->bruteForceMode && !inCheck && !pvNode){
 
         //beta pruning
+        //at shallow depth and when mate is unlikely
+        //we prune aggresively
+        //means that the position is good enough that no deeper search needed
         if(depth < 3 && abs(beta-1)>-ISMATE){
             int evalMargin=SEEPieceValues[wP]*depth;
             if(staticEval - evalMargin>=beta){
@@ -214,7 +239,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         }
 
         //null move
+        //taking a null 'pseudo' move to see if the position has improved
         if(doNULL){
+
+            //null move should not be done at root
+            //if the position is favorable, we are likely to prune
             if(!rootNode &&
                staticEval >= beta &&
                depth >= defaultNullMoveDepth &&
@@ -225,16 +254,20 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
 
                 R = 4 + depth / 6 + MIN(3, (staticEval - beta) / 200);
 
-                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info,FALSE);
+                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
                 if(valueNull >= beta)return beta;
             }
 
             //razoring
+            /*If the static evaluation plus some margin (pawn value) is still below beta,
+            the engine performs quiescence search rather than a full search at shallow depths,
+            potentially pruning bad lines early.*/
             Score=staticEval+SEEPieceValues[wP];
             int newScore;
 
+            //checking if the score will likely exceed beta
             if(Score<beta){
                 if(depth==1){
                     newScore=Quiescence(alpha,beta,pos,info);
@@ -242,6 +275,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
                 }
             }
 
+            //checking again for the value of a two pawn
             Score+=SEEPieceValues[wP];
             if(Score<beta && depth < 4){
                 newScore=Quiescence(alpha,beta,pos,info);
@@ -251,6 +285,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
     }
 
     //PROBCUT
+    //prune unlikely moves
+    //if not bruteforce and not in princiap variation line
+    //only in a threshold
+    //dont prune moves if in a checkmate scenario to not miss a tactical sequence
+    //only prune when the static eval is >= beta meaning we are winning so we can prune safely -
+    //or static eval + move bestcase >= beta + margin
     if (!info->bruteForceMode &&
         !pvNode &&
         depth >=probCutDepth &&
@@ -268,10 +308,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
                 PickNextMove(move_num,problist);
                 move_in_prob=problist->moves[move_num].move;
 
-                /*//SEE Pruning
-                if(!StaticExchangeEvaluation(pos, move_in_prob, probThresh)){
-                    continue;
-                }*/
+
                 //SEE Pruning
                 if(problist->moves[move_num].score < 0){
                     continue;
@@ -279,8 +316,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
 
                 if (!makeMove(pos,move_in_prob))continue;
 
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info,TRUE);
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info,TRUE);
+                //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
+                //if it can exceed beta
+                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE);
+                //now at shallow depth perform a more deeper search to confirm
+                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE);
 
                 takeMove(pos);
 
@@ -289,20 +329,32 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
             }
     }
 
-    //IIR
+    //Internal Iterative Reduction(IIR)
+    //dont over search a position with no Transposition table data
+    //means this position might not be critical
     if(!info->bruteForceMode && depth>=4 && ttMove==NOMOVE)depth--;
 
+
+    //generate the moves
     S_MOVELIST list[1];
     GenerateAllMoves(pos,list);
     InitAllScore(pos,list,ttMove,0);
-    Score = -INFINITE;
+
+    Score = -AB_BOUND;
     int skipQuiets = 0;
+
+    //main move loop
     for(moveNum=0;moveNum<list->count;++moveNum){
         PickNextMove(moveNum,list);
         moveInLoop=list->moves[moveNum].move;
 
+        //count the quiets seen and check if the move is tactical
         quietsSeen+=(quietMove=!moveIsTactical(pos,moveInLoop));
 
+        //if tje skipQuiets flag is 1
+        //and is quiet move
+        //and move not a ttmove
+        //then we skip that move
         if(skipQuiets
             && quietMove
             && moveInLoop != ttMove){
@@ -310,27 +362,36 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         }
 
         //get history
+        //get history of the move
         hist = !quietMove ? getCaptureHistory(pos,moveInLoop):getHistory(pos,moveInLoop,&fmhist,&cmhist);
 
         //Quiet late Move pruning
         if (!info->bruteForceMode && quietMove && bestScore > -ISMATE){
 
+            //Futility pruning
+            //checking if this position is likely to improve
+            //if not then we skip it
             if (   depth <= FutilityPruningDepth
                 && (staticEval + FutilityMargin) <= alpha
                 && hist < FutilityPruningHistoryLimit[improving]){
                 skipQuiets = 1;
                 }
 
+            //futile position if the static eval plus some margin is clearly worse then alpha
+            //then we prune
             if (   depth <= FutilityPruningDepth
                 && (staticEval + FutilityMargin + FutilityMarginNoHistory) <= alpha){
                 skipQuiets = 1;
                 }
 
+            //if weve searched for quite a while Late moves that are quiet are pruned based on threshold
             if (depth<=LateMovePruningDepth &&
                 quietsSeen>=LateMovePruningCounts[improving][depth]){
                     skipQuiets = 1;
                 }
 
+            //check the countermove and follow up moves
+            //prune them if they have a low history performance
             R = LMRTable[MIN(depth, MAXDEPTH/2-1)][MIN(Legal, MAXDEPTH/2-1)];
 
             if ( list->moves[moveNum].score < SORT_COUNTER
@@ -347,6 +408,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         }
 
         //SEE
+        //checks wether a capture move is valuable
+        //if it actually gained material
         if (    !info->bruteForceMode
             &&  bestScore > -ISMATE
             && list->moves[moveNum].score < SORT_CAPTURE
@@ -359,31 +422,40 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         Legal++;
 
         //uci report the current move
-        if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
+        if(threadNum==0)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
 
 
+        //Singular Extensions and Multi Cut
+        //decides whether the move is the only great move in the position
+        //if the move being considered is the move probed in Transposition Table
+        //then we search this line deeper
         if(!info->bruteForceMode){
-            //singular extension
             singular = !rootNode
                      &&  depth >= 8
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
                      && (ttBound == HFBETA);
 
-            extension = singular ? Singularity(pos,info,ttValue,depth,beta,ttMove,&multiCut)
+            //check if the move is singular or in check or quiet moves that performed based on history scores
+            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut)
                         :inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit);
 
             newDepth = MIN(MAXDEPTH - 2,depth + (extension && !rootNode));
 
+            //MultiCut, super aggressive pruning
+            //engine thinks that the move is too strong
             if(multiCut==TRUE){
                 takeMove(pos);
-                return MAX(ttValue-depth,-INFINITE);
+                return MAX(ttValue-depth,-AB_BOUND);
             }
         }else{
             newDepth  = depth;
             extension = 0;
         }
 
+        //Late Move Reduction, see how much we should cut depth
+        //prunes if the move is quiet and that this is one of the many moves searched already
+        //we prune if the move is unlikely promising
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             R = LMRTable[MIN(depth, MAXDEPTH/2-1)][MIN(Legal, MAXDEPTH/2-1)];
 
@@ -397,23 +469,27 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
 
             R = MIN(depth - 1, MAX(R, 1));
         }
+        //for non quiet moves
+        //we reduce search based on their performance history
         else if (!quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             R = MIN(depth - 1, MAX(1, MIN(3, 3 - (hist + 4000) / 2000)));
+        }else{
+            R = 1;
         }
 
-        else R = 1;
-
         //LMR
-        if(R != 1) Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info,TRUE);
+        //see if the move can exceed current alpha
+        //if not, no need to explore deeply
+        if(R != 1) Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE);
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info,TRUE);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE);
         }
 
         //Normal Search
         if(pvNode && (Legal == 1 || Score > alpha)){
-            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info,TRUE);
+            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE);
         }
 
 
@@ -421,6 +497,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
         if(quietMove)quietsTried[quietsPlayed++] = moveInLoop;
         else capturesTried[capturesPlayed++]     = moveInLoop;
 
+        //see if we got a best move
+        //update table
+        //update history
         if(info->stopped==TRUE)return 0;
         if(Score>bestScore){
             bestScore=Score;
@@ -430,47 +509,52 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info,int d
                 if(alpha>=beta){
                     if(!moveIsTactical(pos,bestMove))updateHistories(pos,quietsTried,quietsPlayed,depth);
                     updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
-                    StoreHashEntry(pos, bestMove, beta, HFBETA, depth,staticEval);
+                    StoreHashEntry(pos, table, bestMove, beta, HFBETA, depth,staticEval);
                     return beta;
                 }
-                //if(quietMove)pos->searchHistory[pos->pieces[FROMSQ(bestMove)]][TOSQ(bestMove)]+=depth;
             }
         }
     }
 
     //checkmate and stalemate
-    if(Legal==0)return inCheck ? -INFINITE + pos->ply : 0;
+    if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
     //update TT
-    if(oldAlpha != alpha)StoreHashEntry(pos,bestMove,bestScore,HFEXACT,depth,staticEval);
-    else                 StoreHashEntry(pos,bestMove,alpha    ,HFALPHA,depth,staticEval);
+    if(oldAlpha != alpha)StoreHashEntry(pos, table,bestMove,bestScore,HFEXACT,depth,staticEval);
+    else                 StoreHashEntry(pos, table,bestMove,alpha    ,HFALPHA,depth,staticEval);
 
     return alpha;
 }
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info,int ttValue,int depth,int beta,int ttMove,int *multiCut){
+
+//Singularity
+//checks if the move is truly singular or the only best move in the position
+//also checks if a stornger move if found(MULTICUT)
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut){
 
     int moveNum;
     int moveInLoop = NOMOVE;
     int skipQuiets = 0;
     int quiets     = 0;
     int tacticals  = 0;
-    int value      = -INFINITE;
-    int rBeta      = MAX(ttValue-depth,-INFINITE);
+    int value      = -AB_BOUND;
+    int rBeta      = MAX(ttValue-depth,-AB_BOUND);
     int quietMove;
 
-    //revert the move
+    //reverts the move
     takeMove(pos);
 
+    //generate the moves
     S_MOVELIST singularList[1];
     GenerateAllMoves(pos,singularList);
     InitAllScore(pos,singularList,NOMOVE,0);
+
     for(moveNum=0;moveNum<singularList->count;++moveNum){
         PickNextMove(moveNum,singularList);
         moveInLoop = singularList->moves[moveNum].move;
 
         quietMove = !moveIsTactical(pos,moveInLoop);
 
-        //skipQuiets
+        //skipQuiets if too many quiet moves has been seen
         if(skipQuiets
             && quietMove
             && moveInLoop != ttMove){
@@ -481,18 +565,22 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info,int ttValue,int depth,int beta,i
         if(moveInLoop==ttMove)continue;
 
         if(!makeMove(pos,moveInLoop))continue;
-        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info,TRUE);
+        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE);
         takeMove(pos);
 
+        //if found a stronger move breaks, triggers MultiCut
         if(value>rBeta)break;
 
         quietMove ? tacticals++:quiets++;
         skipQuiets = quiets >= SingularQuietLimit;
 
+        //break the loop if skip quiets and has seen too many tactical moves
         if(skipQuiets && tacticals >= SingularTacticalLimit)break;
     }
 
-    //multicut
+    //MultiCut
+    //if found a stronger move than ttMove
+    //we are confident that this is a strong move, we cut off every move and returns early
     if(value>rBeta && rBeta >=beta){
         if(moveInLoop != NOMOVE &&
            !moveIsTactical(pos,moveInLoop)){
@@ -508,6 +596,9 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info,int ttValue,int depth,int beta,i
 
     return value <= rBeta;
 }
+
+//SEE function
+//verifies the move if it gains a value by capturing
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
     int from, to, colour, balance, nextVictim, promoted , isEnpassant;
     U64 bishops, rooks, occupied, attackers, myAttackers;
@@ -576,66 +667,80 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 
 
 
-void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info){
+int SearchPositionThread(void *data){
+    THREAD_DATA *thread_data = (THREAD_DATA*)data;
+    S_BOARD *pos = malloc(sizeof(S_BOARD));
+    memcpy(pos, thread_data->originalPos,sizeof(S_BOARD));
+    SearchPosition(pos, thread_data->info, thread_data->ttable);
+    free(pos);
+    free(thread_data);
+    return 0;
+}
 
-    ASSERT(checkBoard(pos));
+//passing threads
+//searches for each threads
+void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
     int currentDepth,numberOfPvMoves,bestScore;
 
-    int bestMove       = NOMOVE;
-    int ponderMove     = NOMOVE;
+    workerthread->bestMove       = NOMOVE;
+    workerthread->ponderMove     = NOMOVE;
 
     //aspiration window
-    int alpha          = -INFINITE;
-    int beta           = INFINITE;
+    int alpha          = -AB_BOUND;
+    int beta           = AB_BOUND;
 
-    //init search things
-    InitSearcher(pos,info);
 
     //iterative deepening
     for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
 
         //call alpha beta to get score
-        bestScore=AlphaBeta(alpha,beta,currentDepth,pos,info,TRUE);
+        bestScore=AlphaBeta(alpha,beta,currentDepth,workerthread->originalPos,workerthread->info, workerthread->ttable,workerthread->threadNumber,TRUE);
         //say out of time for gui
-        if(info->stopped==TRUE)break;
-        //get Pv Lines
-        numberOfPvMoves=getPvLine(currentDepth,pos);
-        //get best move from pv lines
-        bestMove=pos->pvArray[0];
-        ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;
+        if(workerthread->info->stopped==TRUE)break;
+
+        if(workerthread->threadNumber==0){
+            //get Pv Lines
+            numberOfPvMoves=getPvLine(currentDepth,workerthread->originalPos, workerthread->ttable);
+            //get best move from pv lines
+            workerthread->bestMove=workerthread->originalPos->pvArray[0];
+            workerthread->ponderMove = numberOfPvMoves > 1 ? workerthread->originalPos->pvArray[1] : NOMOVE;
+        }
+        
 
         //////////////////////////////////////////////////////////
         //aspiration window
-        if(!info->bruteForceMode){
+        if(!workerthread->info->bruteForceMode){
             if((bestScore <= alpha) || (bestScore >= beta)){
-                if((getTimeMs()-info->starttime)>BoundReportTime){
-                    UciReport(info,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-                    fflush(stdout);
+                if (workerthread->threadNumber==0){
+                    if((getTimeMs()-workerthread->info->starttime)>BoundReportTime){
+                        UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
+                        fflush(stdout);
+                    }
                 }
-                alpha=-INFINITE;
-                beta=INFINITE;
+                alpha=-AB_BOUND;
+                beta=AB_BOUND;
                 continue;
             }
             alpha=bestScore-ScoreWindow;
             beta=bestScore+ScoreWindow;
         }
         //////////////////////////////////////////////////////////
-
-        //reporting to interface
-        UciReport(info,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-        fflush(stdout);
-
-
+        if (workerthread->threadNumber==0){
+            //reporting to interface
+            UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
+            fflush(stdout);
+            
+        }
         //limits
-        if(!info->ponder && !info->UciInfinite){
+        if(!workerthread->info->ponder && !workerthread->info->UciInfinite){
             //limited by depth
-            if(info->depthSet && currentDepth>=info->depth)break;
+            if(workerthread->info->depthSet && currentDepth>=workerthread->info->depth)break;
             //mate limits
-            if(abs(bestScore) > ISMATE && bestMove != NOMOVE){
-                int mateIn  = (INFINITE - abs(bestScore) + 1) / 2;
-                if(info->mateLimit != -1){
-                    if(mateIn <= info->mateLimit)break;
+            if(abs(bestScore) > ISMATE && workerthread->bestMove != NOMOVE){
+                int mateIn  = (AB_BOUND - abs(bestScore) + 1) / 2;
+                if(workerthread->info->mateLimit != -1){
+                    if(mateIn <= workerthread->info->mateLimit)break;
                 }else{
                     //mate break to avoid losing time
                     if(currentDepth >= (mateIn*2) + 10){
@@ -645,17 +750,81 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info){
             }
         }
     }
+}
 
 
-    if(info->setOptionPonder){
-        if(ponderMove != NOMOVE){
-            printf("bestmove %s ",PrMove(bestMove));
-            printf("ponder %s\n",PrMove(ponderMove));
+//call when creating workers
+int startWorkerThreads(void *data){
+
+    THREAD_SEARCH_WORKER *thread_data = (THREAD_SEARCH_WORKER*)data;
+    //printf("Starting Thread:%d\n",thread_data->threadNumber);
+    IterativeDeepening(thread_data);
+    
+    //printf("Ending Thread:%d\n",thread_data->threadNumber);
+    if (thread_data->threadNumber==0){
+        if(thread_data->info->setOptionPonder){
+            if(thread_data->ponderMove != NOMOVE){
+                printf("bestmove %s ",PrMove(thread_data->bestMove));
+                printf("ponder %s\n",PrMove(thread_data->ponderMove));
+            }else{
+                printf("bestmove %s\n",PrMove(thread_data->bestMove));
+            }
         }else{
-            printf("bestmove %s\n",PrMove(bestMove));
+            printf("bestmove %s\n",PrMove(thread_data->bestMove));
         }
-    }else{
-        printf("bestmove %s\n",PrMove(bestMove));
+        fflush(stdout);
     }
-    fflush(stdout);
+    free(thread_data->originalPos);
+    free(thread_data);
+
+}
+
+
+//creates a data for the thread
+//then starts the searching
+void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
+
+    THREAD_SEARCH_WORKER *pThread = malloc(sizeof(THREAD_SEARCH_WORKER));
+
+    pThread->originalPos = malloc(sizeof(S_BOARD));
+    memcpy(pThread->originalPos,pos,sizeof(S_BOARD));
+
+    pThread->info = info;
+    pThread->ttable = table;
+
+    pThread->threadNumber=threadNum;
+
+    thrd_create(workerthread,&startWorkerThreads,(void*)pThread);
+
+}
+
+
+
+void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
+
+    ASSERT(checkBoard(pos));
+
+    int bestMove       = NOMOVE;
+    int ponderMove     = NOMOVE;
+
+
+    //init search things
+    InitSearcher(pos,info, table);
+
+    //setup the workers
+    //create worker threads
+    //then start
+    for(int i=0;i<info->threadNum;++i){
+        setupWorkers(i,&workerThreads[i],pos,info,table);
+    }
+    //setupWorkers(0,&workerThreads[0],pos,info,table);
+
+    //if we finish
+    
+    for(int i=0;i<info->threadNum;++i){
+        thrd_join(workerThreads[i],NULL);
+    }
+
+    
+   
 }

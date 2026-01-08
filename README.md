@@ -1,9 +1,11 @@
 # ChessEngineGoobC
 UCI playing Chess Engine written in C
 
-## Update - November 14 2023
-Still busy in college. GOOB updates will probably slow down. 
-New Logo suggested by one of my classmate. Check in logo/GOOBLOGO2
+## Update - Jan 8 2025
+I finished this version with Multi threading back in 2024, just forgot to update the main repo.
+If you are interested in the changes head to src/others/goob_commits.txt
+I am interested in re learning all of my code again. I forgot most of the codes here. I will probably have
+an update again.
 
 ## GOOBGUI
 Just something I made in python for fun, based on Vice code
@@ -12,7 +14,7 @@ Just something I made in python for fun, based on Vice code
 Compile the code in the src directory using the makefile.
 
 ## About
-Check all in the comments in main.c from line 168 to 1558
+Check src/others/goob_commits.txt
 
 ## Future plans
 * Addind a **NNUE**(I'm still trying to understand how NNUE works, I might be able to understand it in maybe 6 years.)

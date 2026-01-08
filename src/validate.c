@@ -1,4 +1,6 @@
+
 #include "defs.h"
+#include "validate.h"
 #include "string.h"
 #include "stdio.h"
 #include "evaluate.h"

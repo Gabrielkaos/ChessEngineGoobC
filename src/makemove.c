@@ -1,8 +1,14 @@
-#include "defs.h"
+
+
 #include "stdio.h"
 #include "search.h"
 #include "bitboards.h"
 #include "evaluate.h"
+#include "movegen.h"
+#include "makemove.h"
+#include "init.h"
+#include "attacks.h"
+#include "validate.h"
 
 #define HASH_PCE(pce,sq) (pos->posKey ^= (pieceKeys[(pce)][(sq)]))
 #define HASH_SIDE (pos->posKey ^= (sideKey))

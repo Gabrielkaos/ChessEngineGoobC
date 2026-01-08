@@ -1,5 +1,8 @@
+
 #ifndef HASHKEYS_H
 #define HASHKEYS_H
+
+#include "board.h"
 
 //hashkeys.c
 extern U64 GeneratePosKey(const S_BOARD *pos);

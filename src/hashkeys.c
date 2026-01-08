@@ -1,5 +1,7 @@
+
 #include "defs.h"
 #include "hashkeys.h"
+#include "init.h"
 
 U64 GeneratePosKey(const S_BOARD *pos){
     int sq=0;
@@ -28,24 +30,6 @@ U64 GeneratePosKey(const S_BOARD *pos){
     return finalKey;
 
 }
-
-/*U64 GeneratePawnPosKey(const S_BOARD *pos){
-    int sq=0;
-    int piece=EMPTY;
-    U64 finalKey=0ULL;
-
-    //pieces
-    for(sq=0;sq<BOARD_NUMS_SQ;++sq){
-        piece=pos->pieces[sq];
-        //piece=pos->piece64[sq];
-        if(piece != EMPTY && piece != NO_SQ && piecePawn[piece]){
-            finalKey ^= pieceKeys[piece][sq];
-        }
-    }
-
-    return finalKey;
-
-}*/
 
 U64 GeneratePKHash(const S_BOARD *pos){
     int sq=0;

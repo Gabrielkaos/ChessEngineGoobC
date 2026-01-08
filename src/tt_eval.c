@@ -1,3 +1,4 @@
+
 #include "defs.h"
 #include "stdio.h"
 #include "tt_eval.h"
@@ -91,30 +92,28 @@ void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy){
     }
 }
 
-void StorePawnKingEval(S_BOARD *pos){
+void StorePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
     int index=pos->pkHash % pos->pawnKingTable->numEntries;
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
-    //pos->pawnKingTable->paTable[index].pkEval = pos->pkEval;
-	pos->pawnKingTable->paTable[index].whiteScore=pos->pawnEval[WHITE];
-	pos->pawnKingTable->paTable[index].blackScore=pos->pawnEval[BLACK];
+	pos->pawnKingTable->paTable[index].whiteScore=eval_info->pawnEval[WHITE];
+	pos->pawnKingTable->paTable[index].blackScore=eval_info->pawnEval[BLACK];
 	pos->pawnKingTable->paTable[index].pawnPosKey=pos->pkHash;
-	pos->pawnKingTable->paTable[index].passed[BLACK]=pos->passers[BLACK];
-	pos->pawnKingTable->paTable[index].passed[WHITE]=pos->passers[WHITE];
+	pos->pawnKingTable->paTable[index].passed[BLACK]=eval_info->passers[BLACK];
+	pos->pawnKingTable->paTable[index].passed[WHITE]=eval_info->passers[WHITE];
 }
 
-int ProbePawnKingEval(S_BOARD *pos){
+int ProbePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
     int index=pos->pkHash % pos->pawnKingTable->numEntries;
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
     if(pos->pawnKingTable->paTable[index].pawnPosKey==pos->pkHash){
-        //pos->pkEval =        pos->pawnKingTable->paTable[index].pkEval;
-        pos->pawnEval[WHITE]=pos->pawnKingTable->paTable[index].whiteScore;
-        pos->pawnEval[BLACK]=pos->pawnKingTable->paTable[index].blackScore;
-        pos->passers[WHITE]= pos->pawnKingTable->paTable[index].passed[WHITE];
-        pos->passers[BLACK]= pos->pawnKingTable->paTable[index].passed[BLACK];
+        eval_info->pawnEval[WHITE]=pos->pawnKingTable->paTable[index].whiteScore;
+        eval_info->pawnEval[BLACK]=pos->pawnKingTable->paTable[index].blackScore;
+        eval_info->passers[WHITE] =pos->pawnKingTable->paTable[index].passed[WHITE];
+        eval_info->passers[BLACK] =pos->pawnKingTable->paTable[index].passed[BLACK];
         return 1;
     }
 

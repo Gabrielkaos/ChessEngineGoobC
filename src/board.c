@@ -1,10 +1,14 @@
-#include "defs.h"
+
+
 #include "stdio.h"
 #include "string.h"
 #include "inttypes.h"
 #include "bitboards.h"
 #include "hashkeys.h"
 #include "evaluate.h"
+#include "io.h"
+#include "board.h"
+#include "attacks.h"
 
 void resetContinuationTable(S_BOARD *pos){
     memset(pos->continuation,0,sizeof(ContinuationTable));

@@ -1,6 +1,7 @@
+
 #include "movepicker.h"
-#include "defs.h"
 #include "search.h"
+#include "makemove.h"
 
 void PickNextMove(int moveNum,S_MOVELIST *list){
     S_MOVE temp;

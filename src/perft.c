@@ -1,7 +1,15 @@
-#include "defs.h"
+
+#include "perft.h"
 #include "stdio.h"
 #include "inttypes.h"
 #include "bitboards.h"
+#include "movegen.h"
+#include "misc.h"
+#include "makemove.h"
+#include "io.h"
+#include "attacks.h"
+#include "validate.h"
+
 
 #define MOVE(f,t,cap,prom,fl) ((f) | (t<<7) |(cap<<14) | (prom <<20) | (fl))
 

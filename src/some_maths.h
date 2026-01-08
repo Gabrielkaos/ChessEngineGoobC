@@ -1,3 +1,4 @@
+
 #ifndef SOME_MATH_H
 #define SOME_MATH_H
 

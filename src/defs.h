@@ -20,15 +20,16 @@
 /////////////////////////////////////////
 
 typedef unsigned long long U64;
+#define ALIGN64 alignas(64)
 typedef int16_t ContinuationTable[2][6][64][6][64];
 typedef int16_t HistoryTable[2][64][64];
 typedef int16_t CaptureHistoryTable[6][64][5];
 typedef int CounterMoveTable[2][6][64];
-#define ALIGN64 alignas(64)
+
 
 #define NAME "GOOB"
 #define AUTHOR "Gabriel Montes"
-#define VER "1.8.9"
+#define VER "2.0.0"
 
 #define MATEIN5 "2kr4/p1p2pQ1/P1p2Np1/2P4p/7B/1P6/5PPP/R4K2 w - - 0 3"
 #define QUEENG3 "5rk1/pp4pp/4p3/2R3Q1/3n4/2q4r/P1P2PPP/5RK1 b - - 0 1"
@@ -49,9 +50,10 @@ enum{PAWN=1,KNIGHT,BISHOP,ROOK,QUEEN,KING};
 enum {  MAXDEPTH=128,
         MAXPOSMOVES=256,
         MAXGAMESMOVES=550,
-        INFINITE=40000,
-        ISMATE=INFINITE-MAXDEPTH,
-        VALUE_NONE=INFINITE+1};
+        INFINITE_BOUND=32000,
+        AB_BOUND=30000,
+        ISMATE=AB_BOUND-MAXDEPTH,
+        VALUE_NONE=AB_BOUND+1};
 enum {pawnHashMB=16,evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
 enum {OPENING,ENDING};
@@ -93,7 +95,6 @@ typedef struct{
     U64 pawnPosKey;
     int whiteScore;
     int blackScore;
-    //int pkEval;
     U64 passed[2];
 
 } PAWNKING_ENTRY;
@@ -112,13 +113,19 @@ typedef struct {
 
 //PV ENtry
 typedef struct{
-    U64 posKey;
+
+    /*U64 posKey;
     int move;
     int score;
     int depth;
-    int flags;
+    int flags;*/
+
     int eval;
     int generation;
+
+    U64 smp_key;
+    U64 smp_data;
+
 } S_PVENTRY;
 
 //PV tables
@@ -143,75 +150,6 @@ typedef struct {
     U64 posKey;
 } S_UNDO;
 
-//Board structure
-typedef struct {
-    //important board things
-    int pieces[BOARD_NUMS_SQ];
-    U64 bitboards[13];
-    U64 occupancy[3];
-    int side;
-    int enPas;
-    int fiftyMove;
-    int castleRights;
-    U64 posKey;
-    U64 pkHash;
-    //U64 pawnPosKey;
-    S_UNDO history[MAXGAMESMOVES];
-    int ply;
-    int hisPly;
-    int chess960;
-    EVAL_TABLE   eTable[1];
-    PAWNKING_TABLE   pawnKingTable[1];
-    int useFiftyMoveRule;
-
-    //for evaluation
-    int psqtmat;
-    int contemptDrawPenalty;
-    int contemptComplexity;
-    int contempt;
-    //int usePKNN;
-    //int useEGNN;
-    //int USE_NNUE;
-    int kingSq[2];
-    int pkSafety[2];
-    U64 attackedByBishops[2];
-    U64 attackedByKnights[2];
-    U64 occupiedMinusBishops[2];
-    U64 occupiedMinusRooks[2];
-    U64 mobilityAreas[2];
-    int attWeight[2];
-    int attCnt[2];
-    int kingAttacksCount[2];
-    U64 passers[2];
-    int pawnEval[2];
-    //int pkEval;
-    U64 attacks_array_minors[2];
-    U64 attacks_array_rooks[2];
-    U64 attacks_array_queens[2];
-    U64 attacks_array_pawns[2];
-    U64 rammedPawns[2];
-    U64 attackedBy2[2];
-    U64 attacked[2];
-    U64 kingAreas[2];
-    U64 pawnAttackedBy2[2];
-    int gamePhase;
-
-    //for search
-    int seldepth;
-    S_PVTABLE pvTable[1];
-    int pvArray[MAXDEPTH];
-    //int searchHistory[13][BOARD_NUMS_SQ];
-    int searchKillers[2][MAXDEPTH];
-    int eval_stack[MAXDEPTH];
-    int moveStack[MAXDEPTH];
-    int pieceStack[MAXDEPTH];
-    ALIGN64 ContinuationTable continuation;
-    ALIGN64 CaptureHistoryTable chist;
-    ALIGN64 HistoryTable histtable;
-    ALIGN64 CounterMoveTable cmtable;
-
-} S_BOARD;
-
 //Search Details
 typedef struct {
     int starttime;
@@ -234,13 +172,14 @@ typedef struct {
 
     //options for uci
     int analyzeMode;
-    //int useRazoring;
     int ponder;
     int bruteForceMode;
     int setOptionPonder;
 
-    //int GAMEMODE;
-    //int POST_THINKING;
+
+    //thread
+    int threadNum;
+
 } S_SEARCHINFO;
 
 //Engine options
@@ -272,6 +211,7 @@ typedef struct{
 #define SQ64TO120(sq) (Squares64To120[(sq)])
 
 /*GLOBALS*/
+extern S_PVTABLE pvTable[1];
 extern const int Squares64To120[64];
 extern U64 king_attacks[BOARD_NUMS_SQ];
 extern U64 knight_attacks[BOARD_NUMS_SQ];
@@ -280,9 +220,6 @@ extern const int pieceKnight[13];
 extern const int pieceKing[13];
 extern const int pieceRookQueen[13];
 extern const int pieceBishopQueen[13];
-extern U64 pieceKeys[13][BOARD_NUMS_SQ];
-extern U64 sideKey;
-extern U64 castleKeys[16];
 extern const char pieceChar[];
 extern const char sideChar[];
 extern const char fileChar[];
@@ -299,96 +236,6 @@ extern const int Mirror64[64];
 extern S_OPTIONS EngineOptions[1];
 //extern int mvvLvaScore[13][13];
 
-/*FUNCTIONS */
 
-//attacks.c
-extern U64 pawnRightAttacks(U64 pawns, U64 targets, int colour);
-extern U64 pawnLeftAttacks(U64 pawns, U64 targets, int colour);
-extern U64 pawnAttackSpan(U64 pawns, U64 targets, int colour);
-extern U64 pawnAttackDouble(U64 pawns, U64 targets, int colour);
-extern U64 discoveredAttacks(S_BOARD *pos, int sq, int US);
-extern U64 attackersToKingSq(const S_BOARD *pos,int side);
-extern U64 pawnAttacks(int color,int sq);
-extern U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq);
-extern U64 get_rook_attacks(int square,U64 occupancy);
-extern U64 get_bishop_attacks(int square,U64 occupancy);
-extern U64 get_queen_attacks(int square,U64 occupancy);
-extern void InitAttacks();
-extern int is_square_attacked_BB(const int square, const int side,const S_BOARD *pos);
-
-//board.c
-extern void resetContinuationTable(S_BOARD *pos);
-extern void initStacks(S_BOARD *pos);
-extern int getGamePhase(const S_BOARD *pos);
-extern int checkBoard(const S_BOARD *pos);
-extern void ResetBoard(S_BOARD *pos);
-extern int ParseFEN(char *fen ,S_BOARD *pos);
-extern void PrintBoard(const S_BOARD *pos);
-extern void updateListMaterial(S_BOARD *pos);
-extern void MirrorBoard(S_BOARD *pos);
-
-//init.c
-extern void AllInit();
-
-//io.c
-extern char * PrSq(const int sq);
-extern void PrintMoveList(const S_MOVELIST *list,S_BOARD *pos);
-extern char * PrMove(const int move);
-extern void printBitBoard(U64 bitboard);
-extern int ParseMove(char *ptrChar, S_BOARD *pos);
-extern void printFen(const S_BOARD *pos,char *fen);
-
-//makemove.c
-extern int getCapturedPiece(int move);
-extern int moveIsTactical(S_BOARD *pos,int move);
-extern int MoveBestCaseValue(S_BOARD *pos);
-extern int makeMove(S_BOARD *pos,int move);
-extern void takeMove(S_BOARD *pos);
-extern void takeNullMove(S_BOARD *pos);
-extern void makeNullMove(S_BOARD *pos);
-extern int moveEstimatedValue(S_BOARD *pos, int move);
-
-//misc.c
-extern int getTimeMs();
-extern void ReadInput(S_SEARCHINFO *info);
-
-//movegen.c
-//extern void GenerateAllQuiets(const S_BOARD *pos,S_MOVELIST *list);
-extern void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list);
-extern void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list);
-extern int MoveExists(S_BOARD *pos,const int move);
-//extern void InitMvvLva();
-
-//perft.c
-extern void PerftTest(int depth,S_BOARD *pos);
-extern void BenchTest(int depth,S_BOARD *pos);
-extern U64 countNps(U64 nodes, int time);
-
-//polybook.c
-extern void CleanPolyBook();
-extern void InitPolyBook(char *namefile);
-extern int getBookMove(S_BOARD *pos);
-
-//pvtable.c
-//extern void updateKillers(S_BOARD *pos,int move);
-extern int hashfullTT(S_PVTABLE *table);
-extern void updateAge(S_PVTABLE *table);
-extern int valueFromTT(int value,int ply);
-extern int valueToTT(int value,int ply);
-extern void InitPvTable(S_PVTABLE *table,const int mb,int noisy);
-extern int ProbePvTable(const S_BOARD *pos);
-extern void StoreHashEntry(S_BOARD *pos,const int move, int score, const int flags, const int depth,const int eval);
-extern void clearPvTable(S_PVTABLE *table);
-extern int getPvLine(const int depth,S_BOARD *pos);
-extern int ProbeHashEntry(S_BOARD *pos, int *move, int *score, int *ttDepth,int *ttBound,int *ttEval);
-
-//validate.c
-extern int moveValid(const int move);
-extern void Evaltest(S_BOARD *pos);
-extern int SqOnBoard(const int sq);
-extern int SideValid(const int side);
-extern int FileRankValid(const int fr);
-extern int PieceValidEmpty(const int pce);
-extern int PieceValid(const int pce);
 
 #endif // DEFS_H

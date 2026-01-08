@@ -1,3 +1,4 @@
+
 #include "defs.h"
 #include "stdio.h"
 #include "string.h"
@@ -9,11 +10,35 @@
 #include "tt_eval.h"
 #include "inttypes.h"
 #include "some_maths.h"
+#include "pvtable.h"
+#include "perft.h"
+#include "misc.h"
+#include "makemove.h"
+#include "io.h"
+#include "tinycthread.h"
+#include "thread.h"
 
 #define INPUTBUFFER 400*6
 #define Euler 2.8
 
+thrd_t mainSearchThread;
 
+thrd_t LaunchSearchThread(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table){
+    THREAD_DATA *thread_data = malloc(sizeof(THREAD_DATA));
+
+    thread_data->info=info;
+    thread_data->originalPos=pos;
+    thread_data->ttable=table;
+
+    thrd_t th;
+    thrd_create(&th,&SearchPositionThread,(void*)thread_data);
+    return th;
+}
+
+void joinSearchThread(S_SEARCHINFO *info){
+    info->stopped=TRUE;
+    thrd_join(mainSearchThread,NULL);
+}
 
 U64 nodesLimitForUci(int elo){
     return (U64)pow(Euler,((elo + 200) / 160));
@@ -22,7 +47,7 @@ int getInput(char *str) {
 
     char *ptr;
 
-    if (fgets(str, 8192, stdin) == NULL)
+    if (fgets(str, INPUTBUFFER, stdin) == NULL)
         return 0;
 
     ptr = strchr(str, '\n');
@@ -49,22 +74,22 @@ void UciReportCurrentMove(int depth,int move,int currmovenumber){
                      PrMove(move),
                      currmovenumber);
 }
-void UciReport(const S_SEARCHINFO *info,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves){
+void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves){
     int pvNum;
 
     int elapsed     = getTimeMs()-info->starttime;
     int bounded     = MAX(alpha, MIN(value, beta));
 
 
-    int score   = bounded >=  ISMATE ?  (INFINITE - bounded + 1) / 2
-                : bounded <= -ISMATE ? -(bounded + INFINITE)     / 2 : bounded;
+    int score   = bounded >=  ISMATE ?  (AB_BOUND - bounded + 1) / 2
+                : bounded <= -ISMATE ? -(bounded + AB_BOUND)     / 2 : bounded;
     char *type  = abs(bounded) >= ISMATE ? "mate" : "cp";
 
     char *bound = bounded >=  beta ? " lowerbound "
                 : bounded <= alpha ? " upperbound " : " ";
 
     printf("info depth %d seldepth %d score %s %d%stime %d nodes %"PRIu64" hashfull %d ",
-           currentDepth, pos->seldepth, type, score,bound, elapsed, info->nodes,hashfullTT(pos->pvTable));
+           currentDepth, pos->seldepth, type, score,bound, elapsed, info->nodes,hashfullTT(table));
 
     //pv printing
     printf("pv");
@@ -81,41 +106,25 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         sscanf(line,"%*s %*s %*s %*s %d",&MB);
         if(MB < 4) MB = 4;
         if(MB > maxHash) MB = maxHash;
-        InitPvTable(pos->pvTable, MB,1);
+        InitPvTable(pvTable, MB,1);
     }
 
-    /*else if (!strncmp(line, "setoption name Book value ", 26)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            EngineOptions->useBook=TRUE;
-            printf("info string Book set to true\n");
-        }else{
-            EngineOptions->useBook=FALSE;
-            printf("info string Book set to false\n");
-        }
-    }*/
+
+    else if (!strncmp(line, "setoption name Threads value ", 29)) {
+        int thr_num=1;
+        sscanf(line,"%*s %*s %*s %*s %d",&thr_num);
+        if(thr_num < 1) thr_num = 1;
+        if(thr_num > MAXTHREADS) thr_num = MAXTHREADS;
+        info->threadNum = thr_num;
+        printf("info string Threads set to %d\n",info->threadNum);
+    }
 
     else if (!strncmp(line, "setoption name Clear Hash", 25)) {
         printf("info string Hashtables cleared\n");
-        clearPvTable(pos->pvTable);
+        clearPvTable(pvTable);
+        clearEvalTable(pos->eTable);
+        clearPawnKingTable(pos->pawnKingTable);
     }
-
-    /*else if (!strncmp(line, "setoption name Bookfile value ", 30)) {
-        char bookfile[500];
-        sscanf(line,"%*s %*s %*s %*s %s",bookfile);
-        printf("info string Using book %s\n",bookfile);
-        CleanPolyBook();
-        InitPolyBook(bookfile);
-    }*/
-
-    /*else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
-        char bookfile[500];
-        sscanf(line,"%*s %*s %*s %*s %s",bookfile);
-        int loaded = init_nnue(bookfile);
-        if (loaded)printf("info string Using NNUE %s\n",bookfile);
-        else printf("info string WARNING!, NNUE INVALID, turn off option USE_NNUE\n");
-    }*/
 
     else if (!strncmp(line, "setoption name EvalHash value ", 30)) {
         int EvalMb=evalHashMB;
@@ -178,46 +187,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Elo set to %d\n",uciElo);
     }
 
-    /*else if (!strncmp(line, "setoption name useRazoring value ", 33)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            info->useRazoring=TRUE;
-            printf("info string useRazoring set to true\n");
-        }else{
-            info->useRazoring=FALSE;
-            printf("info string useRazoring set to false\n");
-        }
-    }*/
-
-    /*else if (!strncmp(line, "setoption name UseEGNN value ", 29)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            pos->useEGNN=TRUE;
-            printf("info string Using EGNN\n");
-            clearEvalTable(pos->eTable);
-        }else{
-            pos->useEGNN=FALSE;
-            printf("info string EGNN disabled\n");
-            clearEvalTable(pos->eTable);
-        }
-    }
-
-    else if (!strncmp(line, "setoption name UsePKNN value ", 29)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            pos->usePKNN=TRUE;
-            printf("info string Using PKNN\n");
-            clearEvalTable(pos->eTable);
-        }else{
-            pos->usePKNN=FALSE;
-            printf("info string PKNN disabled\n");
-            clearEvalTable(pos->eTable);
-        }
-    }*/
-
     else if (!strncmp(line, "setoption name ContemptDrawPenalty value ", 41)) {
         int contemptDraw=0;
         sscanf(line,"%*s %*s %*s %*s %d",&contemptDraw);
@@ -226,7 +195,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         pos->contemptDrawPenalty=contemptDraw;
         clearEvalTable(pos->eTable);
         printf("info string ContemptDrawPenalty set to %d\n",contemptDraw);
-        //printf("info string contempts only works in Classical evaluation\n");
     }
 
     else if (!strncmp(line, "setoption name ContemptComplexity value ", 40)) {
@@ -237,13 +205,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         pos->contemptComplexity=contemptDraw;
         clearEvalTable(pos->eTable);
         printf("info string ContemptComplexity set to %d\n",contemptDraw);
-        //printf("info string contempts only works in Classical evaluation\n");
     }
-
-    /*else if (!strncmp(line, "setoption name Clear Eval", 25)) {
-        printf("info string Eval hashtables cleared\n");
-        clearEvalTable(pos->eTable);
-    }*/
 
     else if (!strncmp(line, "setoption name UCI_Chess960 value ", 34)) {
         char *ptrTrue=NULL;
@@ -263,11 +225,11 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         ptrTrue=strstr(line,"true");
         if(ptrTrue != NULL){
             info->bruteForceMode=TRUE;
-            clearPvTable(pos->pvTable);
+            clearPvTable(pvTable);
             printf("info string Set BruteForceMode to true\n");
         }else{
             info->bruteForceMode=FALSE;
-            clearPvTable(pos->pvTable);
+            clearPvTable(pvTable);
             printf("info string Set BruteForceMode to false\n");
         }
     }
@@ -284,21 +246,8 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         }
     }
 
-    /*else if (!strncmp(line, "setoption name USE_NNUE value ", 30)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            pos->USE_NNUE=TRUE;
-            printf("info string USE_NNUE set to true\n");
-            clearEvalTable(pos->eTable);
-        }else{
-            pos->USE_NNUE=FALSE;
-            printf("info string USE_NNUE set to false\n");
-            clearEvalTable(pos->eTable);
-        }
-    }*/
 }
-void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos){
+void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
     info->timeSet     =FALSE;
     info->analyzeMode =EngineOptions->analysisMode;
@@ -381,7 +330,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos){
     /*if (pos->USE_NNUE){
         printf("info string Using NNUE evaluation\n");
     }*/
-    SearchPosition(pos,info);
+    mainSearchThread = LaunchSearchThread(pos, info, table);
 }
 void parsePosition(char* lineIn,S_BOARD *pos){
     lineIn+=9;
@@ -414,6 +363,7 @@ void parsePosition(char* lineIn,S_BOARD *pos){
 void uciPrint(){
     printf("id name %s %s\n",NAME,VER);
     printf("id author %s\n",AUTHOR);
+    printf("option name Threads type spin default 1 min 1 max %d\n",MAXTHREADS); //1
     printf("option name Hash type spin default %d min 4 max %d\n",defaultHash,maxHash); //1
     printf("option name EvalHash type spin default %d min 4 max %d\n",evalHashMB,maxHash); //3
     printf("option name PawnHash type spin default %d min 4 max %d\n",pawnHashMB,maxHash); //4
@@ -463,7 +413,9 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
         else if(strEquals(str,"ucinewgame")){
             parsePosition("position startpos\n",pos);
-            clearPvTable(pos->pvTable);
+            clearPvTable(pvTable);
+            clearEvalTable(pos->eTable);
+            clearPawnKingTable(pos->pawnKingTable);
             resetContinuationTable(pos);
         }
 
@@ -477,13 +429,24 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         else if (strStartsWith(str, "go")) {
-            parseGo(str,info,pos);
+            parseGo(str,info,pos, pvTable);
             fflush(stdout);
         }
 
         else if (strEquals(str, "quit")){
             info->quit = TRUE;
+            joinSearchThread(info);
             break;
+        }
+
+        else if (strEquals(str, "stop")){
+            info->ponder=FALSE;
+            joinSearchThread(info);
+        }
+
+        else if (strEquals(str, "ponderhit")){
+            info->ponder = FALSE;
+            joinSearchThread(info);
         }
 
         else if(strEquals(str,"print")){
@@ -492,7 +455,12 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         else if(strEquals(str,"evaluate")){
+            PrintBoard(pos);
             printf("Eval:%d\n",EvalPosition(pos));
+            MirrorBoard(pos);
+            PrintBoard(pos);
+            printf("Eval Mirrored:%d\n",EvalPosition(pos));
+            MirrorBoard(pos);
             fflush(stdout);
         }
 
@@ -505,6 +473,15 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
 		}
 
+		else if(strStartsWith(str, "uperft")) {
+            int perft=0;
+			sscanf(str, "uperft %d", &perft);
+			if(perft<0)perft=MAXDEPTH;
+			if(perft>MAXDEPTH)perft=MAXDEPTH;
+			BenchTest(perft,pos);
+            fflush(stdout);
+		}
+
 		else if(strEquals(str, "help")) {
             printf("commands:\n");
             printf("-uci\n");
@@ -514,9 +491,11 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             printf("-position\n");
             printf("-go\n");
             printf("-quit\n");
+            printf("-stop\n");
             printf("-print\n");
             printf("-evaluate\n");
-            printf("-perft\n");
+            printf("-perft(useful for debugging) x\n");
+            printf("-uperft(faster) x\n");
             fflush(stdout);
 		}
 

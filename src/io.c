@@ -1,6 +1,9 @@
-#include "defs.h"
+
+
 #include "string.h"
 #include "stdio.h"
+#include "movegen.h"
+#include "io.h"
 
 //getting square string
 char * PrSq(const int sq){

@@ -1,5 +1,6 @@
 #include "defs.h"
 #include "bitboards.h"
+#include "validate.h"
 
 
 /*VARIABLES*/
@@ -865,3 +866,4 @@ int backmost(int colour, U64 bb) {
     ASSERT(SideValid(colour));
     return colour == WHITE ? LSBINDEX(bb) : getmsb(bb);
 }
+

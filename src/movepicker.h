@@ -1,7 +1,9 @@
+
 #ifndef MOVEPICKER_H
 #define MOVEPICKER_H
 
 #include "defs.h"
+#include "board.h"
 
 static const int SORT_PV_MOVE = 5000000;
 static const int SORT_CAPTURE = 3000000;

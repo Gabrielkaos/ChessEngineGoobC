@@ -1,7 +1,8 @@
+
 #ifndef HISTORY_H
 #define HISTORY_H
 
-#include "defs.h"
+#include "board.h"
 
 static const int HistoryMax = 400;
 static const int HistoryMultiplier = 32;

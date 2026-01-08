@@ -1,5 +1,8 @@
+
 #ifndef RECOG_H
 #define RECOG_H
+
+#include "board.h"
 
 extern int recog_draw(const S_BOARD *pos);
 extern int drawByMaterial(const S_BOARD *pos);

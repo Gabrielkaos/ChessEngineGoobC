@@ -4,6 +4,7 @@
 
 #include "stdbool.h"
 #include "defs.h"
+#include "board.h"
 
 extern const U64 NOT_AB_FILE;
 extern const U64 NOT_HG_FILE;
@@ -53,3 +54,4 @@ extern int backmost(int colour, U64 bb);
 #define CLRBIT(bb,sq) (bb &= ClearMask[(sq)])
 
 #endif // BIT_H
+

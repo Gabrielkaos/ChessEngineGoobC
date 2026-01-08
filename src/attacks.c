@@ -1,6 +1,7 @@
-#include "defs.h"
 #include "string.h"
 #include "bitboards.h"
+#include "attacks.h"
+#include "validate.h"
 
 //CMK attacks.c
 
@@ -540,3 +541,4 @@ U64 pawnAttackDouble(U64 pawns, U64 targets, int colour) {
     return pawnLeftAttacks(pawns, targets, colour)
         & pawnRightAttacks(pawns, targets, colour);
 }
+

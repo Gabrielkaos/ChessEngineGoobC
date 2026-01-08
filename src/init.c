@@ -1,24 +1,11 @@
-#include "defs.h"
+
+
 #include "stdlib.h"
 #include "stdio.h"
 #include "search.h"
 #include "evaluate.h"
-
-
-/*#define RAND_64 (   (U64) rand() |\
-                    (U64) rand()<<15 |\
-                    (U64) rand()<<30 |\
-                    (U64) rand()<<45 |\
-                    ((U64) rand() & 0xf) <<60    )
-*/
-
-/*U64 RAND_64(){
-    return (   (U64) rand() |\
-                    (U64) rand()<<15 |\
-                    (U64) rand()<<30 |\
-                    (U64) rand()<<45 |\
-                    ((U64) rand() & 0xf) <<60    );
-}*/
+#include "init.h"
+#include "attacks.h"
 
 //got this from ethereals
 U64 RAND_64() {

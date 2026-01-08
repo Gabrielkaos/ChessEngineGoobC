@@ -1,5 +1,9 @@
+
 #ifndef TT_EVAL_H
 #define TT_EVAL_H
+
+#include "board.h"
+#include "evaluate.h"
 
 //tt_eval.c
 extern void clearEvalTable(EVAL_TABLE *eTable);
@@ -8,7 +12,7 @@ extern void StoreTTEval(S_BOARD *pos,int Eval);
 extern int ProbeTTEval(const S_BOARD *pos);
 extern void clearPawnKingTable(PAWNKING_TABLE *eTable);
 extern void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy);
-extern void StorePawnKingEval(S_BOARD *pos);
-extern int ProbePawnKingEval(S_BOARD *pos);
+extern void StorePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info);
+extern int ProbePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info);
 
 #endif // TT_EVAL_H

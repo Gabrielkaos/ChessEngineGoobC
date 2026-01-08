@@ -1,5 +1,9 @@
-#ifndef SEARCH
-#define SEARCH
+
+#ifndef SEARCH_H
+#define SEARCH_H
+
+#include "defs.h"
+#include "board.h"
 
 //NOTE
 /*
@@ -50,7 +54,8 @@ static const int SingularTacticalLimit = 3;
 
 //FUNCTIONS
 extern void initLMRTable();
-extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info);
+extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
 extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
+extern int SearchPositionThread(void *data);
 
-#endif // SEARCH
+#endif // SEARCH_H
