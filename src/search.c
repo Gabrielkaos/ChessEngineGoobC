@@ -751,12 +751,24 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 }
 
 
-
 int SearchPositionThread(void *data){
     THREAD_DATA *thread_data = (THREAD_DATA*)data;
     S_BOARD *pos = malloc(sizeof(S_BOARD));
-    memcpy(pos, thread_data->originalPos,sizeof(S_BOARD));
+    memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
+
+    
+    pos->eTable->evalTable = NULL;
+    InitEvalTable(pos->eTable, evalHashMB, 0);
+
+    pos->pawnKingTable->paTable = NULL;
+    InitPawnKingTable(pos->pawnKingTable, pawnHashMB, 0);
+
     SearchPosition(pos, thread_data->info, thread_data->ttable);
+
+    
+    free(pos->eTable->evalTable);
+    free(pos->pawnKingTable->paTable);
+
     free(pos);
     free(thread_data);
     return 0;
@@ -895,48 +907,56 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread) {
 
 
 //call when creating workers
-int startWorkerThreads(void *data){
+int startWorkerThreads(void *data) {
 
     THREAD_SEARCH_WORKER *thread_data = (THREAD_SEARCH_WORKER*)data;
-    //printf("Starting Thread:%d\n",thread_data->threadNumber);
     IterativeDeepening(thread_data);
-    
-    //printf("Ending Thread:%d\n",thread_data->threadNumber);
-    if (thread_data->threadNumber==0){
-        if(thread_data->info->setOptionPonder){
-            if(thread_data->ponderMove != NOMOVE){
-                printf("bestmove %s ",PrMove(thread_data->bestMove));
-                printf("ponder %s\n",PrMove(thread_data->ponderMove));
-            }else{
-                printf("bestmove %s\n",PrMove(thread_data->bestMove));
+
+    if (thread_data->threadNumber == 0) {
+        if (thread_data->info->setOptionPonder) {
+            if (thread_data->ponderMove != NOMOVE) {
+                printf("bestmove %s ", PrMove(thread_data->bestMove));
+                printf("ponder %s\n",  PrMove(thread_data->ponderMove));
+            } else {
+                printf("bestmove %s\n", PrMove(thread_data->bestMove));
             }
-        }else{
-            printf("bestmove %s\n",PrMove(thread_data->bestMove));
+        } else {
+            printf("bestmove %s\n", PrMove(thread_data->bestMove));
         }
         fflush(stdout);
     }
+
+    free(thread_data->originalPos->eTable->evalTable);
+    free(thread_data->originalPos->pawnKingTable->paTable);
+
     free(thread_data->originalPos);
     free(thread_data);
 
+    return 0;  
 }
 
 
 //creates a data for the thread
 //then starts the searching
-void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
+void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
 
     THREAD_SEARCH_WORKER *pThread = malloc(sizeof(THREAD_SEARCH_WORKER));
 
     pThread->originalPos = malloc(sizeof(S_BOARD));
-    memcpy(pThread->originalPos,pos,sizeof(S_BOARD));
+    memcpy(pThread->originalPos, pos, sizeof(S_BOARD));
 
-    pThread->info = info;
-    pThread->ttable = table;
+    
+    pThread->originalPos->eTable->evalTable = NULL;
+    InitEvalTable(pThread->originalPos->eTable, evalHashMB, 0);
 
-    pThread->threadNumber=threadNum;
+    pThread->originalPos->pawnKingTable->paTable = NULL;
+    InitPawnKingTable(pThread->originalPos->pawnKingTable, pawnHashMB, 0);
 
-    thrd_create(workerthread,&startWorkerThreads,(void*)pThread);
+    pThread->info        = info;
+    pThread->ttable      = table;
+    pThread->threadNumber = threadNum;
 
+    thrd_create(workerthread, &startWorkerThreads, (void*)pThread);
 }
 
 

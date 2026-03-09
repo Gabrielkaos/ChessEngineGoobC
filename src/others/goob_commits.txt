@@ -1590,5 +1590,6 @@
     ->improved move capture scoring formula
     ->negative history pruning
     ->added material correction
+    ->fixed setupWorkers and startWorkerThreads function, cause memory leak 
 
 	*/

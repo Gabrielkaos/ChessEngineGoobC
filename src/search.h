@@ -61,4 +61,5 @@ extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
 extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 extern int SearchPositionThread(void *data);
 
+
 #endif // SEARCH_H
