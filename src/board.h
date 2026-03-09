@@ -50,6 +50,8 @@ typedef struct {
     int  multiPVLines[256][MAXDEPTH]; // the actual PV moves for each line
     int  multiPVLineLengths[256];    // how many moves in each line
 
+    ALIGN64 MaterialCorrectionTable matCorr;
+
 } S_BOARD;
 
 //board.c

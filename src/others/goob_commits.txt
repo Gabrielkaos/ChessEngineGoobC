@@ -1584,5 +1584,11 @@
     ->tt probe in quiescence
     ->improved improving
     ->improved beta pruning
+    ->added time management
+    ->improved movepicker in capture section
+    ->improved null move verification
+    ->improved move capture scoring formula
+    ->negative history pruning
+    ->added material correction
 
 	*/

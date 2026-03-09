@@ -17,4 +17,7 @@ extern void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int
 void updateCorrectionHistory(S_BOARD *pos, int depth, int diff);
 int  getCorrectionHistory(const S_BOARD *pos);
 
+void   updateMaterialCorrection(S_BOARD *pos, int depth, int diff);
+int    getMaterialCorrection(const S_BOARD *pos);
+
 #endif // HISTORY_H

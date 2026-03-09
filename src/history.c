@@ -126,3 +126,27 @@ void updateHistories(S_BOARD *pos, int *quietsTried, int quietsPlayed, int depth
         updateEntry(&pos->histtable[pos->side][from][to], -bonus);
     }
 }
+
+
+void updateMaterialCorrection(S_BOARD *pos, int depth, int diff) {
+    // Use non-pawn material count as hash index
+    int npMat = COUNTBIT(pos->occupancy[WHITE] & ~pos->bitboards[wP] & ~pos->bitboards[wK])
+              - COUNTBIT(pos->occupancy[BLACK] & ~pos->bitboards[bP] & ~pos->bitboards[bK]);
+    int idx   = ((unsigned)npMat + 16) & (MATERIAL_CORRECTION_SIZE - 1);
+    int bonus = MIN(diff * depth, CORRECTION_HISTORY_LIMIT);
+
+    pos->matCorr[pos->side][idx] =
+        (pos->matCorr[pos->side][idx] * (CORRECTION_HISTORY_GRAIN - 1) + bonus)
+        / CORRECTION_HISTORY_GRAIN;
+
+    pos->matCorr[pos->side][idx] = MAX(-CORRECTION_HISTORY_LIMIT,
+                                   MIN( CORRECTION_HISTORY_LIMIT,
+                                        pos->matCorr[pos->side][idx]));
+}
+
+int getMaterialCorrection(const S_BOARD *pos) {
+    int npMat = COUNTBIT(pos->occupancy[WHITE] & ~pos->bitboards[wP] & ~pos->bitboards[wK])
+              - COUNTBIT(pos->occupancy[BLACK] & ~pos->bitboards[bP] & ~pos->bitboards[bK]);
+    int idx = ((unsigned)npMat + 16) & (MATERIAL_CORRECTION_SIZE - 1);
+    return pos->matCorr[pos->side][idx] / CORRECTION_HISTORY_GRAIN;
+}

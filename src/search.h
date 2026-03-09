@@ -10,6 +10,9 @@
     Some variables shamelessly copied from Ethereal
 */
 
+//time
+static const int SoftLimitBestMoveScale[] = {10, 12, 14, 15, 15, 15, 15, 15};
+
 static const int SEEPieceValues[] = {
      0, 100, 450, 450, 675, 1300, 0, 100, 450, 450, 675, 1300, 0
 };

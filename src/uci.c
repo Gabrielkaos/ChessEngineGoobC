@@ -313,11 +313,28 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
         movestogo      =1;
     }
     info->starttime=getTimeMs();
-    if(time != -1){
-        time           /=movestogo;
-        time           -=50;
-        info->timeSet  =TRUE;
-        info->stoptime =info->starttime+time+inc;
+    if (time != -1) {
+    info->timeSet = TRUE;
+
+        // Hard limit: never exceed this
+        // Use full increment + fraction of remaining time
+        int baseTime   = time / MAX(movestogo, 1);
+        int bonus      = inc * 3 / 4;  // use 75% of increment
+
+        // Soft limit: aim to finish before this (can be extended)
+        int softTime   = baseTime + bonus;
+        int hardTime   = MIN(time / 2, softTime * 5);  // hard cap at 5x soft
+
+        // Never use more than half the remaining clock
+        hardTime = MIN(hardTime, time / 2);
+        softTime = MIN(softTime, hardTime);
+
+        // Small safety margin
+        softTime = MAX(1, softTime - 10);
+        hardTime = MAX(1, hardTime - 10);
+
+        info->softLimit = info->starttime + softTime;
+        info->stoptime  = info->starttime + hardTime;  // hard = stoptime
     }
 
     //limits for limiting strength

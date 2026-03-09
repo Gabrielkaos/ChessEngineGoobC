@@ -53,12 +53,11 @@ void initLMRTable() {
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
         if((!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
-           (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
+           (info->timeSet==TRUE && getTimeMs() > info->stoptime) ||
            (info->nodeSet==TRUE && info->nodes>=info->nodeLimit)){
                 info->stopped=TRUE;
            }
     }
-
 }
 
 //initialize the search parameters and variables
@@ -144,6 +143,15 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
             if(list->moves[moveNum].score < 0){
                 continue;
             }
+            
+            // negative history pruning
+            int to       = TOSQ(moveInLoop);
+            int from     = FROMSQ(moveInLoop);
+            int pce      = pieceType[pos->pieces[from]];
+            int captured = pieceType[pos->pieces[to]];
+            if (moveInLoop & MVFLAGEP) captured = p_pawn;
+
+            if (pos->chist[pce][to][captured] < -4000) continue;
 
             //DELTA PRUNING
             //to see if this capture has an effect
@@ -244,9 +252,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //store in eval_stack each staticEval
     // int staticEval=pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval:EvalPosition(pos);
 
-    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
-    int staticEval = pos->eval_stack[pos->ply] = rawEval + getCorrectionHistory(pos);
-    staticEval = MAX(-AB_BOUND + 1, MIN(AB_BOUND - 1, staticEval));
+    int rawEval    = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int correction = getCorrectionHistory(pos) + getMaterialCorrection(pos);
+    int staticEval = pos->eval_stack[pos->ply] = rawEval + correction;
+    staticEval     = MAX(-AB_BOUND + 1, MIN(AB_BOUND - 1, staticEval));
 
     //see if we improved on the last position
     improving = !inCheck && pos->ply >= 2
@@ -300,7 +309,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
-                if(valueNull >= beta)return beta;
+                if (valueNull >= beta) {
+                    // At very deep searches, verify with a full search (no null)
+                    // to avoid being fooled by zugzwang positions
+                    if (depth >= 14 && abs(valueNull) < ISMATE) {
+                        int verifyScore = AlphaBeta(beta-1, beta, depth-R, pos, info, table, threadNum, FALSE);
+                        if (verifyScore >= beta) return beta;
+                    } else {
+                        return beta;
+                    }
+                }
             }
 
             //razoring
@@ -587,6 +605,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if (!inCheck && bestMove != NOMOVE && abs(bestScore) < ISMATE) {
         int diff = bestScore - rawEval;
         updateCorrectionHistory(pos, depth, diff);
+        updateMaterialCorrection(pos, depth, diff);
     }
 
     return alpha;
@@ -748,10 +767,12 @@ int SearchPositionThread(void *data){
 void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread) {
 
     int currentDepth, numberOfPvMoves, bestScore;
-    S_BOARD     *pos  = workerthread->originalPos;
-    S_SEARCHINFO *info = workerthread->info;
-    S_PVTABLE   *table = workerthread->ttable;
-    int threadNum      = workerthread->threadNumber;
+    S_BOARD     *pos    = workerthread->originalPos;
+    S_SEARCHINFO *info  = workerthread->info;
+    S_PVTABLE   *table  = workerthread->ttable;
+    int threadNum       = workerthread->threadNumber;
+    int lastBestMove    = NOMOVE;
+    int bestMoveChanges = 0;
 
     workerthread->bestMove   = NOMOVE;
     workerthread->ponderMove = NOMOVE;
@@ -834,10 +855,14 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread) {
 
         // Best move is always the first move of the first PV line
         if (threadNum == 0 && pos->multiPVLineLengths[0] > 0) {
-            workerthread->bestMove   = pos->multiPVLines[0][0];
+            int newBest = pos->multiPVLines[0][0];
+            if (newBest != lastBestMove && lastBestMove != NOMOVE) {
+                bestMoveChanges++;
+            }
+            lastBestMove = newBest;
+            workerthread->bestMove = newBest;
             workerthread->ponderMove = pos->multiPVLineLengths[0] > 1
-                                     ? pos->multiPVLines[0][1]
-                                     : NOMOVE;
+                                    ? pos->multiPVLines[0][1] : NOMOVE;
         }
 
         // Clear excluded moves for next depth
@@ -846,6 +871,15 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread) {
 
         // Depth/mate limits (based on best line)
         if (!info->ponder && !info->UciInfinite) {
+            if(info->timeSet && threadNum == 0){
+                int now      = getTimeMs();
+                int changes  = MIN(bestMoveChanges, 7);
+                int scale    = SoftLimitBestMoveScale[changes];
+                int scaledSoft = info->starttime + (info->softLimit - info->starttime) * scale / 10;
+                scaledSoft   = MIN(scaledSoft, info->stoptime); // never exceed hard limit
+                if (now >= scaledSoft) break; // clean break, no need to set stopped
+            }
+
             if (info->depthSet && currentDepth >= info->depth) break;
             if (abs(pos->multiPVScores[0]) > ISMATE && workerthread->bestMove != NOMOVE) {
                 int mateIn = (AB_BOUND - abs(pos->multiPVScores[0]) + 1) / 2;

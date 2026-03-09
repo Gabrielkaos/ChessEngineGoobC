@@ -81,7 +81,17 @@ void InitAllScore(S_BOARD *pos, S_MOVELIST *movelist, int ttMove, int threshold)
 
             movelist->moves[index].score = pos->chist[pieceType[pce]][to][captured];
             if(pieceType[PROMOTED(move)]==p_queen)movelist->moves[index].score += 100;
-            movelist->moves[index].score += MVVAugment[captured] + SORT_CAPTURE;
+            movelist->moves[index].score = SORT_CAPTURE
+                + MVVAugment[captured] * 2              // MVV still dominant
+                + pos->chist[pieceType[pce]][to][captured] / 16  // history as tiebreaker
+                + (pieceType[PROMOTED(move)] == p_queen ? 10000 : 0);
+
+            int counter = pos->ply > 0 ? pos->moveStack[pos->ply - 1] : NOMOVE;
+            if (counter != NOMOVE && counter != NULLMOVE) {
+                int cmPce = pos->pieceStack[pos->ply - 1];
+                int cmT   = TOSQ(counter);
+                movelist->moves[index].score += pos->continuation[0][cmPce][cmT][pieceType[pce]][to] / 4;
+            }
 
         }
 
