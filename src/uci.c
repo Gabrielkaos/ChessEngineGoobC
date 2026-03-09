@@ -109,6 +109,16 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         InitPvTable(pvTable, MB,1);
     }
 
+    
+    else if (!strncmp(line, "setoption name MultiPV value ", 29)) {
+        int mpv = 1;
+        sscanf(line, "%*s %*s %*s %*s %d", &mpv);
+        if (mpv < 1)   mpv = 1;
+        if (mpv > 256) mpv = 256;
+        info->multiPV = mpv;
+        printf("info string MultiPV set to %d\n", info->multiPV);
+    }
+
 
     else if (!strncmp(line, "setoption name Threads value ", 29)) {
         int thr_num=1;
@@ -324,6 +334,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
     //init things
     info->ponder        = ponder;
+    if (info->multiPV < 1) info->multiPV = 1;
     int contempt        = MakeScore(pos->contemptDrawPenalty + pos->contemptComplexity, pos->contemptDrawPenalty);
     pos->contempt       = pos->side==WHITE ? contempt:-contempt;
 
@@ -377,7 +388,36 @@ void uciPrint(){
     printf("option name UCI_Chess960 type check default false\n"); //18
     printf("option name BruteForceMode type check default false\n"); //19
     printf("option name useFiftyMoveRule type check default true\n"); //20
+    printf("option name MultiPV type spin default 1 min 1 max 256\n");
     printf("uciok\n");
+}
+
+
+void UciReportMultiPV(const S_SEARCHINFO *info, S_PVTABLE *table, S_BOARD *pos,
+                      int alpha, int beta, int value,
+                      int currentDepth, int pvIndex,
+                      int *pvLine, int pvLength) {
+    int pvNum;
+    int elapsed = getTimeMs() - info->starttime;
+    int bounded = MAX(alpha, MIN(value, beta));
+
+    int score  = bounded >=  ISMATE ?  (AB_BOUND - bounded + 1) / 2
+               : bounded <= -ISMATE ? -(bounded + AB_BOUND)     / 2 : bounded;
+    char *type = abs(bounded) >= ISMATE ? "mate" : "cp";
+
+    char *bound = bounded >=  beta  ? " lowerbound "
+                : bounded <= alpha  ? " upperbound " : " ";
+
+    printf("info depth %d seldepth %d multipv %d score %s %d%stime %d nodes %"PRIu64" hashfull %d ",
+           currentDepth, pos->seldepth, pvIndex + 1,
+           type, score, bound,
+           elapsed, info->nodes, hashfullTT(table));
+
+    printf("pv");
+    for (pvNum = 0; pvNum < pvLength; pvNum++) {
+        printf(" %s", PrMove(pvLine[pvNum]));
+    }
+    printf("\n");
 }
 
 
@@ -392,6 +432,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 	info->setOptionPonder        =FALSE;
 	info->nodeSet                =FALSE;
 	info->bruteForceMode         =FALSE;
+    info->multiPV = 1;
 
     ParseFEN(START_FEN, pos);
 

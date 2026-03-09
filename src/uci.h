@@ -14,5 +14,9 @@ extern void UCILoop(S_BOARD *pos,S_SEARCHINFO *info);
 extern void UciReportCurrentMove(int depth,int move,int currmovenumber);
 extern void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves);
 //extern void boundReport(S_PVTABLE *table,const S_SEARCHINFO *info,int seldepth,int alpha,int beta,int value,int depth,int bestMove);
+extern void UciReportMultiPV(const S_SEARCHINFO *info, S_PVTABLE *table, S_BOARD *pos,
+                      int alpha, int beta, int value,
+                      int currentDepth, int pvIndex,
+                      int *pvLine, int pvLength) ;
 
 #endif // UCI_H

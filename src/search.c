@@ -30,13 +30,23 @@
 thrd_t workerThreads[MAXTHREADS];
 
 int LMRTable[MAXDEPTH][MAXPOSMOVES];
-void initLMRTable(){
-    int i,j;
-    for(i=0;i<MAXDEPTH;++i){
-        for(j=0;j<MAXPOSMOVES;++j){
-            LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
+// void initLMRTable(){
+//     int i,j;
+//     for(i=0;i<MAXDEPTH;++i){
+//         for(j=0;j<MAXPOSMOVES;++j){
+//             LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
+//         }
+//     }
+// }
+void initLMRTable() {
+    int i, j;
+    for (i = 0; i < MAXDEPTH; ++i) {
+        for (j = 0; j < MAXPOSMOVES; ++j) {
+            LMRTable[i][j] = (int)(0.5 + log(i) * log(j) / 2.0);
         }
     }
+    for (i = 0; i < MAXDEPTH; ++i) LMRTable[i][0] = 0;
+    for (j = 0; j < MAXPOSMOVES; ++j) LMRTable[0][j] = 0;
 }
 
 //function for checking if we should stop early the search
@@ -95,8 +105,24 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
     }
 
-    //pruning standing pat
-    int eval      = pos->eval_stack[pos->ply] = EvalPosition(pos);
+    int ttMove  = NOMOVE;
+    int ttValue = 0;
+    int ttDepth = 0;
+    int ttBound = HFNONE;
+    int ttEval  = VALUE_NONE;
+    int ttHit   = ProbeHashEntry(pos, pvTable, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval);
+
+    if (ttHit) {
+        ttValue = valueFromTT(ttValue, pos->ply);
+        if (   ttBound == HFEXACT
+            || (ttBound == HFALPHA && ttValue <= alpha)
+            || (ttBound == HFBETA  && ttValue >= beta)) {
+            return ttValue;
+        }
+    }
+
+    int eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+
 
     //if the eval is good enough we return early
     if(eval>=beta)return beta;
@@ -216,10 +242,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //store in eval_stack each staticEval
-    int staticEval=pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval:EvalPosition(pos);
+    // int staticEval=pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval:EvalPosition(pos);
+
+    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int staticEval = pos->eval_stack[pos->ply] = rawEval + getCorrectionHistory(pos);
+    staticEval = MAX(-AB_BOUND + 1, MIN(AB_BOUND - 1, staticEval));
 
     //see if we improved on the last position
-    improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
+    improving = !inCheck && pos->ply >= 2
+         && (pos->eval_stack[pos->ply-2] == 0   // was in check, eval unreliable assume improving
+             || staticEval > pos->eval_stack[pos->ply-2]);
 
     // seemargin for this depth
     seeMargin[0] = SEENoisyMargin * depth * depth;
@@ -231,11 +263,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //at shallow depth and when mate is unlikely
         //we prune aggresively
         //means that the position is good enough that no deeper search needed
-        if(depth < 3 && abs(beta-1)>-ISMATE){
-            int evalMargin=SEEPieceValues[wP]*depth;
-            if(staticEval - evalMargin>=beta){
-                return staticEval-evalMargin;
-            }
+        if (   depth <= 7
+            && abs(beta) < ISMATE
+            && staticEval - (70 * depth - 30 * improving) >= beta) {
+            return staticEval - (70 * depth - 30 * improving);
+        }
+
+        // RAZORING
+        // If we are very far below alpha at low depth, just drop into qsearch
+        // Only useful at depth 1-3 where full search is cheap anyway
+        if (!pvNode
+            && !inCheck
+            && depth <= 3
+            && abs(alpha) < ISMATE
+            && staticEval + 300 * depth < alpha) {
+            int razorScore = Quiescence(alpha, beta, pos, info);
+            if (razorScore <= alpha) return razorScore;
         }
 
         //null move
@@ -348,6 +391,17 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         PickNextMove(moveNum,list);
         moveInLoop=list->moves[moveNum].move;
 
+        if (rootNode && info->multiPVNumExcluded > 0) {
+            int isExcluded = FALSE;
+            for (int ex = 0; ex < info->multiPVNumExcluded; ex++) {
+                if (moveInLoop == info->multiPVExcluded[ex]) {
+                    isExcluded = TRUE;
+                    break;
+                }
+            }
+            if (isExcluded) continue;
+        }
+
         //count the quiets seen and check if the move is tactical
         quietsSeen+=(quietMove=!moveIsTactical(pos,moveInLoop));
 
@@ -437,10 +491,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      && (ttBound == HFBETA);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
-            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut)
-                        :inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit);
+            int singularResult = 0;
+            if (singular) {
+                singularResult = Singularity(pos, info, table, threadNum, ttValue, depth, beta, ttMove, &multiCut);
+                // Double extension: move failed high in singular by a large margin = very singular
+                extension = singularResult ? 1 : (ttValue >= beta + 20 ? 2 : 1);
+            } else {
+                extension = inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit);
+            }
 
-            newDepth = MIN(MAXDEPTH - 2,depth + (extension && !rootNode));
+            newDepth = MIN(MAXDEPTH - 2, depth + (extension && !rootNode ? extension : 0));
 
             //MultiCut, super aggressive pruning
             //engine thinks that the move is too strong
@@ -522,6 +582,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //update TT
     if(oldAlpha != alpha)StoreHashEntry(pos, table,bestMove,bestScore,HFEXACT,depth,staticEval);
     else                 StoreHashEntry(pos, table,bestMove,alpha    ,HFALPHA,depth,staticEval);
+
+    // update correction history when we have a reliable score
+    if (!inCheck && bestMove != NOMOVE && abs(bestScore) < ISMATE) {
+        int diff = bestScore - rawEval;
+        updateCorrectionHistory(pos, depth, diff);
+    }
 
     return alpha;
 }
@@ -679,73 +745,114 @@ int SearchPositionThread(void *data){
 
 //passing threads
 //searches for each threads
-void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
+void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread) {
 
-    int currentDepth,numberOfPvMoves,bestScore;
+    int currentDepth, numberOfPvMoves, bestScore;
+    S_BOARD     *pos  = workerthread->originalPos;
+    S_SEARCHINFO *info = workerthread->info;
+    S_PVTABLE   *table = workerthread->ttable;
+    int threadNum      = workerthread->threadNumber;
 
-    workerthread->bestMove       = NOMOVE;
-    workerthread->ponderMove     = NOMOVE;
+    workerthread->bestMove   = NOMOVE;
+    workerthread->ponderMove = NOMOVE;
 
-    //aspiration window
-    int alpha          = -AB_BOUND;
-    int beta           = AB_BOUND;
+    int multiPV = MAX(1, info->multiPV);
 
+    for (currentDepth = 1; currentDepth <= MAXDEPTH; ++currentDepth) {
 
-    //iterative deepening
-    for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
+        // --- MultiPV loop: search for each PV line ---
+        int pvIdx;
+        int numExcluded = 0;   // how many root moves excluded so far this depth
+        int excludedMoves[256];// moves already found as best at this depth
+        memset(excludedMoves, 0, sizeof(excludedMoves));
 
-        //call alpha beta to get score
-        bestScore=AlphaBeta(alpha,beta,currentDepth,workerthread->originalPos,workerthread->info, workerthread->ttable,workerthread->threadNumber,TRUE);
-        //say out of time for gui
-        if(workerthread->info->stopped==TRUE)break;
+        for (pvIdx = 0; pvIdx < multiPV; pvIdx++) {
 
-        if(workerthread->threadNumber==0){
-            //get Pv Lines
-            numberOfPvMoves=getPvLine(currentDepth,workerthread->originalPos, workerthread->ttable);
-            //get best move from pv lines
-            workerthread->bestMove=workerthread->originalPos->pvArray[0];
-            workerthread->ponderMove = numberOfPvMoves > 1 ? workerthread->originalPos->pvArray[1] : NOMOVE;
-        }
-        
+            // Restore excluded moves into pos so AlphaBeta skips them at root
+            pos->multiPVMoves[pvIdx] = NOMOVE;  // sentinel
+            // We track excluded moves in info for AlphaBeta to check at root
+            info->multiPVExcluded    = excludedMoves;
+            info->multiPVNumExcluded = numExcluded;
 
-        //////////////////////////////////////////////////////////
-        //aspiration window
-        if(!workerthread->info->bruteForceMode){
-            if((bestScore <= alpha) || (bestScore >= beta)){
-                if (workerthread->threadNumber==0){
-                    if((getTimeMs()-workerthread->info->starttime)>BoundReportTime){
-                        UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-                        fflush(stdout);
-                    }
-                }
-                alpha=-AB_BOUND;
-                beta=AB_BOUND;
-                continue;
+            int alpha = -AB_BOUND;
+            int beta  =  AB_BOUND;
+
+            // Aspiration windows only for first PV line and deeper depths
+            if (pvIdx == 0 && currentDepth >= 5 && multiPV == 1) {
+                alpha = MAX(-AB_BOUND, pos->multiPVScores[0] - ScoreWindow);
+                beta  = MIN( AB_BOUND, pos->multiPVScores[0] + ScoreWindow);
             }
-            alpha=bestScore-ScoreWindow;
-            beta=bestScore+ScoreWindow;
+
+            while (TRUE) {
+                bestScore = AlphaBeta(alpha, beta, currentDepth, pos, info, table, threadNum, TRUE);
+
+                if (info->stopped) break;
+
+                if (bestScore <= alpha) {
+                    beta  = (alpha + beta) / 2;
+                    alpha = MAX(-AB_BOUND, bestScore - ScoreWindow);
+                } else if (bestScore >= beta) {
+                    beta  = MIN(AB_BOUND, bestScore + ScoreWindow);
+                } else {
+                    break;
+                }
+
+                // Safety: fall back to full window if aspiration fails badly
+                if (alpha <= -AB_BOUND + 1 || beta >= AB_BOUND - 1) break;
+            }
+
+            if (info->stopped) break;
+
+            // Collect the PV line for this pvIdx
+            numberOfPvMoves = getPvLine(currentDepth, pos, table);
+
+            // Save this line's score and moves
+            pos->multiPVScores[pvIdx]      = bestScore;
+            pos->multiPVLineLengths[pvIdx] = numberOfPvMoves;
+            for (int m = 0; m < numberOfPvMoves; m++) {
+                pos->multiPVLines[pvIdx][m] = pos->pvArray[m];
+            }
+
+            // The first move of this PV is the pvIdx-th best root move
+            if (numberOfPvMoves > 0) {
+                excludedMoves[numExcluded++] = pos->pvArray[0];
+            } else {
+                break; // no move found, stop multiPV loop
+            }
+
+            // Report this PV line (thread 0 only)
+            if (threadNum == 0) {
+                UciReportMultiPV(info, table, pos, alpha, beta, bestScore,
+                                 currentDepth, pvIdx,
+                                 pos->multiPVLines[pvIdx],
+                                 pos->multiPVLineLengths[pvIdx]);
+                fflush(stdout);
+            }
         }
-        //////////////////////////////////////////////////////////
-        if (workerthread->threadNumber==0){
-            //reporting to interface
-            UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-            fflush(stdout);
-            
+
+        if (info->stopped) break;
+
+        // Best move is always the first move of the first PV line
+        if (threadNum == 0 && pos->multiPVLineLengths[0] > 0) {
+            workerthread->bestMove   = pos->multiPVLines[0][0];
+            workerthread->ponderMove = pos->multiPVLineLengths[0] > 1
+                                     ? pos->multiPVLines[0][1]
+                                     : NOMOVE;
         }
-        //limits
-        if(!workerthread->info->ponder && !workerthread->info->UciInfinite){
-            //limited by depth
-            if(workerthread->info->depthSet && currentDepth>=workerthread->info->depth)break;
-            //mate limits
-            if(abs(bestScore) > ISMATE && workerthread->bestMove != NOMOVE){
-                int mateIn  = (AB_BOUND - abs(bestScore) + 1) / 2;
-                if(workerthread->info->mateLimit != -1){
-                    if(mateIn <= workerthread->info->mateLimit)break;
-                }else{
-                    //mate break to avoid losing time
-                    if(currentDepth >= (mateIn*2) + 10){
-                        break;
-                    }
+
+        // Clear excluded moves for next depth
+        info->multiPVExcluded    = NULL;
+        info->multiPVNumExcluded = 0;
+
+        // Depth/mate limits (based on best line)
+        if (!info->ponder && !info->UciInfinite) {
+            if (info->depthSet && currentDepth >= info->depth) break;
+            if (abs(pos->multiPVScores[0]) > ISMATE && workerthread->bestMove != NOMOVE) {
+                int mateIn = (AB_BOUND - abs(pos->multiPVScores[0]) + 1) / 2;
+                if (info->mateLimit != -1) {
+                    if (mateIn <= info->mateLimit) break;
+                } else {
+                    if (currentDepth >= (mateIn * 2) + 10) break;
                 }
             }
         }

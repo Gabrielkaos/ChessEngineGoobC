@@ -180,6 +180,10 @@ typedef struct {
     //thread
     int threadNum;
 
+    int multiPV;
+    int *multiPVExcluded;
+    int  multiPVNumExcluded;
+
 } S_SEARCHINFO;
 
 //Engine options
@@ -209,6 +213,13 @@ typedef struct{
 #define ISKni(p) (pieceKnight[(p)])
 #define MIRROR64(sq) (Mirror64[(sq)])
 #define SQ64TO120(sq) (Squares64To120[(sq)])
+
+
+#define CORRECTION_HISTORY_SIZE 16384
+#define CORRECTION_HISTORY_GRAIN 256
+#define CORRECTION_HISTORY_LIMIT 1024
+
+typedef int CorrectionHistoryTable[2][CORRECTION_HISTORY_SIZE];
 
 /*GLOBALS*/
 extern S_PVTABLE pvTable[1];
