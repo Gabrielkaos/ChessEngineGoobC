@@ -2,38 +2,6 @@
 #include "history.h"
 #include "some_maths.h"
 
-
-#define HISTORY_MAX 16384
-
-static void updateEntry(int *entry, int bonus) {
-    // gravity formula: new = old + bonus - old * abs(bonus) / HISTORY_MAX
-    *entry += bonus - (*entry) * abs(bonus) / HISTORY_MAX;
-}
-
-
-
-void updateCorrectionHistory(S_BOARD *pos, int depth, int diff) {
-    int idx   = pos->pkHash & (CORRECTION_HISTORY_SIZE - 1);
-    int side  = pos->side;
-    int bonus = MIN(diff * depth, CORRECTION_HISTORY_LIMIT);
-
-    
-    pos->corrHist[side][idx] =
-        (pos->corrHist[side][idx] * (CORRECTION_HISTORY_GRAIN - 1) + bonus)
-        / CORRECTION_HISTORY_GRAIN;
-
-    
-    pos->corrHist[side][idx] = MAX(-CORRECTION_HISTORY_LIMIT,
-                               MIN( CORRECTION_HISTORY_LIMIT,
-                                    pos->corrHist[side][idx]));
-}
-
-
-int getCorrectionHistory(const S_BOARD *pos) {
-    int idx = pos->pkHash & (CORRECTION_HISTORY_SIZE - 1);
-    return pos->corrHist[pos->side][idx] / CORRECTION_HISTORY_GRAIN;
-}
-
 int getCaptureHistory(S_BOARD *pos,int move){
     const int to   = TOSQ(move);
     const int from = FROMSQ(move);
@@ -109,44 +77,55 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
 
 }
 
-void updateHistories(S_BOARD *pos, int *quietsTried, int quietsPlayed, int depth) {
-    int bonus = MIN(depth * depth + 2 * depth, HISTORY_MAX);
+void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
 
-    // reward best move
-    int bestMove = quietsTried[quietsPlayed - 1];
-    int from = FROMSQ(bestMove);
-    int to   = TOSQ(bestMove);
-    updateEntry(&pos->histtable[pos->side][from][to], bonus);
+    int bestMove = moves[length - 1];
+    updateKillers(pos,bestMove);
 
-    // penalize all moves that came before (failed quiets)
-    for (int i = 0; i < quietsPlayed - 1; i++) {
-        int move = quietsTried[i];
-        from = FROMSQ(move);
-        to   = TOSQ(move);
-        updateEntry(&pos->histtable[pos->side][from][to], -bonus);
+    int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
+    int cmPiece = pos->pieceStack[pos->ply - 1];
+    int cmTo    = TOSQ(cmMove);
+
+    if (cmMove != NOMOVE && cmMove != NULLMOVE){
+        pos->cmtable[!pos->side][cmPiece][cmTo] = bestMove;
     }
-}
 
+    if(!(length==1 && depth <= 3)){
 
-void updateMaterialCorrection(S_BOARD *pos, int depth, int diff) {
-    // Use non-pawn material count as hash index
-    int npMat = COUNTBIT(pos->occupancy[WHITE] & ~pos->bitboards[wP] & ~pos->bitboards[wK])
-              - COUNTBIT(pos->occupancy[BLACK] & ~pos->bitboards[bP] & ~pos->bitboards[bK]);
-    int idx   = ((unsigned)npMat + 16) & (MATERIAL_CORRECTION_SIZE - 1);
-    int bonus = MIN(diff * depth, CORRECTION_HISTORY_LIMIT);
+        int index,bonus,entry,delta,move,piece,to,from;
 
-    pos->matCorr[pos->side][idx] =
-        (pos->matCorr[pos->side][idx] * (CORRECTION_HISTORY_GRAIN - 1) + bonus)
-        / CORRECTION_HISTORY_GRAIN;
+        int fmMove  = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
+        int fmPiece = pos->pieceStack[pos->ply - 2];
+        int fmTo    = TOSQ(fmMove);
 
-    pos->matCorr[pos->side][idx] = MAX(-CORRECTION_HISTORY_LIMIT,
-                                   MIN( CORRECTION_HISTORY_LIMIT,
-                                        pos->matCorr[pos->side][idx]));
-}
+        bonus = MIN(depth*depth,HistoryMax);
 
-int getMaterialCorrection(const S_BOARD *pos) {
-    int npMat = COUNTBIT(pos->occupancy[WHITE] & ~pos->bitboards[wP] & ~pos->bitboards[wK])
-              - COUNTBIT(pos->occupancy[BLACK] & ~pos->bitboards[bP] & ~pos->bitboards[bK]);
-    int idx = ((unsigned)npMat + 16) & (MATERIAL_CORRECTION_SIZE - 1);
-    return pos->matCorr[pos->side][idx] / CORRECTION_HISTORY_GRAIN;
+        for(index=0;index<length;++index){
+            move = moves[index];
+
+            delta = move==bestMove ? bonus:-bonus;
+
+            piece = pieceType[pos->pieces[FROMSQ(move)]];
+            from  = FROMSQ(move);
+            to    = TOSQ(move);
+
+            entry = pos->histtable[pos->side][from][to];
+            entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
+            pos->histtable[pos->side][from][to] = entry;
+
+            if(cmMove != NOMOVE && cmMove != NULLMOVE){
+                entry = pos->continuation[0][cmPiece][cmTo][piece][to];
+                entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
+                pos->continuation[0][cmPiece][cmTo][piece][to] = entry;
+            }
+
+            if(fmMove != NOMOVE && fmMove != NULLMOVE){
+                entry = pos->continuation[1][fmPiece][fmTo][piece][to];
+                entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
+                pos->continuation[1][fmPiece][fmTo][piece][to] = entry;
+            }
+        }
+
+    }
+
 }

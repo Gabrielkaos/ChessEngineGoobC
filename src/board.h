@@ -29,7 +29,6 @@ typedef struct {
     //tables
     EVAL_TABLE   eTable[1]; //storing evaluation for positions
     PAWNKING_TABLE   pawnKingTable[1]; //stores scores and evaluation for pawn king
-    CorrectionHistoryTable corrHist; // correctiono history
 
     //for search
     int ply; //search ply
@@ -43,14 +42,6 @@ typedef struct {
     ALIGN64 CaptureHistoryTable chist;
     ALIGN64 HistoryTable histtable;
     ALIGN64 CounterMoveTable cmtable;
-
-
-    int  multiPVMoves[256];      // the root moves excluded so far in multiPV loop
-    int  multiPVScores[256];     // score for each multiPV line
-    int  multiPVLines[256][MAXDEPTH]; // the actual PV moves for each line
-    int  multiPVLineLengths[256];    // how many moves in each line
-
-    ALIGN64 MaterialCorrectionTable matCorr;
 
 } S_BOARD;
 

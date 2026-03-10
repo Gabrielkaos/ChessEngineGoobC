@@ -27,7 +27,7 @@ void initDistancesForEval(){
     }
 }
 
-// Closedness Evaluation Terms
+/*// Closedness Evaluation Terms
 
 const int ClosednessKnightAdjustment[9] = {
     S(  -7,  10), S(  -7,  29), S(  -9,  37), S(  -5,  37),
@@ -66,7 +66,7 @@ const int ThreatByPawnPush           = S(  15,  32);
 const int SpaceRestrictPiece = S(  -4,  -1);
 const int SpaceRestrictEmpty = S(  -4,  -2);
 const int SpaceCenterControl = S(   3,   0);
-
+*/
 /*Variables*/
 
 //Piece Values
@@ -390,7 +390,7 @@ const int tempo = 20;
 
 
 /*Functions*/
-
+/*
 INLINE int evaluateComplexity(S_BOARD *pos, int eval) {
 
     //penalty for drawish positions.
@@ -421,7 +421,7 @@ INLINE int evaluateComplexity(S_BOARD *pos, int eval) {
 }
 
 
-INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
+INLINE int evaluateClosedness(S_BOARD *pos) {
 
     int closedness, count, eval = 0;
 
@@ -433,7 +433,7 @@ INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
 
     // Compute Closedness factor for this position
     closedness = 1 * COUNTBIT((pos->bitboards[wP] | pos->bitboards[bP]))
-               + 3 * COUNTBIT(eval_info->rammedPawns[WHITE])
+               + 3 * COUNTBIT(pos->rammedPawns[WHITE])
                - 4 * openFileCount((pos->bitboards[wP] | pos->bitboards[bP]));
     closedness = MAX(0, MIN(8, closedness / 3));
 
@@ -449,7 +449,7 @@ INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
 }
 
 
-INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
+INLINE int evaluateSpace(S_BOARD *pos, int color){
 
     const int US = color, THEM = !color;
 
@@ -459,8 +459,8 @@ INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
     U64 enemy    = pos->occupancy[THEM];
 
     // Squares we attack with more enemy attackers and no friendly pawn attacks
-    U64 uncontrolled =   eval_info->attackedBy2[THEM] & eval_info->attacked[US]
-                           & ~eval_info->attackedBy2[US  ] & ~eval_info->attacks_array_pawns[US];
+    U64 uncontrolled =   pos->attackedBy2[THEM] & pos->attacked[US]
+                           & ~pos->attackedBy2[US  ] & ~pos->attacks_array_pawns[US];
 
     // Penalty for restricted piece moves
     count = COUNTBIT(uncontrolled & (friendly | enemy));
@@ -475,7 +475,7 @@ INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
     // Thus we don't apply this term when below a threshold of minors/majors count.
     if (      COUNTBIT((pos->bitboards[wN] | pos->bitboards[bN]) | (pos->bitboards[wB] | pos->bitboards[bB]))
         + 2 * COUNTBIT((pos->bitboards[wR] | pos->bitboards[bR]) | (pos->bitboards[wQ] | pos->bitboards[bQ])) > 12) {
-        count = COUNTBIT(~eval_info->attacked[THEM] & (eval_info->attacked[US] | friendly) & CENTER_BIG);
+        count = COUNTBIT(~pos->attacked[THEM] & (pos->attacked[US] | friendly) & CENTER_BIG);
         eval += count * SpaceCenterControl;
     }
 
@@ -483,7 +483,7 @@ INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
 }
 
 
-INLINE int evaluateThreats(S_BOARD *pos,EVAL_INFO *eval_info, int color){
+INLINE int evaluateThreats(S_BOARD *pos, int color){
 
     const int US = color, THEM = !color;
     const int Rank3Rel = color==WHITE ? RANK_3:RANK_6;
@@ -497,29 +497,29 @@ INLINE int evaluateThreats(S_BOARD *pos,EVAL_INFO *eval_info, int color){
     U64 QUEENS = pos->bitboards[wQ] | pos->bitboards[bQ];
     U64 PAWNS = pos->bitboards[wP] | pos->bitboards[bP];
 
-    U64 attacksByPawn = eval_info->attacks_array_pawns[THEM];
-    U64 attacksByMinors = eval_info->attacks_array_minors[THEM];
-    U64 attacksByMajors = eval_info->attacks_array_queens[THEM] | eval_info->attacks_array_rooks[THEM];
+    U64 attacksByPawn = pos->attacks_array_pawns[THEM];
+    U64 attacksByMinors = pos->attacks_array_minors[THEM];
+    U64 attacksByMajors = pos->attacks_array_queens[THEM] | pos->attacks_array_rooks[THEM];
 
 
     // Squares with more attackers, few defenders, and no pawn support
-    U64 poorlyDefended = (eval_info->attacked[THEM] & ~eval_info->attacked[US])
-                            | (eval_info->attackedBy2[THEM] & ~eval_info->attackedBy2[US] & ~eval_info->attacks_array_pawns[US]);
+    U64 poorlyDefended = (pos->attacked[THEM] & ~pos->attacked[US])
+                            | (pos->attackedBy2[THEM] & ~pos->attackedBy2[US] & ~pos->attacks_array_pawns[US]);
 
     U64 weakMinors = (KNIGHTS | BISHOPS) & poorlyDefended;
 
     // A friendly minor or major is overloaded if attacked and defended by exactly one
     U64 overloaded = (KNIGHTS | BISHOPS | ROOKS | QUEENS)
-                        & eval_info->attacked[  US] & ~eval_info->attackedBy2[  US]
-                        & eval_info->attacked[THEM] & ~eval_info->attackedBy2[THEM];
+                        & pos->attacked[  US] & ~pos->attackedBy2[  US]
+                        & pos->attacked[THEM] & ~pos->attackedBy2[THEM];
 
     // Look for enemy non-pawn pieces which we may threaten with a pawn advance.
     // Don't consider pieces we already threaten, pawn moves which would be countered
     // by a pawn capture, and squares which are completely unprotected by our pieces.
     U64 pushThreat  = pawnAdvance(PAWNS, occupied, US);
     pushThreat |= pawnAdvance(pushThreat & ~attacksByPawn & Rank3Rel, occupied, US);
-    pushThreat &= ~attacksByPawn & (eval_info->attacked[US] | ~eval_info->attacked[THEM]);
-    pushThreat  = pawnAttackSpan(pushThreat, enemy & ~eval_info->attacks_array_pawns[US], US);
+    pushThreat &= ~attacksByPawn & (pos->attacked[US] | ~pos->attacked[THEM]);
+    pushThreat  = pawnAttackSpan(pushThreat, enemy & ~pos->attacks_array_pawns[US], US);
 
     // Penalty for each of our poorly supported pawns
     int eval = 0;
@@ -543,15 +543,15 @@ INLINE int evaluateThreats(S_BOARD *pos,EVAL_INFO *eval_info, int color){
     eval += count * ThreatRookAttackedByLesser;
 
     // Penalty for king threats against our poorly defended minors
-    count = COUNTBIT(weakMinors & king_attacks[eval_info->kingSq[THEM]]);
+    count = COUNTBIT(weakMinors & king_attacks[pos->kingSq[THEM]]);
     eval += count * ThreatMinorAttackedByKing;
 
     // Penalty for king threats against our poorly defended rooks
-    count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[eval_info->kingSq[THEM]]);
+    count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[pos->kingSq[THEM]]);
     eval += count * ThreatRookAttackedByKing;
 
     // Penalty for any threat against our queens
-    count = COUNTBIT(QUEENS & eval_info->attacked[THEM]);
+    count = COUNTBIT(QUEENS & pos->attacked[THEM]);
     eval += count * ThreatQueenAttackedByOne;
 
     // Penalty for any overloaded minors or majors
@@ -563,7 +563,7 @@ INLINE int evaluateThreats(S_BOARD *pos,EVAL_INFO *eval_info, int color){
     eval += count * ThreatByPawnPush;
 
     return eval;
-}
+}*/
 
 
 INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
@@ -1294,10 +1294,8 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evaluateKingsPawns(pos,eval_info,WHITE)-evaluateKingsPawns(pos,eval_info,BLACK);
     eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
     eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
-
-    eval+= evaluateSpace(pos,eval_info,WHITE)-evaluateSpace(pos,eval_info,BLACK);
-    eval+= evaluateThreats(pos,eval_info,WHITE)-evaluateThreats(pos,eval_info,BLACK);
-    
+    //eval+= evaluateSpace(pos,WHITE)-evaluateSpace(pos,BLACK);
+    //eval+= evaluateThreats(pos,WHITE)-evaluateThreats(pos,BLACK);
 
     //if chess960
     if(pos->chess960){
@@ -1385,8 +1383,8 @@ int EvalPosition(S_BOARD *pos){
 
     //get classical eval
     int eval = getClassicalEval(pos, eval_info);
-    eval += evaluateClosedness(pos, eval_info);
-    eval+=evaluateComplexity(pos,eval);
+    //eval += evaluateClosedness(pos);
+    //eval+=evaluateComplexity(pos,eval);
 
     //scale factor
     int factor=ScaleFactor(pos, ScoreEG(eval));

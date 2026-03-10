@@ -10,9 +10,6 @@
     Some variables shamelessly copied from Ethereal
 */
 
-//time
-static const int SoftLimitBestMoveScale[] = {10, 12, 14, 15, 15, 15, 15, 15};
-
 static const int SEEPieceValues[] = {
      0, 100, 450, 450, 675, 1300, 0, 100, 450, 450, 675, 1300, 0
 };
@@ -60,6 +57,5 @@ extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
 extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 extern int SearchPositionThread(void *data);
-
 
 #endif // SEARCH_H

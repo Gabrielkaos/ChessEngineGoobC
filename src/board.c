@@ -15,9 +15,6 @@ void resetContinuationTable(S_BOARD *pos){
     memset(pos->chist,0,sizeof(CaptureHistoryTable));
     memset(pos->histtable,0,sizeof(HistoryTable));
     memset(pos->cmtable,0,sizeof(CounterMoveTable));
-
-    memset(pos->corrHist, 0, sizeof(CorrectionHistoryTable));
-    memset(pos->matCorr, 0, sizeof(MaterialCorrectionTable));
 }
 
 void initStacks(S_BOARD *pos){

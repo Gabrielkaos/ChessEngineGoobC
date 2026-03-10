@@ -1573,23 +1573,9 @@
 
     //bug fixed
     
-    ->changed iterativeDeepenining
-    ->added correction history in defs.h
-    ->added correction history
-    ->changed LMR table init more aggresive
-    ->history score gravity
-    ->re enabled ethereal inspired evals
-    ->added razoring
-    ->double extension in singular
-    ->tt probe in quiescence
-    ->improved improving
-    ->improved beta pruning
-    ->added time management
-    ->improved movepicker in capture section
-    ->improved null move verification
-    ->improved move capture scoring formula
-    ->negative history pruning
-    ->added material correction
-    ->fixed setupWorkers and startWorkerThreads function, cause memory leak 
+    ->
+    ->
+    ->
+    ->
 
 	*/
