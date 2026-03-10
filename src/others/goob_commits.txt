@@ -1573,7 +1573,11 @@
 
     //bug fixed
     
-    ->
+    ->added nnue_laoder files
+    ->added models/
+    ->added flag useNNUE in board def
+    ->added useNNUE and EvalFile in uci options
+    ->added nnue eval in EvalPosition
     ->
     ->
     ->
