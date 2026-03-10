@@ -1573,12 +1573,14 @@
 
     //bug fixed
     
+    ->fixed memory leak
     ->added nnue_laoder files
     ->added models/
     ->added flag useNNUE in board def
     ->added useNNUE and EvalFile in uci options
     ->added nnue eval in EvalPosition
-    ->
+    ->added pk evaluation
+    ->not using the passers,king,kingspawns,pawn eval if pk
     ->
     ->
 

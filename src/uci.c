@@ -17,6 +17,8 @@
 #include "io.h"
 #include "tinycthread.h"
 #include "thread.h"
+#include "nnue_loader.h"
+#include "pknet_loader.h"
 
 #define INPUTBUFFER 400*6
 #define Euler 2.8
@@ -272,6 +274,20 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         }
     }
 
+    else if (!strncmp(line, "setoption name UsePKNet value ", 30)) {
+        pos->usePKNet = strstr(line,"true") ? TRUE : FALSE;
+        printf("info string UsePKNet set to %s\n", pos->usePKNet?"true":"false");
+        clearEvalTable(pos->eTable);
+     }
+     else if (!strncmp(line, "setoption name PKNetFile value ", 31)) {
+        char path[512]={0};
+        sscanf(line, "%*s %*s %*s %*s %511s", path);
+        if (strlen(path)>0 && strcmp(path,"<empty>")!=0) {
+            pknet_init(path);
+        }
+        clearEvalTable(pos->eTable);
+     }
+
 }
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
@@ -405,6 +421,8 @@ void uciPrint(){
     printf("option name useFiftyMoveRule type check default true\n"); //20
     printf("option name UseNNUE type check default false\n");
     printf("option name EvalFile type string default <empty>\n");
+    printf("option name UsePKNet type check default false\n");
+    printf("option name PKNetFile type string default <empty>\n");
     printf("uciok\n");
 }
 
@@ -421,6 +439,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 	info->setOptionPonder        =FALSE;
 	info->nodeSet                =FALSE;
 	info->bruteForceMode         =FALSE;
+    pos->usePKNet                =FALSE;
 
     ParseFEN(START_FEN, pos);
 

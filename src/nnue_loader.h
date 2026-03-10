@@ -11,11 +11,6 @@
  *   L3     : 32  neurons (clipped ReLU)
  *   Output : 1   scalar (centipawns, White's POV)
  *
- * Integration with GOOB:
- *   1. Add nnue_loader.c to your Makefile's SRCS list.
- *   2. Call nnue_init("path/to/nnue.bin") once at startup (e.g. in main.c).
- *   3. In evaluate.c, replace / augment EvalPosition with nnue_eval(pos).
- *
  * Weight layout in binary file (all float32, little-endian):
  *   acc_white.weight [256 x 41024]
  *   acc_white.bias   [256]

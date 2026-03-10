@@ -44,6 +44,7 @@ typedef struct {
     ALIGN64 CounterMoveTable cmtable;
 
     int useNNUE;   // flag: use NNUE evaluation
+    int usePKNet;
 
 } S_BOARD;
 

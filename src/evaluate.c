@@ -12,7 +12,7 @@
 #include "tt_eval.h"
 #include "attacks.h"
 #include "nnue_loader.h"
-
+#include "pknet_loader.h"
 
 /*General*/
 int PSQTMATTABLE[13][64];
@@ -1292,11 +1292,19 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evalBishops(pos,eval_info,WHITE)- evalBishops(pos,eval_info,BLACK);
     eval+= evalRooks(pos,eval_info,WHITE)  - evalRooks(pos,eval_info,BLACK);
     eval+= evalQueens(pos,eval_info,WHITE) - evalQueens(pos,eval_info,BLACK);
-    eval+= evaluateKingsPawns(pos,eval_info,WHITE)-evaluateKingsPawns(pos,eval_info,BLACK);
-    eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
-    eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
+    
+    // eval+= evaluateKingsPawns(pos,eval_info,WHITE)-evaluateKingsPawns(pos,eval_info,BLACK);
+    
+    // eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
+    // eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
     //eval+= evaluateSpace(pos,WHITE)-evaluateSpace(pos,BLACK);
     //eval+= evaluateThreats(pos,WHITE)-evaluateThreats(pos,BLACK);
+
+    if (!pos->usePKNet || !pknet_loaded) {
+        eval+= evaluateKingsPawns(pos,eval_info,WHITE) - evaluateKingsPawns(pos,eval_info,BLACK);
+        eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
+        eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
+    }
 
     //if chess960
     if(pos->chess960){
@@ -1347,10 +1355,19 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
     int eval=0;
 
     // store and probe pawns
-    if (!ProbePawnKingEval(pos, eval_info)){
-        EvalPawn(pos, eval_info);
-        StorePawnKingEval(pos, eval_info);
+    if (pos->usePKNet && pknet_loaded) {
+        // network returns full PK score, store in pawnEval so evaluatePieces
+        // picks it up normally via eval_info->pawnEval[WHITE/BLACK]
+        int pk = pknet_eval(pos);
+        eval_info->pawnEval[WHITE] +=  pk;
+        eval_info->pawnEval[BLACK] +=  0;  // already baked into WHITE score
+    }else {
+        if (!ProbePawnKingEval(pos, eval_info)){
+            EvalPawn(pos, eval_info);
+            StorePawnKingEval(pos, eval_info);
+        }
     }
+    
 
     //pieces
     eval+=evaluatePieces(pos, eval_info);
