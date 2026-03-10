@@ -43,6 +43,8 @@ typedef struct {
     ALIGN64 HistoryTable histtable;
     ALIGN64 CounterMoveTable cmtable;
 
+    int useNNUE;   // flag: use NNUE evaluation
+
 } S_BOARD;
 
 //board.c

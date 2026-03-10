@@ -11,6 +11,7 @@
 #include "some_maths.h"
 #include "tt_eval.h"
 #include "attacks.h"
+#include "nnue_loader.h"
 
 
 /*General*/
@@ -1362,6 +1363,10 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
 int EvalPosition(S_BOARD *pos){
 
+    // if (nnue_loaded) {
+    //     return nnue_eval(pos);
+    // }
+
     EVAL_INFO eval_info[1];
 
     int score;
@@ -1376,6 +1381,11 @@ int EvalPosition(S_BOARD *pos){
     if(hashedEval != VALUE_NONE){
         score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
         return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100:score;
+    }
+
+    if (pos->useNNUE && nnue_loaded) {
+        int nn_score = nnue_eval(pos);
+        return pos->useFiftyMoveRule ? nn_score * (100 - pos->fiftyMove) / 100 : nn_score;
     }
 
     //Initialization

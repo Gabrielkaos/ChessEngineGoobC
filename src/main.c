@@ -11,9 +11,11 @@
 #include "tt_eval.h"
 #include "init.h"
 #include "board.h"
+#include "nnue_loader.h"
 
 int main(int argc, char *argv[])
 {
+
     AllInit();
 
     S_BOARD pos[1];
@@ -38,6 +40,8 @@ int main(int argc, char *argv[])
 
     setbuf(stdin, NULL);
     setbuf(stdout, NULL);
+
+    nnue_init("models/nnue_v1.bin");
 
 #ifdef DEBUG
     printf("\nWARNING! DEBUG DEFINED MIGHT SLOW DOWN ENGINE\n");
