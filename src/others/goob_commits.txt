@@ -1581,6 +1581,12 @@
     ->added nnue eval in EvalPosition
     ->added pk evaluation
     ->not using the passers,king,kingspawns,pawn eval if pk
+    ->added gradual widening in IterativeDeepening
+    ->scoreWindow from 50 to 25
+
+    //ce_aspiration_widening
+
+    ->
     ->
     ->
 

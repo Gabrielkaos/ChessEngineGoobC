@@ -19,7 +19,7 @@ static const int SEENoisyMargin  = -19;
 static const int DeltaMarginQ    = 150;
 static const int QSSeeMargin     = 110;
 
-static const int ScoreWindow = 50;
+static const int ScoreWindow = 25;
 
 static const int probCutDepth = 5;
 static const int probCutMargin = 85;
