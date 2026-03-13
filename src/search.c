@@ -20,6 +20,7 @@
 #include "attacks.h"
 #include "thread.h"
 #include "tinycthread.h"
+#include "tt_eval.h"
 
 //NOTE
 /*
