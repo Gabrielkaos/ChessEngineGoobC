@@ -1359,7 +1359,7 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
         // network returns full PK score, store in pawnEval so evaluatePieces
         // picks it up normally via eval_info->pawnEval[WHITE/BLACK]
         int pk = pknet_eval(pos);
-        eval_info->pawnEval[WHITE] +=  pk;
+        eval_info->pawnEval[WHITE] +=  S(pk,pk);
         eval_info->pawnEval[BLACK] +=  0;  // already baked into WHITE score
     }else {
         if (!ProbePawnKingEval(pos, eval_info)){

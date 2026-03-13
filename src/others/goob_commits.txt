@@ -1587,6 +1587,8 @@
     //ce_aspiration_widening
 
     ->made the pknet larger
+    ->from adding to pk to S(pk,pk)
+    ->
     ->
     ->
 
