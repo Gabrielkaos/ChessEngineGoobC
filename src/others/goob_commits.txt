@@ -1586,7 +1586,7 @@
 
     //ce_aspiration_widening
 
-    ->
+    ->made the pknet larger
     ->
     ->
 

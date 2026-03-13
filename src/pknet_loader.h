@@ -8,8 +8,8 @@
 
 // Must match pknet.py dimensions
 #define PK_INPUT  256   // 4x64 + 1 side-to-move
-#define PK_H1      64
-#define PK_H2      32
+#define PK_H1      128
+#define PK_H2      64
 
 int pknet_loaded = 0;
 
