@@ -1588,7 +1588,7 @@
 
     ->made the pknet larger
     ->from adding to pk to S(pk,pk)
-    ->
+    ->modified nnue_loader.h to handle new trainer in pytorch
     ->
     ->
 
