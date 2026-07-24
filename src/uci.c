@@ -1,4 +1,3 @@
-
 #include "defs.h"
 #include "stdio.h"
 #include "string.h"
@@ -129,6 +128,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         sscanf(line, "%*s %*s %*s %*s %511s", path);
         if (strlen(path) > 0 && strcmp(path, "<empty>") != 0) {
             if (nnue_init(path)) {
+                nnue_refresh_accumulator(pos);
                 printf("info string EvalFile loaded: %s\n", path);
             } else {
                 printf("info string EvalFile FAILED to load: %s\n", path);
