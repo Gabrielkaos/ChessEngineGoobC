@@ -1,5 +1,3 @@
-
-
 #include "stdio.h"
 #include "string.h"
 #include "inttypes.h"
@@ -9,6 +7,7 @@
 #include "io.h"
 #include "board.h"
 #include "attacks.h"
+#include "nnue_loader.h"
 
 void resetContinuationTable(S_BOARD *pos){
     memset(pos->continuation,0,sizeof(ContinuationTable));
@@ -151,6 +150,8 @@ void updateListMaterial(S_BOARD *pos){
     }
     //update occupancy for both
     pos->occupancy[BOTH] = (pos->occupancy[WHITE] | pos->occupancy[BLACK]);
+
+    nnue_refresh_accumulator(pos);
 }
 
 int ParseFEN(char *fen ,S_BOARD *pos){
