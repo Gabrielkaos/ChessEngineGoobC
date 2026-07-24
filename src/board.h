@@ -4,6 +4,12 @@
 
 #include "defs.h"
 
+/* Must match the l1_size (accumulator width) of the exported NNUE net.
+   Our trained net uses 256; if you ever retrain with a different L1
+   size this must be updated to match, or nnue_init() will refuse to
+   load (see nnue_loader.h). */
+#define NNUE_ACC_SIZE 256
+
 //Board structure
 typedef struct {
     //important board things
@@ -45,6 +51,14 @@ typedef struct {
 
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;
+
+    /* NNUE accumulator: fc1's output for the CURRENT position, kept in
+       sync incrementally by ClearPiece/AddPiece/MovePiece (makemove.c)
+       instead of being recomputed from scratch on every eval call.
+       Quantized fixed-point (see nnue_loader.h: scale = qa_scale from
+       the loaded weight file, typically 64). Only meaningful/maintained
+       while nnue_loaded is true. */
+    int32_t nnue_acc[NNUE_ACC_SIZE];
 
 } S_BOARD;
 
