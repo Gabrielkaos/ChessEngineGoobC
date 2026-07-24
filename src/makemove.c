@@ -1,5 +1,3 @@
-
-
 #include "stdio.h"
 #include "search.h"
 #include "bitboards.h"
@@ -9,6 +7,7 @@
 #include "init.h"
 #include "attacks.h"
 #include "validate.h"
+#include "nnue_loader.h"
 
 #define HASH_PCE(pce,sq) (pos->posKey ^= (pieceKeys[(pce)][(sq)]))
 #define HASH_SIDE (pos->posKey ^= (sideKey))
@@ -126,6 +125,7 @@ INLINE void ClearPiece(const int sq,S_BOARD *pos){
 
     //psqtmat
     pos->psqtmat -= PSQTMATTABLE[pce][sq];
+    nnue_update_remove(pos, pce, sq);
 
     CLRBIT(pos->occupancy[col],(sq));
     CLRBIT(pos->occupancy[BOTH],(sq));
@@ -149,6 +149,7 @@ INLINE void AddPiece(const int sq,S_BOARD *pos,const int pce){
 
     //psqt mat
     pos->psqtmat+=PSQTMATTABLE[pce][sq];
+    nnue_update_add(pos, pce, sq);
 
     SETBIT(pos->occupancy[col],(sq));
     SETBIT(pos->occupancy[BOTH],(sq));
@@ -182,6 +183,8 @@ INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
     pos->psqtmat += PSQTMATTABLE[pce][to]
                    -PSQTMATTABLE[pce][from]
                    -PSQTMATTABLE[to_pce][to];
+    nnue_update_move(pos, pce, from, to);
+    if (to_pce != EMPTY) nnue_update_remove(pos, to_pce, to);
 
     CLRBIT(pos->occupancy[col],(from));
     SETBIT(pos->occupancy[col],(to));
