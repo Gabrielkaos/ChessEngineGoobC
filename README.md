@@ -4,6 +4,7 @@ UCI playing Chess Engine written in C
 ## Update - July 24 2026
 I have lots of free time now I might add a serious nnue implementation or just small depending on what i can understand. Only on year till i graduate finally.
 I don't know if its bad to use ai for improving engines but i make sure that updates are not ai slop, i read the code and test them myself if it has elo gains :).
+Also if i am able to make nnue work, i don't think i'll be able to test if its actually making my engine stronger cause i dont have the heardware to train a network and its too expensive to rent some machines. hopefully everything works fine. this is all for the update :)
 
 ## GOOBGUI
 Just something I made in python for fun, based on Vice code
