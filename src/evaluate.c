@@ -1402,6 +1402,8 @@ int EvalPosition(S_BOARD *pos){
 
     if (pos->useNNUE && nnue_loaded) {
         int nn_score = nnue_eval(pos);
+        int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
+        StoreTTEval(pos, white_relative);
         return pos->useFiftyMoveRule ? nn_score * (100 - pos->fiftyMove) / 100 : nn_score;
     }
 
