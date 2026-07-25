@@ -300,7 +300,7 @@ int nnue_eval(const S_BOARD *pos) {
        in [0,1] via dividing by qa_scale, then clip. This is the ONLY
        place quantization scale matters — everything after this point
        is identical to the float model. */
-    float h1[512];
+    float h1[NNUE_ACC_SIZE];
     float inv_qa = 1.0f / (float)g_weights->qa_scale;
     for (int i = 0; i < g_weights->l1_size; i++) {
         h1[i] = clamp01f((float)pos->nnue_acc[i] * inv_qa);

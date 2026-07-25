@@ -8,7 +8,7 @@
    Our trained net uses 256; if you ever retrain with a different L1
    size this must be updated to match, or nnue_init() will refuse to
    load (see nnue_loader.h). */
-#define NNUE_ACC_SIZE 512
+#define NNUE_ACC_SIZE 256
 
 //Board structure
 typedef struct {
