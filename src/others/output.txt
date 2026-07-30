@@ -4,5 +4,5 @@ info depth 20 seldepth 31 score cp 18 time 2228 nodes 3338259 hashfull 258 pv e2
 bestmove e2e4
 
 ## Output of current code GOOB
-info depth 20 seldepth 31 score cp 18 time 1995 nodes 3338259 hashfull 258 pv e2e4 e7e6 d2d4 d7d5 b1c3 f8b4 e4e5 g8e7 d1g4 e8g8 g1f3 e7g6 f1d3 c7c5 c1g5 d8c7 e1g1 c5d4 f3d4 g6e5
+info depth 20 seldepth 30 score cp 27 time 2017 nodes 3263736 hashfull 219 pv e2e4 e7e5 g1f3 b8c6 b1c3 g8f6 f1c4 f8c5 d2d3 e8g8 e1g1 d7d6 c3a4 c5b6 c2c3 c8g4 h2h3 g4e6 c4e6 f7e6
 bestmove e2e4
