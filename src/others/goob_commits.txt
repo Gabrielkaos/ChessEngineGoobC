@@ -1591,7 +1591,7 @@
     ->modified nnue_loader.h to handle new trainer in pytorch
     ->Storing nnue eval in cache
     ->been improving the nnue_eval.h and .c
-    ->
+    ->reverted the gradual widening and scorewindow
     ->
     ->
 

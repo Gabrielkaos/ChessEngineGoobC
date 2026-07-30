@@ -693,102 +693,71 @@ int SearchPositionThread(void *data){
 //searches for each threads
 void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
-    int currentDepth, numberOfPvMoves, bestScore;
+    int currentDepth,numberOfPvMoves,bestScore;
 
-    workerthread->bestMove   = NOMOVE;
-    workerthread->ponderMove = NOMOVE;
+    workerthread->bestMove       = NOMOVE;
+    workerthread->ponderMove     = NOMOVE;
 
-    int alpha = -AB_BOUND;
-    int beta  =  AB_BOUND;
+    //aspiration window
+    int alpha          = -AB_BOUND;
+    int beta           = AB_BOUND;
 
-    for(currentDepth = 1; currentDepth <= MAXDEPTH; ++currentDepth){
 
-        // Only use aspiration windows from depth 5+ (shallow searches are cheap anyway)
-        if(!workerthread->info->bruteForceMode && currentDepth >= 5){
-            alpha = MAX(-AB_BOUND, bestScore - ScoreWindow);
-            beta  = MIN( AB_BOUND, bestScore + ScoreWindow);
-        } else {
-            alpha = -AB_BOUND;
-            beta  =  AB_BOUND;
+    //iterative deepening
+    for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
+
+        //call alpha beta to get score
+        bestScore=AlphaBeta(alpha,beta,currentDepth,workerthread->originalPos,workerthread->info, workerthread->ttable,workerthread->threadNumber,TRUE);
+        //say out of time for gui
+        if(workerthread->info->stopped==TRUE)break;
+
+        if(workerthread->threadNumber==0){
+            //get Pv Lines
+            numberOfPvMoves=getPvLine(currentDepth,workerthread->originalPos, workerthread->ttable);
+            //get best move from pv lines
+            workerthread->bestMove=workerthread->originalPos->pvArray[0];
+            workerthread->ponderMove = numberOfPvMoves > 1 ? workerthread->originalPos->pvArray[1] : NOMOVE;
         }
+        
 
-        int delta = ScoreWindow;
-
-        while(TRUE){
-            bestScore = AlphaBeta(alpha, beta, currentDepth,
-                                  workerthread->originalPos, workerthread->info,
-                                  workerthread->ttable, workerthread->threadNumber, TRUE);
-
-            if(workerthread->info->stopped == TRUE) break;
-
-            if(!workerthread->info->bruteForceMode){
-
-                // Fail low — widen alpha downward
-                if(bestScore <= alpha){
-                    beta  = (alpha + beta) / 2;   // bring beta down to midpoint
-                    alpha = MAX(-AB_BOUND, bestScore - delta);
-                    delta += delta / 2;            // grow delta by 50% each retry
-
-                    // Report the fail-low bound to GUI
-                    if(workerthread->threadNumber == 0){
-                        if((getTimeMs() - workerthread->info->starttime) > BoundReportTime){
-                            numberOfPvMoves = getPvLine(currentDepth, workerthread->originalPos, workerthread->ttable);
-                            workerthread->bestMove = workerthread->originalPos->pvArray[0];
-                            UciReport(workerthread->info, workerthread->ttable,
-                                      workerthread->originalPos, alpha, beta,
-                                      bestScore, currentDepth, numberOfPvMoves);
-                            fflush(stdout);
-                        }
+        //////////////////////////////////////////////////////////
+        //aspiration window
+        if(!workerthread->info->bruteForceMode){
+            if((bestScore <= alpha) || (bestScore >= beta)){
+                if (workerthread->threadNumber==0){
+                    if((getTimeMs()-workerthread->info->starttime)>BoundReportTime){
+                        UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
+                        fflush(stdout);
                     }
-                    continue;
                 }
-
-                // Fail high — widen beta upward
-                if(bestScore >= beta){
-                    beta  = MIN(AB_BOUND, bestScore + delta);
-                    delta += delta / 2;
-
-                    // Report the fail-high bound to GUI
-                    if(workerthread->threadNumber == 0){
-                        if((getTimeMs() - workerthread->info->starttime) > BoundReportTime){
-                            numberOfPvMoves = getPvLine(currentDepth, workerthread->originalPos, workerthread->ttable);
-                            workerthread->bestMove = workerthread->originalPos->pvArray[0];
-                            UciReport(workerthread->info, workerthread->ttable,
-                                      workerthread->originalPos, alpha, beta,
-                                      bestScore, currentDepth, numberOfPvMoves);
-                            fflush(stdout);
-                        }
-                    }
-                    continue;
-                }
+                alpha=-AB_BOUND;
+                beta=AB_BOUND;
+                continue;
             }
-
-            // Search succeeded within the window
-            break;
+            alpha=bestScore-ScoreWindow;
+            beta=bestScore+ScoreWindow;
         }
-
-        if(workerthread->info->stopped == TRUE) break;
-
-        if(workerthread->threadNumber == 0){
-            numberOfPvMoves = getPvLine(currentDepth, workerthread->originalPos, workerthread->ttable);
-            workerthread->bestMove    = workerthread->originalPos->pvArray[0];
-            workerthread->ponderMove  = numberOfPvMoves > 1
-                                      ? workerthread->originalPos->pvArray[1] : NOMOVE;
-            UciReport(workerthread->info, workerthread->ttable,
-                      workerthread->originalPos, alpha, beta,
-                      bestScore, currentDepth, numberOfPvMoves);
+        //////////////////////////////////////////////////////////
+        if (workerthread->threadNumber==0){
+            //reporting to interface
+            UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
             fflush(stdout);
+            
         }
-
-        // Depth/mate limits
+        //limits
         if(!workerthread->info->ponder && !workerthread->info->UciInfinite){
-            if(workerthread->info->depthSet && currentDepth >= workerthread->info->depth) break;
+            //limited by depth
+            if(workerthread->info->depthSet && currentDepth>=workerthread->info->depth)break;
+            //mate limits
             if(abs(bestScore) > ISMATE && workerthread->bestMove != NOMOVE){
-                int mateIn = (AB_BOUND - abs(bestScore) + 1) / 2;
+                int mateIn  = (AB_BOUND - abs(bestScore) + 1) / 2;
                 if(workerthread->info->mateLimit != -1){
-                    if(mateIn <= workerthread->info->mateLimit) break;
-                } else {
-                    if(currentDepth >= (mateIn * 2) + 10) break;
+                    if(mateIn <= workerthread->info->mateLimit)break;
+                }else{
+                    //mate break to avoid losing time
+                    if(currentDepth >= (mateIn*2) + 10){
+                        break;
+                    }
                 }
             }
         }
