@@ -7,7 +7,7 @@ void PickNextMove(int moveNum,S_MOVELIST *list){
     S_MOVE temp;
     int index=0;
     int bestNum=moveNum;
-    int bestScore=0;
+    int bestScore=list->moves[moveNum].score;
 
     for(index=moveNum;index<list->count;++index){
         if(list->moves[index].score>bestScore){

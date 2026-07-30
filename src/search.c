@@ -33,8 +33,8 @@ thrd_t workerThreads[MAXTHREADS];
 int LMRTable[MAXDEPTH][MAXPOSMOVES];
 void initLMRTable(){
     int i,j;
-    for(i=0;i<MAXDEPTH;++i){
-        for(j=0;j<MAXPOSMOVES;++j){
+    for(i=1;i<MAXDEPTH;++i){
+        for(j=1;j<MAXPOSMOVES;++j){
             LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
         }
     }

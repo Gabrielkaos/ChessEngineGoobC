@@ -1592,6 +1592,13 @@
     ->Storing nnue eval in cache
     ->been improving the nnue_eval.h and .c
     ->reverted the gradual widening and scorewindow
+
+    //CHECKPOINT code above outputs same as the released version
+
+    ->in movepicker initializing bestScore with moveNum not 0
+    -> in LMR table starting the the two loops with index 1 instead of 0
+    ->in recog.c using ethereal draw reps
+    ->
     ->
     ->
 

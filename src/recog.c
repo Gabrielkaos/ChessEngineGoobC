@@ -53,6 +53,6 @@ int recog_draw(const S_BOARD *pos){
     ASSERT(checkBoard(pos));
 
     return  drawFiftyMoveRule(pos)   ||
-            drawRepetition(pos)      ||
+            drawByRepetitionEthereals(pos)      ||
             drawByMaterial(pos);
 }
