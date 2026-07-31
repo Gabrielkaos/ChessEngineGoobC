@@ -271,6 +271,13 @@ static inline int8_t requantize_clipped_i8(int32_t acc, int q_scale) {
     return (int8_t)(v + 0.5f);
 }
 
+static inline int8_t requantize_ft_i8(int32_t acc, int qa_scale) {
+    float v = (float)acc * 127.0f / (float)qa_scale;
+    if (v < 0.0f) v = 0.0f;
+    if (v > 127.0f) v = 127.0f;
+    return (int8_t)(v + 0.5f);
+}
+
 static void *read_bytes(FILE *f, size_t nbytes, int *ok) {
     void *buf = malloc(nbytes);
     if (!buf) { *ok = 0; return NULL; }
@@ -592,8 +599,8 @@ int nnue_eval(const S_BOARD *pos) {
      * absolute-feature version, which had to flip for Black). */
     int8_t in_i8[2 * NNUE_ACC_SIZE];
     for (int i = 0; i < l1; i++) {
-        in_i8[i]      = requantize_clipped_i8(pos->nnue_acc[stm][i],   g_weights->qa_scale);
-        in_i8[l1 + i] = requantize_clipped_i8(pos->nnue_acc[other][i], g_weights->qa_scale);
+        in_i8[i]      = requantize_ft_i8(pos->nnue_acc[stm][i],   g_weights->qa_scale);
+        in_i8[l1 + i] = requantize_ft_i8(pos->nnue_acc[other][i], g_weights->qa_scale);
     }
 
     int8_t h2_i8[NNUE_L2L3_MAX], h3_i8[NNUE_L2L3_MAX];
