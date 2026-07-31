@@ -497,7 +497,7 @@ void nnue_update_move(S_BOARD *pos, int piece, int from, int to) {
     int us = pieceCol[piece];
     int them = us ^ 1;
 
-    if (pieceType[piece] == KING) {
+    if (pieceKing[piece]) {
         /* Own perspective: every feature depends on this king's square,
          * so no incremental delta exists — full rebuild. pos->pieces[]
          * already reflects the king at `to` (MovePiece updates it
