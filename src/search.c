@@ -732,6 +732,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
                 alpha=-AB_BOUND;
                 beta=AB_BOUND;
+                currentDepth--;
                 continue;
             }
             alpha=bestScore-ScoreWindow;

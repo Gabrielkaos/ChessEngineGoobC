@@ -1598,7 +1598,10 @@
     ->in movepicker initializing bestScore with moveNum not 0
     -> in LMR table starting the the two loops with index 1 instead of 0
     ->in recog.c using ethereal draw reps
-    ->
+
+    //CE_FIX_THREE
+
+    ->currentDepth-- added before continue in aspiration window
     ->
     ->
 
