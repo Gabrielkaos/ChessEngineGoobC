@@ -59,6 +59,9 @@ typedef struct {
        the loaded weight file, typically 64). Only meaningful/maintained
        while nnue_loaded is true. */
     int32_t nnue_acc[NNUE_ACC_SIZE];
+    
+    /* Modern NNUE state - HalfKP architecture with dual accumulators */
+    void *nnue_state;  /* Pointer to NNUE_State (defined in nnue.h) */
 
 } S_BOARD;
 
