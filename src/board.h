@@ -4,11 +4,11 @@
 
 #include "defs.h"
 
-/* Must match the l1_size (accumulator width) of the exported NNUE net.
-   Our trained net uses 256; if you ever retrain with a different L1
-   size this must be updated to match, or nnue_init() will refuse to
-   load (see nnue_loader.h). */
-#define NNUE_ACC_SIZE 512
+/* Must match the l1_size (per-perspective accumulator width) of the
+   exported NNUE net. Update this to match whatever L1 size you train
+   with — nnue_init() refuses to load a file whose l1_size disagrees
+   (see nnue_loader.h). */
+#define NNUE_ACC_SIZE 256
 
 //Board structure
 typedef struct {
@@ -52,13 +52,15 @@ typedef struct {
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;
 
-    /* NNUE accumulator: fc1's output for the CURRENT position, kept in
-       sync incrementally by ClearPiece/AddPiece/MovePiece (makemove.c)
-       instead of being recomputed from scratch on every eval call.
-       Quantized fixed-point (see nnue_loader.h: scale = qa_scale from
-       the loaded weight file, typically 64). Only meaningful/maintained
-       while nnue_loaded is true. */
-    int32_t nnue_acc[NNUE_ACC_SIZE];
+    /* NNUE accumulators: the feature-transformer output for the CURRENT
+       position, ONE PER PERSPECTIVE (index by WHITE/BLACK, see defs.h),
+       kept in sync incrementally by ClearPiece/AddPiece/MovePiece
+       (makemove.c) instead of being recomputed from scratch on every
+       eval call. Quantized fixed-point (see nnue_loader.h: scale =
+       qa_scale from the loaded weight file). Only meaningful/maintained
+       while nnue_loaded is true. See nnue_loader.h for why two
+       accumulators are needed (king-relative HalfKA-style features). */
+    int32_t nnue_acc[2][NNUE_ACC_SIZE];
 
 } S_BOARD;
 

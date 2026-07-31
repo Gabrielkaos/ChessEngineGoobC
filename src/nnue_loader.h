@@ -1,105 +1,136 @@
 /*
  * nnue_loader.h / nnue_loader.c
  * ==============================
- * NNUE inference for GOOB, with an INCREMENTAL accumulator and a fully
- * quantized forward pass (fc1..fc4 all integer, one float multiply at
- * the very end).
+ * NNUE inference for GOOB — Stockfish-style architecture:
  *
- * Architecture (absolute/White-fixed single perspective):
- *   Input  : 768 (12 piece planes x 64 squares, always White's frame of
- *            reference — no mirroring by side to move)
- *   L1     : QUANTIZED (int16 weights, int32 accumulator), clipped ReLU,
- *            requantized to int8 [0,127] for the fc2 dot product
- *   L2     : QUANTIZED (int8 weights, int32 dot product), clipped ReLU,
- *            requantized to int8 [0,127] for the fc3 dot product
- *   L3     : QUANTIZED (int8 weights, int32 dot product), clipped ReLU,
- *            requantized to int8 [0,127] for the fc4 dot product
- *   Output : QUANTIZED (int8 weights, int32 dot product) raw logit;
- *            converted to a float ONCE (not per-neuron) via a single
- *            combined scale, multiplied by cp_scale to get centipawns
- *            from WHITE's POV, then sign-flipped to side-to-move's POV
- *            to match how EvalPosition() uses it.
+ *   - King-relative "HalfKA" input features (own king square selects
+ *     which 768-wide feature block is active; features never change
+ *     meaning when OTHER pieces move, only when the corresponding
+ *     king moves), instead of the old single absolute/White-fixed
+ *     768-input encoding.
+ *   - TWO accumulators per position, one per perspective (the side to
+ *     move's own view of the board, and the other side's view),
+ *     instead of one. This is what "dual perspective" means: the same
+ *     physical position is encoded twice, once from each king's point
+ *     of view, and both encodings feed the network every eval.
+ *   - A single SHARED feature-transformer weight table is used for
+ *     BOTH perspectives (same weights, different feature indices per
+ *     perspective) — this is how Stockfish does it too, and it's why
+ *     the net generalizes across both colors from one weight set.
+ *   - Fully quantized integer forward pass (int16 feature transformer,
+ *     int8 L2/L3/output), one float multiply at the very end — same
+ *     quantization discipline as before, just applied to the new
+ *     architecture.
+ *   - Incremental accumulator maintenance for everything except king
+ *     moves; a king move forces a full rebuild of THAT king's own
+ *     perspective (see "WHY king moves are special" below), but the
+ *     OTHER perspective's accumulator is still updated incrementally
+ *     (from the other side's point of view, an enemy king moving is
+ *     just an ordinary piece moving).
  *
- * WHY incremental: pos->nnue_acc (see board.h) holds fc1's output for
- * the CURRENT position at all times. Instead of rebuilding it from all
- * 64 squares on every nnue_eval() call, it is kept in sync by three
- * small hooks placed in makemove.c's ClearPiece/AddPiece/MovePiece —
- * the exact same primitives that already incrementally maintain
- * pos->psqtmat. A full rebuild (nnue_refresh_accumulator) is only
- * needed when a position is set from scratch (ParseFEN/MirrorBoard,
- * wired via updateListMaterial in board.c) or when new weights are
- * loaded (wired in uci.c's EvalFile handler).
+ * ── Feature encoding ───────────────────────────────────────────────
+ * For perspective `us` (WHITE or BLACK) looking at a piece `pce` on
+ * square `sq`, with `us`'s king on `kingSq`:
  *
- * WHY absolute (not mirrored by side to move): mirroring flips the
- * ENTIRE input every ply, which makes incremental updates impossible
- * (there's no small delta between "White to move" features and "Black
- * to move" features — every one of the 768 inputs changes meaning).
- * Absolute features never change meaning, so a piece moving only ever
- * touches the 2 (or 3, for captures) feature columns for that piece.
+ *   relKing  = (us == WHITE) ? kingSq : MIRROR64(kingSq)
+ *   relSq    = (us == WHITE) ? sq     : MIRROR64(sq)
+ *   ptype    = pieceType(pce) - 1                    // 0..5 (P..K)
+ *   relColor = (pieceCol(pce) == us) ? 0 : 1          // own=0, enemy=1
+ *   ptc      = relColor * 6 + ptype                   // 0..11
+ *   feature  = (relKing * 12 + ptc) * 64 + relSq       // 0..49151
  *
- * WHY every layer is quantized (as of v4): fc1 is the layer the
- * accumulator touches, and fc2/fc3/fc4 are matmuls recomputed every
- * single nnue_eval() call. int8 x int8 -> int32 dot products vectorize
- * (see the AVX2 kernel below) and are cheaper than the equivalent
- * float32 matmul; quantizing fc3/fc4 too means the ONLY float op left
- * in the whole forward pass is a single multiply at the very end to
- * convert fc4's int32 accumulator to a centipawn value — everything
- * upstream of that stays in integer arithmetic, same as Stockfish.
+ * MIRROR64 (already used elsewhere in this engine for PSQT/eval
+ * mirroring) flips a square top-to-bottom (a1<->a8), which is exactly
+ * the standard "view the board as if you were Black" transform. This
+ * makes the feature space perspective-agnostic: "my king is on e1,
+ * my pawn is on e2" and "my king is on e8, my pawn is on e7" produce
+ * IDENTICAL feature indices from their respective owner's point of
+ * view, so one set of weights learns both colors.
  *
- * Fixed-point interface between layers: dequantizing/requantizing to
- * int8 [0,127] is done with one float divide/round per NEURON (not per
- * weight) at each layer boundary — negligible next to the O(in*out)
- * matmul it feeds — so there's no need for power-of-two scales or
- * bit-shift tricks; any qa/qb/qc/qd scale that avoids int16/int8
- * overflow works. fc4 is the one exception: it has no activation after
- * it (it produces the raw logit, not a [0,1] activation), so its int32
- * accumulator is converted straight to centipawns with a single
- * combined-scale multiply instead of a per-neuron requantize.
+ * Total input size = 64 king squares * 12 piece-types(inc. king) * 64
+ * squares = 49152 per perspective (this is "HalfKA": unlike the older
+ * "HalfKP" scheme, kings themselves ARE one of the 12 piece types, so
+ * both your own king and the enemy king get feature planes too).
  *
- * PERFORMANCE NOTE (fc1 accumulator layout): fc1.weight is stored on
- * disk neuron-major ([l1_size][input_size], see export_weights.py) but
- * is transposed to feature-major ([input_size][l1_size]) in memory
- * right after loading. nnue_update_add/remove/move touch this array on
- * every single make/unmake move, and feature-major layout makes each
- * of those calls walk one contiguous row of l1_size int16s instead of
- * striding input_size*sizeof(int16_t) bytes apart per element. This is
- * purely an in-memory representation change — the on-disk format and
- * export_weights.py's fc1 encoding are untouched. fc2/fc3/fc4 don't
- * need this: their forward pass loops per OUTPUT neuron over a
- * contiguous input row, which is already the disk layout.
+ * A further standard optimization — horizontal mirroring to fold the
+ * 64 king squares down to 32 shared buckets ("HalfKAv2_hm") — is not
+ * implemented here to keep this a manageable, correct first cut; it's
+ * a drop-in follow-up (halve NUM_KING_BUCKETS, mirror files d-h onto
+ * a-d in nnue_feature_index) once this net is trained and working.
  *
- * PERFORMANCE NOTE (SIMD): the int8 x int8 -> int32 dot product shared
- * by fc2/fc3/fc4 has an AVX2 kernel (nnue_dot_i8_avx2, 32 lanes/iter
- * via _mm256_maddubs_epi16 + _mm256_madd_epi16) chosen at runtime via
- * __builtin_cpu_supports, falling back to a portable scalar loop on
- * older x86 CPUs and non-x86 platforms. Compiled with
- * __attribute__((target("avx2"))) so it's safe to build into a
- * normal (non -mavx2) translation unit.
+ * ── WHY king moves are special ─────────────────────────────────────
+ * Every one of a perspective's 49152 features is implicitly indexed
+ * by "where is MY king", so when that king moves, relKing changes for
+ * EVERY currently-active feature in that perspective at once — there
+ * is no small incremental delta, unlike an ordinary piece move (which
+ * only ever touches 1-2 feature columns). So on a king move:
+ *   - the MOVING side's own-perspective accumulator is fully rebuilt
+ *     from the current board (O(32) piece additions, not O(1), but
+ *     this only happens on king moves, not every move)
+ *   - the OTHER side's perspective accumulator is updated the normal
+ *     incremental way, because from the other side's point of view
+ *     their own king hasn't moved — the enemy king is just another
+ *     piece changing squares.
+ * This mirrors exactly how Stockfish's NNUE handles king moves
+ * (accumulator refresh on own-king move, incremental otherwise).
  *
- * Weight file layout v4 (all little-endian, ON DISK — see nnue_init()
- * for the in-memory transpose applied to fc1.weight after reading it):
+ * ── Network ────────────────────────────────────────────────────────
+ *   FeatureTransformer (shared weights, per-perspective accumulator):
+ *     acc[us][j] = bias[j] + sum over active features f of W[f][j]
+ *   Both accumulators are clipped-ReLU'd and requantized to int8
+ *   [0,127], then CONCATENATED as [stm_acc | other_acc] (side-to-move
+ *   first) into a single 2*L1-wide int8 vector. Putting the mover's
+ *   own view first is what makes the network's output naturally
+ *   side-to-move-relative — no separate sign flip needed at the end,
+ *   unlike the old absolute-feature version.
+ *   L2: QUANTIZED (int8 weights, int32 dot), clipped ReLU -> int8
+ *   L3: QUANTIZED (int8 weights, int32 dot), clipped ReLU -> int8
+ *   Output: QUANTIZED (int8 weights, int32 dot) raw logit, converted
+ *   to centipawns with ONE float multiply at the very end. Already
+ *   side-to-move-relative (see above), matching how EvalPosition()
+ *   in evaluate.c uses the result.
+ *
+ * ── Performance notes ──────────────────────────────────────────────
+ * fc/feature-transformer weight table is stored feature-major on disk
+ * AND in memory ([feature][l1_size], contiguous per feature) — this
+ * is a NEW file format (v5) designed around the update hot path from
+ * day one, so unlike the old v4 loader there's no disk->memory
+ * transpose step needed at load time.
+ *
+ * The int8 x int8 -> int32 dot product shared by L2/L3/output has a
+ * runtime-dispatched AVX2 kernel (32 lanes/iter via
+ * _mm256_maddubs_epi16 + _mm256_madd_epi16), falling back to a
+ * portable scalar loop on non-AVX2 CPUs — unchanged from before,
+ * still the highest-value SIMD target since these 3 matmuls run on
+ * every single nnue_eval() call (the feature transformer only touches
+ * a couple of rows per move, so it doesn't need the same treatment).
+ *
+ * ── Weight file layout v5 (all little-endian) ──────────────────────
  *   char[4]  magic = "NNUE"
- *   int32    version = 4
- *   int32    input_size (768)
- *   int32    l1_size (MUST equal NNUE_ACC_SIZE in board.h)
+ *   int32    version = 5
+ *   int32    king_squares      (MUST be 64 — see header comment above
+ *                                about the HalfKAv2_hm follow-up)
+ *   int32    l1_size           (MUST equal NNUE_ACC_SIZE in board.h)
  *   int32    l2_size
  *   int32    l3_size
  *   float32  cp_scale
- *   int32    qa_scale             (fc1 fixed-point scale)
- *   int32    qb_scale             (fc2 fixed-point scale)
- *   int32    qc_scale             (fc3 fixed-point scale)
- *   int32    qd_scale             (fc4 fixed-point scale)
- *   int16[l1_size * input_size]   fc1.weight (quantized)
- *   int32[l1_size]                fc1.bias   (quantized)
- *   int8 [l2_size * l1_size]      fc2.weight (quantized)
- *   int32[l2_size]                fc2.bias   (quantized, scale = 127*qb_scale)
- *   int8 [l3_size * l2_size]      fc3.weight (quantized)
- *   int32[l3_size]                fc3.bias   (quantized, scale = 127*qc_scale)
- *   int8 [1 * l3_size]            fc4.weight (quantized)
- *   int32[1]                      fc4.bias   (quantized, scale = 127*qd_scale)
+ *   int32    qa_scale                (feature-transformer scale)
+ *   int32    qb_scale                (L2 scale)
+ *   int32    qc_scale                (L3 scale)
+ *   int32    qd_scale                (output scale)
+ *   int16[king_squares*12*64 * l1_size]   ft.weight  (feature-major,
+ *                                                      quantized)
+ *   int32[l1_size]                        ft.bias    (quantized)
+ *   int8 [l2_size * (2*l1_size)]          l2.weight  (quantized)
+ *   int32[l2_size]                        l2.bias    (scale=127*qb_scale)
+ *   int8 [l3_size * l2_size]              l3.weight  (quantized)
+ *   int32[l3_size]                        l3.bias    (scale=127*qc_scale)
+ *   int8 [1 * l3_size]                    out.weight (quantized)
+ *   int32[1]                              out.bias   (scale=127*qd_scale)
  *
- * v3 files (float32 fc3/fc4) are no longer accepted — re-export with
- * the current export_weights.py to get a v4 file.
+ * v4 (absolute single-perspective) files are no longer accepted — you
+ * need a new training/export pipeline that emits the v5 layout above;
+ * this loader only implements the C-side inference/update code.
  */
 
 #ifndef NNUE_LOADER_H
@@ -108,27 +139,33 @@
 #include "defs.h"
 #include "board.h"
 
-/* ── Public API ─────────────────────────────────────────────────────────── */
+/* ── Public API (unchanged signatures — callers in makemove.c/board.c/
+ * uci.c/evaluate.c need no changes) ───────────────────────────────── */
 
 /* Load weights from binary file. Returns 1 on success, 0 on failure.
- * Does NOT touch any position's accumulator — call
+ * Does NOT touch any position's accumulators — call
  * nnue_refresh_accumulator() afterward for whatever position is
  * currently set up (uci.c already does this). */
 int nnue_init(const char *path);
 
-/* Full rebuild of pos->nnue_acc from pos->pieces, from scratch. Call
- * whenever a position is set up from raw FEN/mirrored data rather than
- * via incremental makeMove/takeMove (board.c already does this from
- * updateListMaterial), or right after loading new weights. */
+/* Full rebuild of pos->nnue_acc[WHITE] and pos->nnue_acc[BLACK] from
+ * pos->pieces, from scratch. Call whenever a position is set up from
+ * raw FEN/mirrored data rather than via incremental makeMove/takeMove
+ * (board.c already does this from updateListMaterial), or right after
+ * loading new weights. */
 void nnue_refresh_accumulator(S_BOARD *pos);
 
 /* Incremental accumulator maintenance — called from makemove.c's
- * ClearPiece/AddPiece/MovePiece. No-ops if !nnue_loaded or piece==EMPTY. */
+ * ClearPiece/AddPiece/MovePiece. No-ops if !nnue_loaded or piece==EMPTY.
+ * Internally touches BOTH perspectives (every piece is visible from
+ * both sides' feature sets); nnue_update_move additionally triggers a
+ * full own-perspective refresh when `piece` is a king (see header
+ * comment "WHY king moves are special"). */
 void nnue_update_add(S_BOARD *pos, int piece, int sq);
 void nnue_update_remove(S_BOARD *pos, int piece, int sq);
 void nnue_update_move(S_BOARD *pos, int piece, int from, int to);
 
-/* Evaluate board position using the CURRENT accumulator (must already
+/* Evaluate board position using the CURRENT accumulators (must already
  * be in sync — see above). Returns centipawns from the SIDE-TO-MOVE's
  * POV (matches how EvalPosition() in evaluate.c uses the result).
  * Requires nnue_init() to have been called first. */
@@ -151,17 +188,8 @@ extern int nnue_loaded;
 #include <string.h>
 #include <math.h>
 
-/* ── SIMD platform detection for the int8 dot product ─────────────────────
- * fc2/fc3/fc4 all share the same int8 x int8 -> int32 dot product, and
- * together they're the matmuls recomputed every single nnue_eval() call,
- * so this is the highest-value target for vectorization. We use
- * GCC/Clang function-multiversioning-style dispatch: the AVX2 kernel is
- * compiled with __attribute__((target("avx2"))) so it can live in a
- * normally-compiled translation unit (no -mavx2 needed for the whole
- * file/project), and we pick it at runtime via __builtin_cpu_supports so
- * the binary still runs correctly on older/non-AVX2 x86 CPUs and on
- * non-x86 platforms (ARM, etc.) — those just fall back to the portable
- * scalar path below. */
+/* ── SIMD platform detection for the int8 dot product (unchanged from
+ * before — see header comment) ────────────────────────────────────── */
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #define NNUE_ARCH_X86 1
 #endif
@@ -171,9 +199,20 @@ extern int nnue_loaded;
 #define NNUE_HAVE_AVX2_DISPATCH 1
 #endif
 
+/* ── Feature-space constants ───────────────────────────────────────── */
+#define NNUE_KING_SQUARES   64
+#define NNUE_PIECE_TYPES    6   /* P,N,B,R,Q,K */
+#define NNUE_PTC_COUNT      12  /* own/enemy x 6 piece types */
+#define NNUE_FEATURES_PER_KING (NNUE_PTC_COUNT * 64)              /* 768 */
+#define NNUE_NUM_FEATURES  ((size_t)NNUE_KING_SQUARES * NNUE_FEATURES_PER_KING) /* 49152 */
+
+/* fc2/fc3 fixed buffer caps (same convention as before) */
+#define NNUE_L2L3_MAX 64
+
 typedef struct {
-    int input_size;
-    int l1_size;
+    int king_squares;   /* must be NNUE_KING_SQUARES (64) */
+    int l1_size;         /* per-perspective accumulator width */
+    int l2_in_size;       /* = 2 * l1_size (concatenated perspectives) */
     int l2_size;
     int l3_size;
     float cp_scale;
@@ -182,39 +221,49 @@ typedef struct {
     int qc_scale;
     int qd_scale;
 
-    int16_t *fc1_w; /* [input_size][l1_size], quantized — TRANSPOSED in memory
-                        from the on-disk [l1_size][input_size] layout, so
-                        row = fc1_w + feature*l1_size is contiguous. This is
-                        what nnue_update_add/remove/move walk on every
-                        make/unmake move, so contiguous access here matters
-                        far more than in the eval-time matmuls below. */
-    int32_t *fc1_b; /* [l1_size], quantized */
-    int8_t  *fc2_w; /* [l2_size][l1_size], quantized */
-    int32_t *fc2_b; /* [l2_size], quantized (scale = 127*qb_scale) */
-    int8_t  *fc3_w; /* [l3_size][l2_size], quantized */
-    int32_t *fc3_b; /* [l3_size], quantized (scale = 127*qc_scale) */
-    int8_t  *fc4_w; /* [1][l3_size], quantized (single output neuron) */
-    int32_t  fc4_b;  /* scalar, quantized (scale = 127*qd_scale) */
+    int16_t *ft_w; /* [NNUE_NUM_FEATURES][l1_size], feature-major, quantized.
+                       Shared by both perspectives — see header comment.
+                       Already contiguous-per-feature on disk in v5, no
+                       transpose needed (unlike the old v4 format). */
+    int32_t *ft_b; /* [l1_size], quantized */
+    int8_t  *l2_w; /* [l2_size][2*l1_size], quantized */
+    int32_t *l2_b; /* [l2_size], quantized (scale = 127*qb_scale) */
+    int8_t  *l3_w; /* [l3_size][l2_size], quantized */
+    int32_t *l3_b; /* [l3_size], quantized (scale = 127*qc_scale) */
+    int8_t  *out_w; /* [1][l3_size], quantized */
+    int32_t  out_b;  /* scalar, quantized (scale = 127*qd_scale) */
 
-    /* Precomputed once at load time: cp_scale / (127 * qd_scale).
-     * fc4's raw int32 accumulator times this single float gives
-     * centipawns directly — the only float op in the whole eval. */
-    float fc4_combined_scale;
+    /* Precomputed once at load time: cp_scale / (127 * qd_scale). The
+     * output layer's raw int32 accumulator times this single float
+     * gives centipawns directly — the only float op in the whole
+     * eval, same discipline as before. */
+    float out_combined_scale;
 } NNUE_WEIGHTS;
 
 /* ── Globals ────────────────────────────────────────────────────────────── */
 static NNUE_WEIGHTS *g_weights = NULL;
 int nnue_loaded = 0;
 
+/* ── Feature indexing ──────────────────────────────────────────────────── */
+
+/* See the big header comment for the derivation. `us` is the
+ * perspective (WHITE or BLACK), `kingSq` is THAT perspective's own
+ * king square (caller-supplied — see the king-move special case in
+ * nnue_update_move for why this can't always just be read straight
+ * off pos->bitboards). */
+static inline size_t nnue_feature_index(int us, int kingSq, int pce, int sq) {
+    int relKing  = (us == WHITE) ? kingSq : MIRROR64(kingSq);
+    int relSq    = (us == WHITE) ? sq     : MIRROR64(sq);
+    int ptype    = pieceType[pce] - 1;                    /* 0..5 */
+    int relColor = (pieceCol[pce] == us) ? 0 : 1;          /* own=0 enemy=1 */
+    int ptc      = relColor * NNUE_PIECE_TYPES + ptype;    /* 0..11 */
+    return ((size_t)relKing * NNUE_PTC_COUNT + ptc) * 64 + relSq;
+}
+
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
 /* Undo a layer's (127*q_scale) combined fixed-point scale and clip to
- * [0,127] in one step: given acc = round(true_value * 127 * q_scale),
- * returns round(clamp01(true_value) * 127) as an int8. Shared by every
- * quantized layer boundary (fc1's accumulator -> h1_i8, fc2 -> h2_i8,
- * fc3 -> h3_i8) since they all use the same bias/output scale
- * convention (see export_weights.py). One float divide per neuron —
- * negligible next to the O(in*out) matmul it feeds. */
+ * [0,127] in one step (same convention as before, unchanged). */
 static inline int8_t requantize_clipped_i8(int32_t acc, int q_scale) {
     float v = (float)acc / (float)q_scale;
     if (v < 0.0f) v = 0.0f;
@@ -235,10 +284,10 @@ static void *read_bytes(FILE *f, size_t nbytes, int *ok) {
 
 static void nnue_free_weights(void) {
     if (!g_weights) return;
-    free(g_weights->fc1_w); free(g_weights->fc1_b);
-    free(g_weights->fc2_w); free(g_weights->fc2_b);
-    free(g_weights->fc3_w); free(g_weights->fc3_b);
-    free(g_weights->fc4_w);
+    free(g_weights->ft_w); free(g_weights->ft_b);
+    free(g_weights->l2_w); free(g_weights->l2_b);
+    free(g_weights->l3_w); free(g_weights->l3_b);
+    free(g_weights->out_w);
     free(g_weights);
     g_weights = NULL;
 }
@@ -252,13 +301,13 @@ int nnue_init(const char *path) {
     }
 
     char magic[4];
-    int32_t version, input_size, l1, l2, l3, qa_scale, qb_scale, qc_scale, qd_scale;
+    int32_t version, king_squares, l1, l2, l3, qa_scale, qb_scale, qc_scale, qd_scale;
     float cp_scale;
 
     int ok = 1;
     ok &= fread(magic, 1, 4, f) == 4 && memcmp(magic, "NNUE", 4) == 0;
     ok &= fread(&version, sizeof(int32_t), 1, f) == 1;
-    ok &= fread(&input_size, sizeof(int32_t), 1, f) == 1;
+    ok &= fread(&king_squares, sizeof(int32_t), 1, f) == 1;
     ok &= fread(&l1, sizeof(int32_t), 1, f) == 1;
     ok &= fread(&l2, sizeof(int32_t), 1, f) == 1;
     ok &= fread(&l3, sizeof(int32_t), 1, f) == 1;
@@ -268,11 +317,20 @@ int nnue_init(const char *path) {
     ok &= fread(&qc_scale, sizeof(int32_t), 1, f) == 1;
     ok &= fread(&qd_scale, sizeof(int32_t), 1, f) == 1;
 
-    if (!ok || version != 4) {
+    if (!ok || version != 5) {
         fprintf(stderr, "[NNUE] Bad header or unsupported version in: %s "
-                         "(expected version 4 — retrain/re-export with the "
-                         "current export_weights.py; v3 files with float32 "
-                         "fc3/fc4 are no longer accepted)\n", path);
+                         "(expected version 5 — a dual-perspective HalfKA "
+                         "net; v4 absolute single-perspective files are no "
+                         "longer accepted)\n", path);
+        fclose(f);
+        return 0;
+    }
+
+    if (king_squares != NNUE_KING_SQUARES) {
+        fprintf(stderr, "[NNUE] king_squares (%d) != %d — this loader only "
+                         "supports the full 64-king-square HalfKA layout "
+                         "(no horizontal-mirror king buckets yet).\n",
+                king_squares, NNUE_KING_SQUARES);
         fclose(f);
         return 0;
     }
@@ -285,12 +343,21 @@ int nnue_init(const char *path) {
         return 0;
     }
 
+    if (l2 > NNUE_L2L3_MAX || l3 > NNUE_L2L3_MAX) {
+        fprintf(stderr, "[NNUE] l2_size/l3_size (%d/%d) exceed the fixed "
+                         "eval buffer cap (%d) — raise NNUE_L2L3_MAX.\n",
+                l2, l3, NNUE_L2L3_MAX);
+        fclose(f);
+        return 0;
+    }
+
     nnue_free_weights(); /* drop any previously loaded net */
     g_weights = (NNUE_WEIGHTS *)calloc(1, sizeof(NNUE_WEIGHTS));
     if (!g_weights) { fclose(f); return 0; }
 
-    g_weights->input_size = input_size;
+    g_weights->king_squares = king_squares;
     g_weights->l1_size = l1;
+    g_weights->l2_in_size = 2 * l1;
     g_weights->l2_size = l2;
     g_weights->l3_size = l3;
     g_weights->cp_scale = cp_scale;
@@ -299,39 +366,16 @@ int nnue_init(const char *path) {
     g_weights->qc_scale = qc_scale;
     g_weights->qd_scale = qd_scale;
 
-    /* fc1.weight is stored on disk as [l1_size][input_size] (neuron-major),
-     * matching export_weights.py — no need to touch the exporter. We read
-     * it into a scratch buffer, then transpose it into [input_size][l1_size]
-     * (feature-major) for the actual runtime copy. See the big header
-     * comment for why this matters (incremental update hot path). */
-    int16_t *fc1_w_diskorder = (int16_t *)read_bytes(f, sizeof(int16_t) * (size_t)l1 * input_size, &ok);
-    g_weights->fc1_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l1, &ok);
-    g_weights->fc2_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l2 * l1, &ok);
-    g_weights->fc2_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l2, &ok);
-    g_weights->fc3_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l3 * l2, &ok);
-    g_weights->fc3_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l3, &ok);
-    g_weights->fc4_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l3, &ok);
-    ok &= fread(&g_weights->fc4_b, sizeof(int32_t), 1, f) == 1;
+    g_weights->ft_w = (int16_t *)read_bytes(f, sizeof(int16_t) * NNUE_NUM_FEATURES * (size_t)l1, &ok);
+    g_weights->ft_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l1, &ok);
+    g_weights->l2_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l2 * (size_t)(2 * l1), &ok);
+    g_weights->l2_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l2, &ok);
+    g_weights->l3_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l3 * l2, &ok);
+    g_weights->l3_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l3, &ok);
+    g_weights->out_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l3, &ok);
+    ok &= fread(&g_weights->out_b, sizeof(int32_t), 1, f) == 1;
 
     fclose(f);
-
-    if (ok && fc1_w_diskorder) {
-        g_weights->fc1_w = (int16_t *)malloc(sizeof(int16_t) * (size_t)l1 * input_size);
-        if (!g_weights->fc1_w) {
-            ok = 0;
-        } else {
-            for (int i = 0; i < l1; i++) {
-                const int16_t *src_row = fc1_w_diskorder + (size_t)i * input_size;
-                for (int col = 0; col < input_size; col++) {
-                    /* dst[col][i] = src[i][col] */
-                    g_weights->fc1_w[(size_t)col * l1 + i] = src_row[col];
-                }
-            }
-        }
-    } else {
-        ok = 0;
-    }
-    free(fc1_w_diskorder);
 
     if (!ok) {
         fprintf(stderr, "[NNUE] Weight file truncated or corrupt: %s\n", path);
@@ -340,67 +384,132 @@ int nnue_init(const char *path) {
         return 0;
     }
 
-    g_weights->fc4_combined_scale = cp_scale / (127.0f * (float)qd_scale);
+    g_weights->out_combined_scale = cp_scale / (127.0f * (float)qd_scale);
 
     nnue_loaded = 1;
-    printf("[NNUE] v4 weights loaded from %s (in=%d l1=%d l2=%d l3=%d "
-           "scale=%.1f qa=%d qb=%d qc=%d qd=%d)\n", path, input_size, l1, l2, l3,
-           cp_scale, qa_scale, qb_scale, qc_scale, qd_scale);
+    printf("[NNUE] v5 (dual-perspective HalfKA) weights loaded from %s "
+           "(features=%zu l1=%d l2=%d l3=%d scale=%.1f qa=%d qb=%d qc=%d qd=%d)\n",
+           path, NNUE_NUM_FEATURES, l1, l2, l3, cp_scale, qa_scale, qb_scale, qc_scale, qd_scale);
     return 1;
 }
 
 /* ── Incremental accumulator maintenance ───────────────────────────────── */
 
-void nnue_update_add(S_BOARD *pos, int piece, int sq) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    int col = (piece - 1) * 64 + sq;
-    int l1_size = g_weights->l1_size;
-    /* fc1_w is feature-major: this row is l1_size contiguous int16s. */
-    const int16_t *row = g_weights->fc1_w + (size_t)col * l1_size;
-    for (int i = 0; i < l1_size; i++) {
-        pos->nnue_acc[i] += (int32_t)row[i];
+/* Rebuilds pos->nnue_acc[us] from scratch using pos->pieces[], with an
+ * EXPLICITLY supplied king square for `us` rather than reading it off
+ * pos->bitboards. This matters in exactly one caller: the king-move
+ * branch of nnue_update_move, where pos->pieces[] already reflects the
+ * king's NEW square but pos->bitboards[wK/bK] has not been updated yet
+ * (MovePiece updates the board array before the bitboard — see
+ * makemove.c). Everywhere else (nnue_refresh_accumulator, called only
+ * when the whole board — bitboards included — is already fully and
+ * consistently set up) it's safe to pass the bitboard-derived king
+ * square, and nnue_refresh_accumulator does exactly that. */
+static void nnue_refresh_perspective_ks(S_BOARD *pos, int us, int kingSq) {
+    int l1 = g_weights->l1_size;
+    int32_t *acc = pos->nnue_acc[us];
+    for (int i = 0; i < l1; i++) acc[i] = g_weights->ft_b[i];
+    for (int sq = 0; sq < 64; sq++) {
+        int p = pos->pieces[sq];
+        if (p == EMPTY) continue;
+        size_t idx = nnue_feature_index(us, kingSq, p, sq);
+        const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
+        for (int i = 0; i < l1; i++) acc[i] += (int32_t)row[i];
     }
 }
 
-void nnue_update_remove(S_BOARD *pos, int piece, int sq) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    int col = (piece - 1) * 64 + sq;
-    int l1_size = g_weights->l1_size;
-    const int16_t *row = g_weights->fc1_w + (size_t)col * l1_size;
-    for (int i = 0; i < l1_size; i++) {
-        pos->nnue_acc[i] -= (int32_t)row[i];
-    }
-}
-
-void nnue_update_move(S_BOARD *pos, int piece, int from, int to) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    int l1_size = g_weights->l1_size;
-    int col_from = (piece - 1) * 64 + from;
-    int col_to   = (piece - 1) * 64 + to;
-    const int16_t *row_from = g_weights->fc1_w + (size_t)col_from * l1_size;
-    const int16_t *row_to   = g_weights->fc1_w + (size_t)col_to   * l1_size;
-    for (int i = 0; i < l1_size; i++) {
-        pos->nnue_acc[i] += (int32_t)row_to[i] - (int32_t)row_from[i];
-    }
+static inline int nnue_king_sq(const S_BOARD *pos, int us) {
+    return LSBINDEX(pos->bitboards[us == WHITE ? wK : bK]);
 }
 
 void nnue_refresh_accumulator(S_BOARD *pos) {
     if (!nnue_loaded) return;
-    for (int i = 0; i < g_weights->l1_size; i++) {
-        pos->nnue_acc[i] = g_weights->fc1_b[i];
-    }
-    for (int sq = 0; sq < 64; sq++) {
-        int p = pos->pieces[sq];
-        if (p == EMPTY) continue;
-        nnue_update_add(pos, p, sq);
+    nnue_refresh_perspective_ks(pos, WHITE, nnue_king_sq(pos, WHITE));
+    nnue_refresh_perspective_ks(pos, BLACK, nnue_king_sq(pos, BLACK));
+}
+
+/* Single-perspective incremental add/remove/move, shared by the public
+ * nnue_update_* functions below (each of which applies these to BOTH
+ * perspectives — every piece is visible from both sides' feature
+ * sets). `viewer`'s own king square is read from pos->bitboards, which
+ * is always valid here: kings themselves are never passed to these
+ * per-perspective helpers (add/remove never touch a king — see
+ * nnue_update_add/remove's own-king note below — and the "other
+ * perspective" call from nnue_update_move is for a piece that is NOT
+ * `viewer`'s own king by construction). */
+static inline void nnue_add_one(S_BOARD *pos, int viewer, int pce, int sq) {
+    int l1 = g_weights->l1_size;
+    int kingSq = nnue_king_sq(pos, viewer);
+    size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
+    const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
+    int32_t *acc = pos->nnue_acc[viewer];
+    for (int i = 0; i < l1; i++) acc[i] += (int32_t)row[i];
+}
+
+static inline void nnue_remove_one(S_BOARD *pos, int viewer, int pce, int sq) {
+    int l1 = g_weights->l1_size;
+    int kingSq = nnue_king_sq(pos, viewer);
+    size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
+    const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
+    int32_t *acc = pos->nnue_acc[viewer];
+    for (int i = 0; i < l1; i++) acc[i] -= (int32_t)row[i];
+}
+
+static inline void nnue_move_one(S_BOARD *pos, int viewer, int pce, int from, int to) {
+    int l1 = g_weights->l1_size;
+    int kingSq = nnue_king_sq(pos, viewer);
+    size_t idx_from = nnue_feature_index(viewer, kingSq, pce, from);
+    size_t idx_to   = nnue_feature_index(viewer, kingSq, pce, to);
+    const int16_t *row_from = g_weights->ft_w + idx_from * (size_t)l1;
+    const int16_t *row_to   = g_weights->ft_w + idx_to   * (size_t)l1;
+    int32_t *acc = pos->nnue_acc[viewer];
+    for (int i = 0; i < l1; i++) acc[i] += (int32_t)row_to[i] - (int32_t)row_from[i];
+}
+
+void nnue_update_add(S_BOARD *pos, int piece, int sq) {
+    if (!nnue_loaded || piece == EMPTY) return;
+    /* Kings are only ever placed via nnue_refresh_accumulator (board
+     * setup) in this engine — see makemove.c, kings always MOVE, never
+     * get individually cleared+re-added. Both perspectives' king
+     * squares are therefore always safely readable from bitboards
+     * here. */
+    nnue_add_one(pos, WHITE, piece, sq);
+    nnue_add_one(pos, BLACK, piece, sq);
+}
+
+void nnue_update_remove(S_BOARD *pos, int piece, int sq) {
+    if (!nnue_loaded || piece == EMPTY) return;
+    /* Kings are never captured/cleared in legal chess, so `piece` here
+     * is never a king — same reasoning as nnue_update_add. */
+    nnue_remove_one(pos, WHITE, piece, sq);
+    nnue_remove_one(pos, BLACK, piece, sq);
+}
+
+void nnue_update_move(S_BOARD *pos, int piece, int from, int to) {
+    if (!nnue_loaded || piece == EMPTY) return;
+    int us = pieceCol[piece];
+    int them = us ^ 1;
+
+    if (pieceType[piece] == KING) {
+        /* Own perspective: every feature depends on this king's square,
+         * so no incremental delta exists — full rebuild. pos->pieces[]
+         * already reflects the king at `to` (MovePiece updates it
+         * before calling here), so pass `to` explicitly instead of
+         * trusting pos->bitboards (still stale at this point — see
+         * nnue_refresh_perspective_ks's comment). */
+        nnue_refresh_perspective_ks(pos, us, to);
+        /* Other perspective: from their point of view their own king
+         * hasn't moved, so the enemy king moving is just an ordinary
+         * piece changing squares — incremental update is valid. */
+        nnue_move_one(pos, them, piece, from, to);
+    } else {
+        nnue_move_one(pos, us, piece, from, to);
+        nnue_move_one(pos, them, piece, from, to);
     }
 }
 
-/* ── int8 dot product kernels, shared by fc2/fc3/fc4 ──────────────────────
- * a[] (the incoming activation) is always in [0,127] (a clipped-ReLU
- * activation requantized to int8 — see requantize_clipped_i8), so it's
- * safe to reinterpret as unsigned bytes. b[] is the signed int8 weight
- * row for one output neuron. */
+/* ── int8 dot product kernels, shared by L2/L3/output (unchanged from
+ * before — see header comment) ────────────────────────────────────── */
 
 static int32_t nnue_dot_i8_scalar(const int8_t *a, const int8_t *b, int n) {
     int32_t acc = 0;
@@ -411,12 +520,6 @@ static int32_t nnue_dot_i8_scalar(const int8_t *a, const int8_t *b, int n) {
 }
 
 #ifdef NNUE_HAVE_AVX2_DISPATCH
-/* Processes 32 int8 lanes per iteration:
- *   _mm256_maddubs_epi16(u8, s8) -> 16 int16 partial sums (adjacent pairs)
- *   _mm256_madd_epi16(., ones)   -> 8 int32 partial sums (adjacent pairs)
- * accumulated across the loop, then horizontally reduced once at the end.
- * No overflow risk: int8 x int8 products are at most ±127*128, and the
- * maddubs pairwise sum stays comfortably inside the int16 range. */
 __attribute__((target("avx2")))
 static int32_t nnue_dot_i8_avx2(const int8_t *a, const int8_t *b, int n) {
     __m256i acc = _mm256_setzero_si256();
@@ -435,15 +538,10 @@ static int32_t nnue_dot_i8_avx2(const int8_t *a, const int8_t *b, int n) {
     sum128 = _mm_hadd_epi32(sum128, sum128);
     sum128 = _mm_hadd_epi32(sum128, sum128);
     int32_t sum = _mm_cvtsi128_si32(sum128);
-    /* tail: n isn't guaranteed to be a multiple of 32 (l1/l2/l3 sizes
-     * are architecture choices, not tuned to vector width) */
     sum += nnue_dot_i8_scalar(a + i, b + i, n - i);
     return sum;
 }
 
-/* Detected once, lazily, and cached. __builtin_cpu_init() is called first
- * since older GCC versions require it before __builtin_cpu_supports is
- * reliable. */
 static int cpu_supports_avx2(void) {
     static int cached = -1;
     if (cached < 0) {
@@ -454,8 +552,6 @@ static int cpu_supports_avx2(void) {
 }
 #endif /* NNUE_HAVE_AVX2_DISPATCH */
 
-/* Dispatches to AVX2 when available (x86 + runtime support), else the
- * portable scalar loop. Used by every quantized layer's forward pass. */
 static inline int32_t nnue_dot_i8(const int8_t *a, const int8_t *b, int n) {
 #ifdef NNUE_HAVE_AVX2_DISPATCH
     if (cpu_supports_avx2()) return nnue_dot_i8_avx2(a, b, n);
@@ -465,11 +561,6 @@ static inline int32_t nnue_dot_i8(const int8_t *a, const int8_t *b, int n) {
 
 /* ── Quantized layer forward passes ────────────────────────────────────── */
 
-/* out_i8[i] = requantize_clipped_i8( bias[i] + dot(in_i8, w_row_i), q_scale )
- * for i in [0,out_size). w is [out_size][in_size], row-major — already
- * contiguous per output neuron on disk, no transpose needed (unlike
- * fc1's accumulator-update layout). Shared by fc2 and fc3, which are
- * structurally identical (int8-in, int8-out, clipped-ReLU). */
 static void int8_layer_forward(const int8_t *in_i8, int in_size,
                                 const int8_t *w, const int32_t *b,
                                 int q_scale, int out_size,
@@ -481,11 +572,8 @@ static void int8_layer_forward(const int8_t *in_i8, int in_size,
     }
 }
 
-/* fc4 differs from fc2/fc3: single output neuron, and no activation
- * after it (raw logit, not a [0,1] activation) — so it just returns the
- * int32 accumulator for the caller to convert to centipawns once. */
-static int32_t fc4_forward(const int8_t *in_i8, int in_size,
-                            const int8_t *w, int32_t b) {
+static int32_t output_forward(const int8_t *in_i8, int in_size,
+                               const int8_t *w, int32_t b) {
     return b + nnue_dot_i8(in_i8, w, in_size);
 }
 
@@ -493,32 +581,33 @@ static int32_t fc4_forward(const int8_t *in_i8, int in_size,
 int nnue_eval(const S_BOARD *pos) {
     if (!nnue_loaded) return 0;
 
-    if (g_weights->l2_size > 64 || g_weights->l3_size > 64) {
-        fprintf(stderr, "[NNUE] Net dimensions too large for fixed buffers, skipping eval\n");
-        return 0;
+    int stm = pos->side;
+    int other = stm ^ 1;
+    int l1 = g_weights->l1_size;
+
+    /* Concatenate [stm's own view | other side's view], each clipped
+     * ReLU'd and requantized to int8 [0,127]. Side-to-move first is
+     * what makes the network's raw output already side-to-move-
+     * relative — no sign flip needed afterward (contrast with the old
+     * absolute-feature version, which had to flip for Black). */
+    int8_t in_i8[2 * NNUE_ACC_SIZE];
+    for (int i = 0; i < l1; i++) {
+        in_i8[i]      = requantize_clipped_i8(pos->nnue_acc[stm][i],   g_weights->qa_scale);
+        in_i8[l1 + i] = requantize_clipped_i8(pos->nnue_acc[other][i], g_weights->qa_scale);
     }
 
-    /* fc1 activation: dequantize the int32 accumulator and requantize to
-     * int8 [0,127] for the fc2 dot product (see requantize_clipped_i8). */
-    int8_t h1_i8[NNUE_ACC_SIZE];
-    for (int i = 0; i < g_weights->l1_size; i++) {
-        h1_i8[i] = requantize_clipped_i8(pos->nnue_acc[i], g_weights->qa_scale);
-    }
-
-    int8_t h2_i8[64], h3_i8[64];
-    int8_layer_forward(h1_i8, g_weights->l1_size, g_weights->fc2_w, g_weights->fc2_b,
+    int8_t h2_i8[NNUE_L2L3_MAX], h3_i8[NNUE_L2L3_MAX];
+    int8_layer_forward(in_i8, 2 * l1, g_weights->l2_w, g_weights->l2_b,
                         g_weights->qb_scale, g_weights->l2_size, h2_i8);
-    int8_layer_forward(h2_i8, g_weights->l2_size, g_weights->fc3_w, g_weights->fc3_b,
+    int8_layer_forward(h2_i8, g_weights->l2_size, g_weights->l3_w, g_weights->l3_b,
                         g_weights->qc_scale, g_weights->l3_size, h3_i8);
-    int32_t acc4 = fc4_forward(h3_i8, g_weights->l3_size, g_weights->fc4_w, g_weights->fc4_b);
+    int32_t acc_out = output_forward(h3_i8, g_weights->l3_size, g_weights->out_w, g_weights->out_b);
 
-    /* acc4 is fc4's int32 accumulator, in units of (127*qd_scale) — the
-     * ONLY float conversion in the whole forward pass happens here,
-     * once, not per-neuron. out is a White-relative logit (features are
-     * absolute/White-fixed, see header comment); flip sign for Black to
-     * move, matching how EvalPosition() uses the result. */
-    int cp_white = (int)((float)acc4 * g_weights->fc4_combined_scale);
-    return pos->side == WHITE ? cp_white : -cp_white;
+    /* acc_out is the output layer's int32 accumulator, in units of
+     * (127*qd_scale) — the ONLY float conversion in the whole forward
+     * pass happens here, once. Already side-to-move-relative (see
+     * above), matching how EvalPosition() uses the result. */
+    return (int)((float)acc_out * g_weights->out_combined_scale);
 }
 
 #endif /* NNUE_IMPLEMENTATION */
