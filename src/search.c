@@ -572,7 +572,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         //if found a stronger move breaks, triggers MultiCut
         if(value>rBeta)break;
 
-        quietMove ? tacticals++:quiets++;
+        quietMove ? quiets++ : tacticals++;
         skipQuiets = quiets >= SingularQuietLimit;
 
         //break the loop if skip quiets and has seen too many tactical moves
