@@ -1604,7 +1604,7 @@
     ->currentDepth-- added before continue in aspiration window
     ->fixed MoveBestcaseValue wK to wN in for loop
     ->fixed swapped increments of quiet and tactical in Singularity
-    ->
+    ->optimized MoveBestCaseValue func
     ->
 
 	*/

@@ -33,23 +33,27 @@ int moveIsTactical(S_BOARD *pos,int move){
 
 }
 int MoveBestCaseValue(S_BOARD *pos){
-    int pce;
     ASSERT(checkBoard(pos));
 
+    U64 enemy = pos->occupancy[!pos->side];
     int value = SEEPieceValues[wP];
 
-    for(pce=wN;pce<=bK;++pce){
-        if (pce==bP || pce==wK || pce==bK) continue;
-        if(pos->bitboards[pce] & pos->occupancy[!pos->side]){
-            value=SEEPieceValues[pce];
-            break;
-        }
+    // Check from most valuable to least valuable piece type present
+    if ((pos->bitboards[wQ] | pos->bitboards[bQ]) & enemy){
+        value = SEEPieceValues[wQ];
+    } else if ((pos->bitboards[wR] | pos->bitboards[bR]) & enemy){
+        value = SEEPieceValues[wR];
+    } else if ((pos->bitboards[wB] | pos->bitboards[bB] |
+                pos->bitboards[wN] | pos->bitboards[bN]) & enemy){
+        value = SEEPieceValues[wB]; // bishop and knight share the same SEE value
     }
-    U64 pawns=pos->bitboards[wP] | pos->bitboards[bP];
+
+    U64 pawns = pos->bitboards[wP] | pos->bitboards[bP];
     if(pawns & pos->occupancy[pos->side] &
        (pos->side==WHITE ? RankBBMask[RANK_7]:RankBBMask[RANK_2])){
-        value+=SEEPieceValues[wQ]-SEEPieceValues[wP];
+        value += SEEPieceValues[wQ] - SEEPieceValues[wP];
     }
+
     return value;
 }
 int moveEstimatedValue(S_BOARD *pos, int move) {
