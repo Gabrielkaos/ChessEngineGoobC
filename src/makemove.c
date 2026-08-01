@@ -38,8 +38,8 @@ int MoveBestCaseValue(S_BOARD *pos){
 
     int value = SEEPieceValues[wP];
 
-    for(pce=wK;pce<=bK;++pce){
-        if (pce==wP || pce==bP || pce==wK || pce==bK)continue;
+    for(pce=wN;pce<=bK;++pce){
+        if (pce==bP || pce==wK || pce==bK) continue;
         if(pos->bitboards[pce] & pos->occupancy[!pos->side]){
             value=SEEPieceValues[pce];
             break;
