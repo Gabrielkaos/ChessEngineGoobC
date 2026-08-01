@@ -54,7 +54,7 @@ int checkBoard(const S_BOARD *pos){
     //check enPas
     if (pos->enPas != NO_SQ) ASSERT(ranksBoard[pos->enPas]==RANK_3 || ranksBoard[pos->enPas]==RANK_6);
     //check castleRights
-    ASSERT(pos->castleRights >= 0 || pos->castleRights <=15);
+    ASSERT(pos->castleRights >= 0 && pos->castleRights <=15);
     //check posKey and pawnPosKey
     ASSERT(pos->posKey==GeneratePosKey(pos));
     //ASSERT(pos->pawnPosKey==GeneratePawnPosKey(pos));
