@@ -207,7 +207,7 @@ extern int nnue_loaded;
 #define NNUE_NUM_FEATURES  ((size_t)NNUE_KING_SQUARES * NNUE_FEATURES_PER_KING) /* 49152 */
 
 /* fc2/fc3 fixed buffer caps (same convention as before) */
-#define NNUE_L2L3_MAX 64
+#define NNUE_L2L3_MAX 128
 
 typedef struct {
     int king_squares;   /* must be NNUE_KING_SQUARES (64) */
