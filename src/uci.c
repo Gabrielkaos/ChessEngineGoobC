@@ -521,7 +521,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
 		}
 
-        else if (!strncmp(line, "perfttest", 9)) {
+        else if (strEquals(str, "perfttest")) {
             PerftSuiteTest(pos);
             fflush(stdout);
         }
