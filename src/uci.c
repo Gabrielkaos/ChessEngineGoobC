@@ -512,6 +512,11 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
         }
 
+        else if (strEquals(str, "perfttest")) {
+            PerftSuiteTest(pos);
+            fflush(stdout);
+        }
+
         else if(strStartsWith(str, "perft")) {
             int perft=0;
 			sscanf(str, "perft %d", &perft);
@@ -520,11 +525,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 			PerftTest(perft,pos);
             fflush(stdout);
 		}
-
-        else if (strEquals(str, "perfttest")) {
-            PerftSuiteTest(pos);
-            fflush(stdout);
-        }
 
 		else if(strStartsWith(str, "uperft")) {
             int perft=0;
