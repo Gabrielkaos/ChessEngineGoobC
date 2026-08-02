@@ -159,8 +159,25 @@ const int rook_relevant_bits[BOARD_NUMS_SQ]={
 12, 11, 11, 11, 11, 11, 11, 12
 };
 
-U64 bishop_attacks[BOARD_NUMS_SQ][512];
-U64 rook_attacks[BOARD_NUMS_SQ][4096];
+// Packed ("fancy") magic tables: each square gets exactly 1 << relevant_bits[sq]
+// entries instead of a fixed worst-case 4096 (rook) / 512 (bishop) slots per
+// square. Sizes below are the standard totals for these relevant-bit tables:
+// sum(2^rook_relevant_bits[sq]) = 102400, sum(2^bishop_relevant_bits[sq]) = 5248.
+// This cuts total slider-attack table memory from ~2.25MB down to ~840KB.
+// get_rook_attacks/get_bishop_attacks are called on every sliding-piece move
+// generated AND on every check/attacked-square test (attackersToKingSq,
+// is_square_attacked_BB, allAttackersToSquare, discoveredAttacks), so this
+// table living in cache instead of spilling out matters on the hottest path
+// in the engine. The lookup math (mask/multiply/shift) and the magic numbers
+// themselves are unchanged -- only the storage layout changes, so this is a
+// pure memory-layout change with no effect on returned attack bitboards.
+#define ROOK_TABLE_SIZE 102400
+#define BISHOP_TABLE_SIZE 5248
+
+U64 rook_attacks_table[ROOK_TABLE_SIZE];
+U64 bishop_attacks_table[BISHOP_TABLE_SIZE];
+int rook_offset[BOARD_NUMS_SQ];
+int bishop_offset[BOARD_NUMS_SQ];
 U64 bishop_masks[BOARD_NUMS_SQ];
 U64 rook_masks[BOARD_NUMS_SQ];
 U64 knight_attacks[BOARD_NUMS_SQ];
@@ -385,7 +402,7 @@ U64 get_bishop_attacks(int square,U64 occupancy){
     occupancy*=bishop_magic_numbers[square];
     occupancy >>=64-bishop_relevant_bits[square];
 
-    return bishop_attacks[square][occupancy];
+    return bishop_attacks_table[bishop_offset[square] + occupancy];
 }
 ///////////////////////
 //ROOK ATTACKS GET IT
@@ -395,12 +412,14 @@ U64 get_rook_attacks(int square,U64 occupancy){
     occupancy&=rook_masks[square];
     occupancy*=rook_magic_numbers[square];
     occupancy>>=64-rook_relevant_bits[square];
-    return rook_attacks[square][occupancy];
+    return rook_attacks_table[rook_offset[square] + occupancy];
 
 }
 
 void initSliderPiecesAttacks(int bishop){
     int sq,index;
+    int offset=0;
+
     for(sq=0;sq<64;sq++){
         bishop_masks[sq]=bishop_attack_mask(sq);
         rook_masks[sq]=rook_attack_mask(sq);
@@ -414,6 +433,10 @@ void initSliderPiecesAttacks(int bishop){
         //occupancy index
         int occupancy_index=(1<<relevant_bits);
 
+        //this square's slice of the packed table starts here
+        if(bishop) bishop_offset[sq]=offset;
+        else       rook_offset[sq]=offset;
+
         for(index=0;index<occupancy_index;index++){
             //bishop
             if(bishop){
@@ -422,7 +445,7 @@ void initSliderPiecesAttacks(int bishop){
                 //magic index
                 int magic_index=(occupancy*bishop_magic_numbers[sq]) >> (64-bishop_relevant_bits[sq]);
 
-                bishop_attacks[sq][magic_index]=bishop_attack_on_fly(sq,occupancy);
+                bishop_attacks_table[offset+magic_index]=bishop_attack_on_fly(sq,occupancy);
             }
             //rook
             else{
@@ -431,10 +454,11 @@ void initSliderPiecesAttacks(int bishop){
                 //magic index
                 int magic_index=(occupancy*rook_magic_numbers[sq]) >> (64-rook_relevant_bits[sq]);
 
-                rook_attacks[sq][magic_index]=rook_attack_on_fly(sq,occupancy);
+                rook_attacks_table[offset+magic_index]=rook_attack_on_fly(sq,occupancy);
             }
         }
 
+        offset+=occupancy_index;
     }
 }
 void initLeaperAttacks(){
