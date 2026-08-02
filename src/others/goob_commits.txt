@@ -1607,7 +1607,16 @@
     ->optimized MoveBestCaseValue func
     ->added TT Probing in Quiescence
     ->moved razoring out of null move condition
-    ->
+    ->added inCheck in Quiescence dont just look at capture if in check
+    ->added breaking of search in Singuilarity ProbCut multiCut
+
+    //CE_EXPERIMENT
+
+    ->pknet short circuits evalkingspawns only
+    ->null move recognizer now takes account fiftymove
+    ->made eval bb more efficient
+    ->added passedprotectedbyROok
+    ->added space/thread/complexity/closedness
     ->
 
 	*/

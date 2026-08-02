@@ -84,6 +84,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int value,moveInLoop,moveNum;
     int bestMove = NOMOVE;
     int oldAlpha = alpha;
+    int inCheck  = !!attackersToKingSq(pos,pos->side);
+    int Legal    = 0;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -107,25 +109,34 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     }
 
     //pruning standing pat
-    int eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
-
-    if(eval>=beta){
-        StoreHashEntry(pos, table, NOMOVE, beta, HFBETA, 0, eval);
-        return beta;
+    int eval;
+    if(inCheck){
+        eval = pos->eval_stack[pos->ply] = VALUE_NONE;   // no static eval to lean on — must respond to check
+    } else {
+        eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+        if(eval>=beta){
+            StoreHashEntry(pos, table, NOMOVE, beta, HFBETA, 0, eval);
+            return beta;
+        }
+        alpha=MAX(alpha,eval);
     }
-    alpha=MAX(alpha,eval);
 
 
 
     S_MOVELIST list[1];
-    GenerateAllNoisy(pos,list);
-    InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
+    if(inCheck){
+        GenerateAllMoves(pos,list);      // need all evasions, not just captures
+        InitAllScore(pos,list,ttMove,0);
+    } else {
+        GenerateAllNoisy(pos,list);
+        InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
+    }
     for(moveNum=0;moveNum<list->count;++moveNum){
         PickNextMove(moveNum,list);
         moveInLoop = list->moves[moveNum].move;
 
 
-        if(!info->bruteForceMode){
+        if(!inCheck && !info->bruteForceMode){
             //SEE Pruning
             //if the score for this noisy move is lesser than zero we dont bother checking it
             if(list->moves[moveNum].score < 0){
@@ -144,7 +155,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         }
 
         if(!makeMove(pos,moveInLoop))continue;
-        value=-Quiescence(-beta,-alpha,pos,info, table);
+        Legal++;
+        value=-Quiescence(-beta,-alpha,pos,info,table);
         takeMove(pos);
 
         if(info->stopped==TRUE)return 0;
@@ -158,6 +170,9 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
             alpha=value;
         }
     }
+
+    if(inCheck && Legal==0) return -AB_BOUND + pos->ply;
+
     StoreHashEntry(pos, table, bestMove, alpha, oldAlpha != alpha ? HFEXACT : HFALPHA, 0, eval);
     return alpha;
 }
@@ -340,7 +355,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE);
 
                 takeMove(pos);
-
+                if(info->stopped==TRUE)return 0;
                 if(value>=rBeta)return value;
 
             }
@@ -584,7 +599,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         if(!makeMove(pos,moveInLoop))continue;
         value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE);
         takeMove(pos);
-
+        if(info->stopped==TRUE)break;
         //if found a stronger move breaks, triggers MultiCut
         if(value>rBeta)break;
 
@@ -598,7 +613,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
     //MultiCut
     //if found a stronger move than ttMove
     //we are confident that this is a strong move, we cut off every move and returns early
-    if(value>rBeta && rBeta >=beta){
+    if(value>rBeta && rBeta >=beta && !info->stopped){
         if(moveInLoop != NOMOVE &&
            !moveIsTactical(pos,moveInLoop)){
                 updateKillers(pos,moveInLoop);

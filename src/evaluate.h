@@ -31,6 +31,8 @@ typedef struct{
     U64 attacked[2]; //squares attacked
     U64 kingAreas[2]; //areas surrounding king
     U64 pawnAttackedBy2[2]; //squares attacked by 2 pawns
+    
+    U64 pawnsBB, knightsBB, bishopsBB, rooksBB, queensBB;
 } EVAL_INFO;
 
 enum {
