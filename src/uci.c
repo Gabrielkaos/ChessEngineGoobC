@@ -521,6 +521,11 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
 		}
 
+        else if (!strncmp(line, "perfttest", 9)) {
+            PerftSuiteTest(pos);
+            fflush(stdout);
+        }
+
 		else if(strStartsWith(str, "uperft")) {
             int perft=0;
 			sscanf(str, "uperft %d", &perft);
@@ -544,6 +549,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             printf("-evaluate\n");
             printf("-perft(useful for debugging) x\n");
             printf("-uperft(faster) x\n");
+            printf("-perfttest(test on positions)\n");
             fflush(stdout);
 		}
 
