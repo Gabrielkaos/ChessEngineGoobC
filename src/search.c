@@ -79,9 +79,11 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 
 
 //Quiescence search function to check if there are captures that can change the game
-int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
+int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     int value,moveInLoop,moveNum;
+    int bestMove = NOMOVE;
+    int oldAlpha = alpha;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -96,18 +98,28 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
     }
 
-    //pruning standing pat
-    int eval      = pos->eval_stack[pos->ply] = EvalPosition(pos);
+    int ttMove=NOMOVE, ttValue=0, ttDepth=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit;
+    if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval))){
+        ttValue = valueFromTT(ttValue,pos->ply);
+        if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
+            return ttValue;
+        }
+    }
 
-    //if the eval is good enough we return early
-    if(eval>=beta)return beta;
+    //pruning standing pat
+    int eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+
+    if(eval>=beta){
+        StoreHashEntry(pos, table, NOMOVE, beta, HFBETA, 0, eval);
+        return beta;
+    }
     alpha=MAX(alpha,eval);
 
 
 
     S_MOVELIST list[1];
     GenerateAllNoisy(pos,list);
-    InitAllScore(pos,list,NOMOVE,MAX(1,alpha-eval-QSSeeMargin));
+    InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
     for(moveNum=0;moveNum<list->count;++moveNum){
         PickNextMove(moveNum,list);
         moveInLoop = list->moves[moveNum].move;
@@ -132,16 +144,21 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         if(!makeMove(pos,moveInLoop))continue;
-        value=-Quiescence(-beta,-alpha,pos,info);
+        value=-Quiescence(-beta,-alpha,pos,info, table);
         takeMove(pos);
 
         if(info->stopped==TRUE)return 0;
 
         if(value>alpha){
-            if(value>=beta)return beta;
+            bestMove = moveInLoop;
+            if(value>=beta){
+                StoreHashEntry(pos, table, moveInLoop, beta, HFBETA, 0, eval);
+                return beta;
+            }
             alpha=value;
         }
     }
+    StoreHashEntry(pos, table, bestMove, alpha, oldAlpha != alpha ? HFEXACT : HFALPHA, 0, eval);
     return alpha;
 }
 
@@ -178,7 +195,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //go to qsearch if depth<=0
     //if in check dont go to q search
     if(depth<=0){
-        if(!inCheck)return Quiescence(alpha,beta,pos,info);
+        if(!inCheck)return Quiescence(alpha,beta,pos,info, table);
         else depth = 1;
     }
 
@@ -260,28 +277,27 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if(info->stopped==TRUE)return 0;
                 if(valueNull >= beta)return beta;
             }
+        }
+        //razoring
+        /*If the static evaluation plus some margin (pawn value) is still below beta,
+        the engine performs quiescence search rather than a full search at shallow depths,
+        potentially pruning bad lines early.*/
+        Score=staticEval+SEEPieceValues[wP];
+        int newScore;
 
-            //razoring
-            /*If the static evaluation plus some margin (pawn value) is still below beta,
-            the engine performs quiescence search rather than a full search at shallow depths,
-            potentially pruning bad lines early.*/
-            Score=staticEval+SEEPieceValues[wP];
-            int newScore;
-
-            //checking if the score will likely exceed beta
-            if(Score<beta){
-                if(depth==1){
-                    newScore=Quiescence(alpha,beta,pos,info);
-                    return (newScore>Score) ? newScore:Score;
-                }
+        //checking if the score will likely exceed beta
+        if(Score<beta){
+            if(depth==1){
+                newScore=Quiescence(alpha,beta,pos,info, table);
+                return (newScore>Score) ? newScore:Score;
             }
+        }
 
-            //checking again for the value of a two pawn
-            Score+=SEEPieceValues[wP];
-            if(Score<beta && depth < 4){
-                newScore=Quiescence(alpha,beta,pos,info);
-                if(newScore<beta)return (newScore>Score) ? newScore:Score;
-            }
+        //checking again for the value of a two pawn
+        Score+=SEEPieceValues[wP];
+        if(Score<beta && depth < 4){
+            newScore=Quiescence(alpha,beta,pos,info, table);
+            if(newScore<beta)return (newScore>Score) ? newScore:Score;
         }
     }
 

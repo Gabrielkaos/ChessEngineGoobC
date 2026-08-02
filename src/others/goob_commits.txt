@@ -1605,6 +1605,9 @@
     ->fixed MoveBestcaseValue wK to wN in for loop
     ->fixed swapped increments of quiet and tactical in Singularity
     ->optimized MoveBestCaseValue func
+    ->added TT Probing in Quiescence
+    ->moved razoring out of null move condition
+    ->
     ->
 
 	*/
