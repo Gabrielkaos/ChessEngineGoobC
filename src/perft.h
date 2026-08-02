@@ -7,6 +7,7 @@
 //perft.c
 extern void PerftTest(int depth,S_BOARD *pos);
 extern void BenchTest(int depth,S_BOARD *pos);
+extern void PerftSuiteTest(S_BOARD *pos);
 extern U64 countNps(U64 nodes, int time);
 
 
