@@ -359,7 +359,7 @@ U64 set_occupancy(int index,int bits_in_mask,U64 attack_mask){
 
         int square=LSBINDEX(attack_mask);
 
-        POPBIT(attack_mask,square);
+        attack_mask &= attack_mask - 1;
 
         if(index & (1 << count)){
             occupancy |= (1ULL<<square);
@@ -491,8 +491,26 @@ U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
 
 U64 attackersToKingSq(const S_BOARD *pos,int side){
     ASSERT(SideValid(side));
-    int sq=side==WHITE ? LSBINDEX(pos->bitboards[wK]):LSBINDEX(pos->bitboards[bK]);
-    return allAttackersToSquare(pos,pos->occupancy[BOTH],sq) & pos->occupancy[!side];
+
+    int ksq=side==WHITE ? LSBINDEX(pos->bitboards[wK]):LSBINDEX(pos->bitboards[bK]);
+    U64 occ=pos->occupancy[BOTH];
+
+    //only ever needs the opponent's pieces, so go straight at them instead of
+    //building combined white|black bitboards (allAttackersToSquare) and then
+    //masking half of it away with & pos->occupancy[!side]
+    if(side==WHITE){
+        return (pawn_attacks[WHITE][ksq] & pos->bitboards[bP])
+             | (knight_attacks[ksq]      & pos->bitboards[bN])
+             | (get_bishop_attacks(ksq,occ) & (pos->bitboards[bB] | pos->bitboards[bQ]))
+             | (get_rook_attacks(ksq,occ)   & (pos->bitboards[bR] | pos->bitboards[bQ]))
+             | (king_attacks[ksq]         & pos->bitboards[bK]); //catches illegal kings-adjacent case
+    }else{
+        return (pawn_attacks[BLACK][ksq] & pos->bitboards[wP])
+             | (knight_attacks[ksq]       & pos->bitboards[wN])
+             | (get_bishop_attacks(ksq,occ) & (pos->bitboards[wB] | pos->bitboards[wQ]))
+             | (get_rook_attacks(ksq,occ)   & (pos->bitboards[wR] | pos->bitboards[wQ]))
+             | (king_attacks[ksq]         & pos->bitboards[wK]);
+    }
 }
 
 U64 pawnAttacks(int color,int sq){
@@ -541,4 +559,3 @@ U64 pawnAttackDouble(U64 pawns, U64 targets, int colour) {
     return pawnLeftAttacks(pawns, targets, colour)
         & pawnRightAttacks(pawns, targets, colour);
 }
-

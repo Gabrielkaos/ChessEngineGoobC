@@ -1,4 +1,3 @@
-
 #include "perft.h"
 #include "stdio.h"
 #include "inttypes.h"
@@ -259,7 +258,10 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
     int source_square, target_square;
     U64 bitboard, attacks;
 
-    for (int piece = wP; piece <= bK; piece++)
+    //fix #2: only walk the 6 piece types belonging to the side to move
+    int base = (side == WHITE) ? wP : bP;
+
+    for (int piece = base; piece <= base + 5; piece++)
     {
         bitboard = pos->bitboards[piece];
 
@@ -293,8 +295,8 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                         AddWhitePawnCaptureMoves(pos,source_square,target_square,pos->pieces[target_square],list);
 
-                        // pop ls1b of the pawn attacks
-                        POPBIT(attacks, target_square);
+                        // fix #1: clear the lowest set bit directly, no need to re-test it
+                        attacks &= attacks - 1;
                     }
 
                     // generate enpassant captures
@@ -310,7 +312,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                         }
                     }
 
-                    POPBIT(bitboard, source_square);
+                    bitboard &= bitboard - 1;
                 }
             }
 
@@ -362,7 +364,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                         AddBlackPawnCaptureMoves(pos,source_square,target_square,pos->pieces[target_square],list);
 
-                        POPBIT(attacks, target_square);
+                        attacks &= attacks - 1;
                     }
 
                     if (pos->enPas != NO_SQ)
@@ -376,7 +378,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                         }
                     }
 
-                    POPBIT(bitboard, source_square);
+                    bitboard &= bitboard - 1;
                 }
             }
 
@@ -403,138 +405,149 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //knights
-        if ((side == WHITE) ? piece == wN : piece == bN)
+        if (piece == base + 1)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = knight_attacks[source_square] & ((side == WHITE) ? ~pos->occupancy[WHITE] : ~pos->occupancy[BLACK]);
+                //fix #4: split into two branch-free loops instead of a
+                //per-move GETBIT test
+                U64 pseudo = knight_attacks[source_square] & ~pos->occupancy[side];
 
-                while (attacks)
+                U64 caps = pseudo & pos->occupancy[!side];
+                while (caps)
                 {
-                    target_square = LSBINDEX(attacks);
-
-                    if (!GETBIT(((side == WHITE) ? pos->occupancy[BLACK] : pos->occupancy[WHITE]), target_square))
-                        AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
-
-                    else
-                        AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
-
-                    POPBIT(attacks, target_square);
+                    target_square = LSBINDEX(caps);
+                    AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
+                    caps &= caps - 1;
                 }
 
+                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                while (quiets)
+                {
+                    target_square = LSBINDEX(quiets);
+                    AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
+                    quiets &= quiets - 1;
+                }
 
-                POPBIT(bitboard, source_square);
+                bitboard &= bitboard - 1;
             }
         }
 
         //bishops
-        if ((side == WHITE) ? piece == wB : piece == bB)
+        if (piece == base + 2)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ((side == WHITE) ? ~pos->occupancy[WHITE] : ~pos->occupancy[BLACK]);
+                U64 pseudo = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                while (attacks)
+                U64 caps = pseudo & pos->occupancy[!side];
+                while (caps)
                 {
-                    target_square = LSBINDEX(attacks);
-
-                    if (!GETBIT(((side == WHITE) ? pos->occupancy[BLACK] : pos->occupancy[WHITE]), target_square))
-                        AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
-
-                    else
-                        AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
-
-                    POPBIT(attacks, target_square);
+                    target_square = LSBINDEX(caps);
+                    AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
+                    caps &= caps - 1;
                 }
 
+                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                while (quiets)
+                {
+                    target_square = LSBINDEX(quiets);
+                    AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
+                    quiets &= quiets - 1;
+                }
 
-                POPBIT(bitboard, source_square);
+                bitboard &= bitboard - 1;
             }
         }
 
         //rooks
-        if ((side == WHITE) ? piece == wR : piece == bR)
+        if (piece == base + 3)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ((side == WHITE) ? ~pos->occupancy[WHITE] : ~pos->occupancy[BLACK]);
+                U64 pseudo = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                while (attacks)
+                U64 caps = pseudo & pos->occupancy[!side];
+                while (caps)
                 {
-                    target_square = LSBINDEX(attacks);
-
-                    if (!GETBIT(((side == WHITE) ? pos->occupancy[BLACK] : pos->occupancy[WHITE]), target_square))
-                        AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
-
-                    else
-                        AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
-
-                    POPBIT(attacks, target_square);
+                    target_square = LSBINDEX(caps);
+                    AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
+                    caps &= caps - 1;
                 }
 
+                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                while (quiets)
+                {
+                    target_square = LSBINDEX(quiets);
+                    AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
+                    quiets &= quiets - 1;
+                }
 
-                // pop ls1b of the current piece bitboard copy
-                POPBIT(bitboard, source_square);
+                bitboard &= bitboard - 1;
             }
         }
 
         //queens
-        if ((side == WHITE) ? piece == wQ : piece == bQ)
+        if (piece == base + 4)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ((side == WHITE) ? ~pos->occupancy[WHITE] : ~pos->occupancy[BLACK]);
+                U64 pseudo = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                while (attacks)
+                U64 caps = pseudo & pos->occupancy[!side];
+                while (caps)
                 {
-                    target_square = LSBINDEX(attacks);
-
-                    if (!GETBIT(((side == WHITE) ? pos->occupancy[BLACK] : pos->occupancy[WHITE]), target_square))
-                        AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
-
-                    else
-                         AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
-
-                    POPBIT(attacks, target_square);
+                    target_square = LSBINDEX(caps);
+                    AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
+                    caps &= caps - 1;
                 }
 
+                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                while (quiets)
+                {
+                    target_square = LSBINDEX(quiets);
+                    AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
+                    quiets &= quiets - 1;
+                }
 
-                // pop ls1b of the current piece bitboard copy
-                POPBIT(bitboard, source_square);
+                bitboard &= bitboard - 1;
             }
         }
 
         //kings
-        if ((side == WHITE) ? piece == wK : piece == bK)
+        if (piece == base + 5)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = king_attacks[source_square] & ((side == WHITE) ? ~pos->occupancy[WHITE] : ~pos->occupancy[BLACK]);
+                U64 pseudo = king_attacks[source_square] & ~pos->occupancy[side];
 
-                while (attacks)
+                U64 caps = pseudo & pos->occupancy[!side];
+                while (caps)
                 {
-                    target_square = LSBINDEX(attacks);
-
-                    if (!GETBIT(((side == WHITE) ? pos->occupancy[BLACK] : pos->occupancy[WHITE]), target_square))
-                        AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
-
-                    else
-                         AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
-
-                    POPBIT(attacks, target_square);
+                    target_square = LSBINDEX(caps);
+                    AddMove(pos,MOVE(source_square,target_square,pos->pieces[target_square],0,0),list);
+                    caps &= caps - 1;
                 }
 
-                POPBIT(bitboard, source_square);
+                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                while (quiets)
+                {
+                    target_square = LSBINDEX(quiets);
+                    AddMove(pos,MOVE(source_square,target_square,0,0,0),list);
+                    quiets &= quiets - 1;
+                }
+
+                bitboard &= bitboard - 1;
             }
         }
     }
@@ -659,4 +672,3 @@ void BenchTest(int depth,S_BOARD *pos){
 
     return;
 }
-

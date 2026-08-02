@@ -8,7 +8,7 @@
    exported NNUE net. Update this to match whatever L1 size you train
    with — nnue_init() refuses to load a file whose l1_size disagrees
    (see nnue_loader.h). */
-#define NNUE_ACC_SIZE 512
+#define NNUE_ACC_SIZE 1024
 
 //Board structure
 typedef struct {
