@@ -1616,7 +1616,10 @@
     ->null move recognizer now takes account fiftymove
     ->made eval bb more efficient
     ->added passedprotectedbyROok
-    ->added space/thread/complexity/closedness
+    ->added space/thread/complexity/closedness from Ethereal
+    ->added tablebases
+    ->now using DeltaMargin in search.c
+    ->
     ->
 
 	*/
