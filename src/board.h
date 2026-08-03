@@ -52,6 +52,17 @@ typedef struct {
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;
 
+    /* Syzygy tablebase root-move filtering (see syzygy.c/TBProbeRoot).
+       Populated once per "go" command, before the depth loop starts, and
+       left untouched for the remainder of that search. tbHit==1 means
+       AlphaBeta's root move loop should skip any move not listed in
+       tbRootMoves[0..tbRootMoveCount-1] -- every listed move preserves
+       the position's tablebase-proven game-theoretic result, so the
+       ordinary search is free to pick whichever of them it likes best. */
+    int tbHit;
+    int tbRootMoveCount;
+    int tbRootMoves[MAXPOSMOVES];
+
     /* NNUE accumulators: the feature-transformer output for the CURRENT
        position, ONE PER PERSPECTIVE (index by WHITE/BLACK, see defs.h),
        kept in sync incrementally by ClearPiece/AddPiece/MovePiece

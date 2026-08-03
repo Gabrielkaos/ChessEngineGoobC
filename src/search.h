@@ -16,7 +16,7 @@ static const int SEEPieceValues[] = {
 static const int SEEPruningDepth = 9;
 static const int SEEQuietMargin  = -64;
 static const int SEENoisyMargin  = -19;
-static const int DeltaMarginQ    = 150;
+static const int DeltaMarginQ    = 200;
 static const int QSSeeMargin     = 110;
 
 static const int ScoreWindow = 50;

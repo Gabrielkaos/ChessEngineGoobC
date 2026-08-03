@@ -21,6 +21,7 @@
 #include "thread.h"
 #include "tinycthread.h"
 #include "tt_eval.h"
+#include "syzygy.h"
 
 //NOTE
 /*
@@ -69,6 +70,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     info->stopped=0;
     info->nodes=0ULL;
+    info->tbhits=0ULL;
 
 }
 
@@ -147,7 +149,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
             //to see if this capture has an effect
             //if the capture barely improves the position plus a margin
             //we dont bother checking the move
-            if ((eval+SEEPieceValues[getCapturedPiece(moveInLoop)]+200<alpha) &&
+            if ((eval+SEEPieceValues[getCapturedPiece(moveInLoop)]+DeltaMarginQ<alpha) &&
                  PROMOTED(moveInLoop)==0 &&
                  getGamePhase(pos) < PHASE_ENDING){
                     continue;
@@ -246,6 +248,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                }
         }
 
+    }
+
+    //Syzygy interior-node probe: once the position is small enough (and
+    //within the user-configured depth/piece-count limits), a WDL probe
+    //gives an exact, ground-truth result -- cheaper and more reliable
+    //than searching it out, so just return it directly. Skipped at the
+    //root, where TBProbeRoot()'s move-list filtering (see the main move
+    //loop below) already handles tablebase guidance instead, letting the
+    //ordinary search still choose the practically-best move.
+    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
+        int tbScore;
+        if(TBProbeWDLSearch(pos, pos->ply, &tbScore)){
+            info->tbhits++;
+            StoreHashEntry(pos, table, NOMOVE, tbScore, HFEXACT, MAXDEPTH-1, tbScore);
+            return tbScore;
+        }
     }
 
     //store in eval_stack each staticEval
@@ -379,6 +397,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     for(moveNum=0;moveNum<list->count;++moveNum){
         PickNextMove(moveNum,list);
         moveInLoop=list->moves[moveNum].move;
+
+        //Syzygy root filtering: if a root probe found tablebase-optimal
+        //moves for this position, only search among them -- every other
+        //legal move would throw away a proven win/draw.
+        if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
+            continue;
+        }
 
         //count the quiets seen and check if the move is tactical
         quietsSeen+=(quietMove=!moveIsTactical(pos,moveInLoop));
@@ -858,6 +883,14 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     //init search things
     InitSearcher(pos,info, table);
+
+    //Syzygy root probe: ranks every legal root move by tablebase result
+    //and records the game-theoretic-optimal subset into pos->tbRootMoves
+    //(see syzygy.c). A no-op if no tablebases are loaded or the position
+    //is out of probing range. Must happen before the worker threads are
+    //spun up below, since setupWorkers() memcpy's this pos (tbHit and
+    //tbRootMoves included) into each worker's own copy.
+    TBProbeRoot(pos);
 
     //setup the workers
     //create worker threads

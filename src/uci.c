@@ -18,6 +18,7 @@
 #include "thread.h"
 #include "nnue_loader.h"
 #include "pknet_loader.h"
+#include "syzygy.h"
 
 #define INPUTBUFFER 400*6
 #define Euler 2.8
@@ -89,8 +90,8 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
     char *bound = bounded >=  beta ? " lowerbound "
                 : bounded <= alpha ? " upperbound " : " ";
 
-    printf("info depth %d seldepth %d score %s %d%stime %d nodes %"PRIu64" hashfull %d ",
-           currentDepth, pos->seldepth, type, score,bound, elapsed, info->nodes,hashfullTT(table));
+    printf("info depth %d seldepth %d score %s %d%stime %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
+           currentDepth, pos->seldepth, type, score,bound, elapsed, info->nodes,hashfullTT(table),info->tbhits);
 
     //pv printing
     printf("pv");
@@ -288,6 +289,41 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         clearEvalTable(pos->eTable);
      }
 
+    else if (!strncmp(line, "setoption name SyzygyPath value ", 32)) {
+        //paths can be a ';'(Windows)/':'(Unix) separated list of
+        //directories and may legitimately contain spaces, so read the
+        //rest of the line verbatim rather than stopping at whitespace
+        //the way EvalFile/PKNetFile do above.
+        char path[1024] = {0};
+        sscanf(line, "%*s %*s %*s %*s %1023[^\n]", path);
+        TBInit(path);
+    }
+
+    else if (!strncmp(line, "setoption name SyzygyProbeDepth value ", 38)) {
+        int d = 1;
+        sscanf(line,"%*s %*s %*s %*s %d",&d);
+        if(d < 0)   d = 0;
+        if(d > 100) d = 100;
+        SyzygyProbeDepth = d;
+        printf("info string SyzygyProbeDepth set to %d\n",SyzygyProbeDepth);
+    }
+
+    else if (!strncmp(line, "setoption name Syzygy50MoveRule value ", 38)) {
+        char *ptrTrue = strstr(line,"true");
+        Syzygy50MoveRule = (ptrTrue != NULL);
+        printf("info string Syzygy50MoveRule set to %s\n",Syzygy50MoveRule?"true":"false");
+    }
+
+    else if (!strncmp(line, "setoption name SyzygyProbeLimit value ", 38)) {
+        int lim = 7;
+        sscanf(line,"%*s %*s %*s %*s %d",&lim);
+        if(lim < 0) lim = 0;
+        if(lim > 7) lim = 7;
+        if(SyzygyEnabled && lim > TBLargestMen) lim = TBLargestMen;
+        SyzygyProbeLimit = lim;
+        printf("info string SyzygyProbeLimit set to %d\n",SyzygyProbeLimit);
+    }
+
 }
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
@@ -423,6 +459,10 @@ void uciPrint(){
     printf("option name EvalFile type string default <empty>\n");
     printf("option name UsePKNet type check default false\n");
     printf("option name PKNetFile type string default <empty>\n");
+    printf("option name SyzygyPath type string default <empty>\n");
+    printf("option name SyzygyProbeDepth type spin default 1 min 0 max 100\n");
+    printf("option name Syzygy50MoveRule type check default true\n");
+    printf("option name SyzygyProbeLimit type spin default 7 min 0 max 7\n");
     printf("uciok\n");
 }
 
@@ -440,6 +480,8 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 	info->nodeSet                =FALSE;
 	info->bruteForceMode         =FALSE;
     pos->usePKNet                =FALSE;
+    SyzygyProbeDepth             =1;
+    Syzygy50MoveRule             =TRUE;
 
     ParseFEN(START_FEN, pos);
 

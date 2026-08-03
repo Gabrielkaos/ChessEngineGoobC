@@ -156,6 +156,7 @@ typedef struct {
     int stoptime;
     int stopped;
     U64 nodes;
+    U64 tbhits;
     int depth;
     int movestogo;
     U64 EloNodelimit;

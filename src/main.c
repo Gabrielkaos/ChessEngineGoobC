@@ -11,6 +11,7 @@
 #include "tt_eval.h"
 #include "init.h"
 #include "board.h"
+#include "syzygy.h"
 
 int main(int argc, char *argv[])
 {
@@ -75,6 +76,7 @@ int main(int argc, char *argv[])
 	free(pvTable->pTable);
 	free(pos->eTable->evalTable);
 	free(pos->pawnKingTable->paTable);
+	TBFree();
 
 	/*
 
