@@ -448,16 +448,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //checking if this position is likely to improve
             //if not then we skip it
             if (   depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin) <= alpha
+                && (staticEval + FutilityMargin * depth) <= alpha
                 && hist < FutilityPruningHistoryLimit[improving]){
-                skipQuiets = 1;
+                    skipQuiets = 1;
                 }
 
-            //futile position if the static eval plus some margin is clearly worse then alpha
-            //then we prune
             if (   depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin + FutilityMarginNoHistory) <= alpha){
-                skipQuiets = 1;
+                && (staticEval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
+                    skipQuiets = 1;
                 }
 
             //if weve searched for quite a while Late moves that are quiet are pruned based on threshold

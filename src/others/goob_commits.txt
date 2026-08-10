@@ -1625,6 +1625,6 @@
 
     ->added safeguard rail to fmPiece, cmPiece
     ->beta pruning, reverse inequality sign
-    ->
+    ->futility pruning is now scaled by depth
 
 	*/
