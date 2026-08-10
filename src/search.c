@@ -1,4 +1,3 @@
-
 #include "defs.h"
 #include "string.h"
 #include "stdio.h"
@@ -78,6 +77,19 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 //protos
 int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut);
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
+
+//MultiPV: TRUE if this root move was already reported as an earlier PV
+//line at the current depth (see pos->excludedRootMoveCount). Mirrors
+//the existing tbRootMoves filtering pattern below. Only ever called at
+//rootNode, and pos->excludedRootMoveCount is 0 whenever MultiPV==1, so
+//this is a no-op branch (single failed comparison) in the default case.
+INLINE int isExcludedRootMove(const S_BOARD *pos,int move){
+    int i;
+    for(i=0;i<pos->excludedRootMoveCount;++i){
+        if(pos->excludedRootMoves[i]==move)return TRUE;
+    }
+    return FALSE;
+}
 
 
 //Quiescence search function to check if there are captures that can change the game
@@ -402,6 +414,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //moves for this position, only search among them -- every other
         //legal move would throw away a proven win/draw.
         if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
+            continue;
+        }
+
+        //MultiPV: this move already produced a better-scoring PV line
+        //earlier at this same depth -- skip it so this search finds the
+        //next-best root move instead. No-op whenever MultiPV==1.
+        if(rootNode && pos->excludedRootMoveCount>0 && isExcludedRootMove(pos,moveInLoop)){
             continue;
         }
 
@@ -745,71 +764,138 @@ int SearchPositionThread(void *data){
     return 0;
 }
 
+//MultiPV support: counts how many strictly legal moves exist at the
+//root (honoring Syzygy root filtering, same as the real move loop).
+//Used only to clamp the user's requested MultiPV count to a number
+//that can actually be satisfied. This calls GenerateAllMoves and
+//makeMove/takeMove exactly like ordinary legality checking elsewhere
+//in the engine, then restores pos exactly as it found it -- it never
+//touches the TT, history tables, or calls AlphaBeta/Quiescence, so it
+//has no effect whatsoever on the actual search.
+int countLegalRootMoves(S_BOARD *pos){
+    S_MOVELIST list[1];
+    GenerateAllMoves(pos,list);
+
+    int legal=0, i;
+    for(i=0;i<list->count;++i){
+        int move=list->moves[i].move;
+        if(pos->tbHit && !TBRootMoveAllowed(pos,move))continue;
+        if(!makeMove(pos,move))continue;
+        takeMove(pos);
+        legal++;
+    }
+    return legal;
+}
+
 //passing threads
 //searches for each threads
 void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
+    S_SEARCHINFO *info = workerthread->info;
+    S_BOARD *pos        = workerthread->originalPos;
+    S_PVTABLE *table    = workerthread->ttable;
+    int threadNum        = workerthread->threadNumber;
+
     int currentDepth,numberOfPvMoves,bestScore;
+    int pvNum;
 
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
 
-    //aspiration window
-    int alpha          = -AB_BOUND;
-    int beta           = AB_BOUND;
+    //MultiPV: only thread 0 (the reporting thread) searches multiple
+    //root lines. Helper threads always search a single line with their
+    //own full window per depth, exactly as before -- their only job is
+    //to help fill the TT, and they never report to the GUI.
+    int rootLegalMoves = (threadNum==0) ? countLegalRootMoves(pos) : 1;
+    int multiPV         = (threadNum==0) ? MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves)) : 1;
 
+    //per-PV-line aspiration window state (and last score), carried
+    //across depths exactly like the single alpha/beta pair used to be.
+    //When multiPV==1 this is byte-for-byte the same single window the
+    //engine always used.
+    int pvAlpha[MAXPOSMOVES];
+    int pvBeta[MAXPOSMOVES];
+    int pvScore[MAXPOSMOVES];
+    for(pvNum=0;pvNum<multiPV;++pvNum){
+        pvAlpha[pvNum]=-AB_BOUND;
+        pvBeta[pvNum]= AB_BOUND;
+        pvScore[pvNum]=0;
+    }
 
     //iterative deepening
     for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
 
-        //call alpha beta to get score
-        bestScore=AlphaBeta(alpha,beta,currentDepth,workerthread->originalPos,workerthread->info, workerthread->ttable,workerthread->threadNumber,TRUE);
-        //say out of time for gui
-        if(workerthread->info->stopped==TRUE)break;
+        //MultiPV: nothing has been reported yet at this depth, so every
+        //root move is a candidate for PV line 1 again. No-op when
+        //multiPV==1 (count is already always 0 in that case).
+        pos->excludedRootMoveCount = 0;
 
-        if(workerthread->threadNumber==0){
-            //get Pv Lines
-            numberOfPvMoves=getPvLine(currentDepth,workerthread->originalPos, workerthread->ttable);
-            //get best move from pv lines
-            workerthread->bestMove=workerthread->originalPos->pvArray[0];
-            workerthread->ponderMove = numberOfPvMoves > 1 ? workerthread->originalPos->pvArray[1] : NOMOVE;
-        }
-        
+        for(pvNum=0;pvNum<multiPV;++pvNum){
 
-        //////////////////////////////////////////////////////////
-        //aspiration window
-        if(!workerthread->info->bruteForceMode){
-            if((bestScore <= alpha) || (bestScore >= beta)){
-                if (workerthread->threadNumber==0){
-                    if((getTimeMs()-workerthread->info->starttime)>BoundReportTime){
-                        UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-                        fflush(stdout);
-                    }
+            int alpha = pvAlpha[pvNum];
+            int beta  = pvBeta[pvNum];
+
+            //call alpha beta to get score
+            bestScore=AlphaBeta(alpha,beta,currentDepth,pos,info,table,threadNum,TRUE);
+            //say out of time for gui
+            if(info->stopped==TRUE)break;
+
+            if(threadNum==0){
+                //get Pv Lines
+                numberOfPvMoves=getPvLine(currentDepth,pos,table);
+                //get best move from pv lines
+                if(pvNum==0){
+                    workerthread->bestMove   = pos->pvArray[0];
+                    workerthread->ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;
                 }
-                alpha=-AB_BOUND;
-                beta=AB_BOUND;
-                currentDepth--;
-                continue;
             }
-            alpha=bestScore-ScoreWindow;
-            beta=bestScore+ScoreWindow;
+
+
+            //////////////////////////////////////////////////////////
+            //aspiration window
+            if(!info->bruteForceMode){
+                if((bestScore <= alpha) || (bestScore >= beta)){
+                    if (threadNum==0){
+                        if((getTimeMs()-info->starttime)>BoundReportTime){
+                            UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
+                            fflush(stdout);
+                        }
+                    }
+                    pvAlpha[pvNum]=-AB_BOUND;
+                    pvBeta[pvNum]=AB_BOUND;
+                    pvNum--;
+                    continue;
+                }
+                pvAlpha[pvNum]=bestScore-ScoreWindow;
+                pvBeta[pvNum]=bestScore+ScoreWindow;
+            }
+            pvScore[pvNum]=bestScore;
+            //////////////////////////////////////////////////////////
+            if (threadNum==0){
+                //reporting to interface
+                UciReport(info, table,pos,pvAlpha[pvNum],pvBeta[pvNum],bestScore,currentDepth,numberOfPvMoves,pvNum+1);
+                fflush(stdout);
+
+                //MultiPV: this line's move is now "used up" for the rest
+                //of this depth, so the next PV slot searches for the
+                //next-best root move instead of repeating this one.
+                if(pos->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
+                    pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->pvArray[0];
+                }
+            }
         }
-        //////////////////////////////////////////////////////////
-        if (workerthread->threadNumber==0){
-            //reporting to interface
-            UciReport(workerthread->info, workerthread->ttable,workerthread->originalPos,alpha,beta,bestScore,currentDepth,numberOfPvMoves);
-            fflush(stdout);
-            
-        }
-        //limits
-        if(!workerthread->info->ponder && !workerthread->info->UciInfinite){
+
+        if(info->stopped==TRUE)break;
+
+        //limits -- based on the best (PV line 1) result only, same as before
+        if(!info->ponder && !info->UciInfinite){
             //limited by depth
-            if(workerthread->info->depthSet && currentDepth>=workerthread->info->depth)break;
+            if(info->depthSet && currentDepth>=info->depth)break;
             //mate limits
-            if(abs(bestScore) > ISMATE && workerthread->bestMove != NOMOVE){
-                int mateIn  = (AB_BOUND - abs(bestScore) + 1) / 2;
-                if(workerthread->info->mateLimit != -1){
-                    if(mateIn <= workerthread->info->mateLimit)break;
+            if(abs(pvScore[0]) > ISMATE && workerthread->bestMove != NOMOVE){
+                int mateIn  = (AB_BOUND - abs(pvScore[0]) + 1) / 2;
+                if(info->mateLimit != -1){
+                    if(mateIn <= info->mateLimit)break;
                 }else{
                     //mate break to avoid losing time
                     if(currentDepth >= (mateIn*2) + 10){

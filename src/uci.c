@@ -76,7 +76,7 @@ void UciReportCurrentMove(int depth,int move,int currmovenumber){
                      PrMove(move),
                      currmovenumber);
 }
-void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves){
+void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves,int multiPvNum){
     int pvNum;
 
     int elapsed     = getTimeMs()-info->starttime;
@@ -90,8 +90,8 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
     char *bound = bounded >=  beta ? " lowerbound "
                 : bounded <= alpha ? " upperbound " : " ";
 
-    printf("info depth %d seldepth %d score %s %d%stime %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
-           currentDepth, pos->seldepth, type, score,bound, elapsed, info->nodes,hashfullTT(table),info->tbhits);
+    printf("info depth %d seldepth %d multipv %d score %s %d%stime %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
+           currentDepth, pos->seldepth, multiPvNum, type, score,bound, elapsed, info->nodes,hashfullTT(table),info->tbhits);
 
     //pv printing
     printf("pv");
@@ -138,6 +138,15 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         clearEvalTable(pos->eTable);
     }
 
+
+    else if (!strncmp(line, "setoption name MultiPV value ", 29)) {
+        int mpv=1;
+        sscanf(line,"%*s %*s %*s %*s %d",&mpv);
+        if(mpv < 1) mpv = 1;
+        if(mpv > MAXPOSMOVES) mpv = MAXPOSMOVES;
+        info->multiPV = mpv;
+        printf("info string MultiPV set to %d\n",info->multiPV);
+    }
 
     else if (!strncmp(line, "setoption name Threads value ", 29)) {
         int thr_num=1;
@@ -442,6 +451,7 @@ void uciPrint(){
     printf("id name %s %s\n",NAME,VER);
     printf("id author %s\n",AUTHOR);
     printf("option name Threads type spin default 1 min 1 max %d\n",MAXTHREADS); //1
+    printf("option name MultiPV type spin default 1 min 1 max %d\n",MAXPOSMOVES); //1b
     printf("option name Hash type spin default %d min 4 max %d\n",defaultHash,maxHash); //1
     printf("option name EvalHash type spin default %d min 4 max %d\n",evalHashMB,maxHash); //3
     printf("option name PawnHash type spin default %d min 4 max %d\n",pawnHashMB,maxHash); //4
@@ -479,6 +489,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 	info->setOptionPonder        =FALSE;
 	info->nodeSet                =FALSE;
 	info->bruteForceMode         =FALSE;
+	info->multiPV                =1;
     pos->usePKNet                =FALSE;
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;

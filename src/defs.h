@@ -176,6 +176,7 @@ typedef struct {
     int ponder;
     int bruteForceMode;
     int setOptionPonder;
+    int multiPV;
 
 
     //thread
