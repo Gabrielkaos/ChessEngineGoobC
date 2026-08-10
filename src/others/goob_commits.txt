@@ -1619,7 +1619,10 @@
     ->added space/thread/complexity/closedness from Ethereal
     ->added tablebases
     ->now using DeltaMargin in search.c
-    ->
+    ->added multi pv
+
+    /CE_LEGIT
+
     ->
 
 	*/
