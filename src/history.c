@@ -59,12 +59,16 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     int to    = TOSQ(move);
     int from  = FROMSQ(move);
 
+    
+
+    
+
     int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->pieceStack[pos->ply - 1];
+    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
     int cmTo    = TOSQ(cmMove);
 
     int fmMove  = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-    int fmPiece = pos->pieceStack[pos->ply - 2];
+    int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
     int fmTo    = TOSQ(fmMove);
 
     if(cmMove==NOMOVE || cmMove==NULLMOVE)*cmhist = 0;
@@ -83,7 +87,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     updateKillers(pos,bestMove);
 
     int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->pieceStack[pos->ply - 1];
+    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
     int cmTo    = TOSQ(cmMove);
 
     if (cmMove != NOMOVE && cmMove != NULLMOVE){
@@ -95,7 +99,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
         int index,bonus,entry,delta,move,piece,to,from;
 
         int fmMove  = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-        int fmPiece = pos->pieceStack[pos->ply - 2];
+        int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
         int fmTo    = TOSQ(fmMove);
 
         bonus = MIN(depth*depth,HistoryMax);

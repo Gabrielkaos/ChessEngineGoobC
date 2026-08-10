@@ -31,12 +31,13 @@ void InitAllScore(S_BOARD *pos, S_MOVELIST *movelist, int ttMove, int threshold)
     int pce;
     int captured,to;
 
+    
     int counter = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->pieceStack[pos->ply - 1];
+    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
     int cmTo    = TOSQ(counter);
 
     int follow = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-    int fmPiece = pos->pieceStack[pos->ply - 2];
+    int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
     int fmTo    = TOSQ(follow);
 
 
