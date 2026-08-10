@@ -294,7 +294,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //at shallow depth and when mate is unlikely
         //we prune aggresively
         //means that the position is good enough that no deeper search needed
-        if(depth < 3 && abs(beta-1)>-ISMATE){
+        if(depth < 3 && abs(beta-1) < ISMATE){
             int evalMargin=SEEPieceValues[wP]*depth;
             if(staticEval - evalMargin>=beta){
                 return staticEval-evalMargin;

@@ -1624,7 +1624,7 @@
     /CE_LEGIT
 
     ->added safeguard rail to fmPiece, cmPiece
-    ->
+    ->beta pruning, reverse inequality sign
     ->
 
 	*/
