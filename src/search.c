@@ -247,6 +247,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if (rAlpha >= rBeta) return rAlpha;
     }
 
+    pos->searchKillers[0][pos->ply+1] = NOMOVE;
+    pos->searchKillers[1][pos->ply+1] = NOMOVE;
+
     //probing Transposition Table
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
 
@@ -294,11 +297,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //at shallow depth and when mate is unlikely
         //we prune aggresively
         //means that the position is good enough that no deeper search needed
-        if(depth < 3 && abs(beta-1) < ISMATE){
-            int evalMargin=SEEPieceValues[wP]*depth;
-            if(staticEval - evalMargin>=beta){
-                return staticEval-evalMargin;
-            }
+        if(depth <= BetaPruningDepth && staticEval - BetaMargin*depth > beta){
+            return staticEval - BetaMargin*depth;
         }
 
         //null move
@@ -308,10 +308,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //null move should not be done at root
             //if the position is favorable, we are likely to prune
             if(!rootNode &&
-               staticEval >= beta &&
-               depth >= defaultNullMoveDepth &&
-               boardHasNonPawnMaterial(pos,pos->side) &&
-               (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
+                staticEval >= beta &&
+                depth >= defaultNullMoveDepth &&
+                boardHasNonPawnMaterial(pos,pos->side) &&
+                (pos->ply < 1 || pos->moveStack[pos->ply-1] != NULLMOVE) &&
+                (pos->ply < 2 || pos->moveStack[pos->ply-2] != NULLMOVE) &&
+                (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
 
                 makeNullMove(pos);
 
@@ -820,6 +822,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         pvScore[pvNum]=0;
     }
 
+    int delta,alpha,beta, searchDepth;
+
     //iterative deepening
     for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
 
@@ -830,45 +834,66 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
         for(pvNum=0;pvNum<multiPV;++pvNum){
 
-            int alpha = pvAlpha[pvNum];
-            int beta  = pvBeta[pvNum];
+            delta       = ScoreWindow;
+            alpha       = -AB_BOUND;
+            beta        =  AB_BOUND;
+            searchDepth = currentDepth;
 
-            //call alpha beta to get score
-            bestScore=AlphaBeta(alpha,beta,currentDepth,pos,info,table,threadNum,TRUE);
-            //say out of time for gui
+            if(currentDepth >= WindowDepth && !info->bruteForceMode){
+                alpha = MAX(-AB_BOUND, pvScore[pvNum]-delta);
+                beta  = MIN( AB_BOUND, pvScore[pvNum]+delta);
+            }
+
+            while(TRUE){
+
+                bestScore = AlphaBeta(alpha,beta,searchDepth,pos,info,table,threadNum,TRUE);
+
+                if(info->stopped==TRUE)break;
+
+                if(threadNum==0){
+                    numberOfPvMoves=getPvLine(searchDepth,pos,table);
+                    if(pvNum==0){
+                        workerthread->bestMove   = pos->pvArray[0];
+                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;
+                    }
+                }
+
+                //brute force mode never aspirates, single full-window search only
+                if(info->bruteForceMode)break;
+
+                //report a fail-low/fail-high bound if it's taking a while
+                if(threadNum==0
+                && (bestScore<=alpha || bestScore>=beta)
+                && (getTimeMs()-info->starttime)>BoundReportTime){
+                    UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
+                    fflush(stdout);
+                }
+
+                //fail low: widen downward, reset depth to full requested depth
+                if(bestScore<=alpha){
+                    beta        = (alpha+beta)/2;
+                    alpha       = MAX(-AB_BOUND, alpha-delta);
+                    searchDepth = currentDepth;
+                }
+                //fail high: widen upward, allow a shallow depth trim
+                else if(bestScore>=beta){
+                    beta         = MIN(AB_BOUND, beta+delta);
+                    searchDepth -= (abs(bestScore) <= AB_BOUND/2);
+                }
+                //inside window: done aspirating for this PV line at this depth
+                else{
+                    break;
+                }
+
+                delta += delta/2;
+            }
+
             if(info->stopped==TRUE)break;
 
-            if(threadNum==0){
-                //get Pv Lines
-                numberOfPvMoves=getPvLine(currentDepth,pos,table);
-                //get best move from pv lines
-                if(pvNum==0){
-                    workerthread->bestMove   = pos->pvArray[0];
-                    workerthread->ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;
-                }
-            }
+            pvScore[pvNum]  = bestScore;
+            pvAlpha[pvNum]  = bestScore-ScoreWindow;
+            pvBeta[pvNum]   = bestScore+ScoreWindow;
 
-
-            //////////////////////////////////////////////////////////
-            //aspiration window
-            if(!info->bruteForceMode){
-                if((bestScore <= alpha) || (bestScore >= beta)){
-                    if (threadNum==0){
-                        if((getTimeMs()-info->starttime)>BoundReportTime){
-                            UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
-                            fflush(stdout);
-                        }
-                    }
-                    pvAlpha[pvNum]=-AB_BOUND;
-                    pvBeta[pvNum]=AB_BOUND;
-                    pvNum--;
-                    continue;
-                }
-                pvAlpha[pvNum]=bestScore-ScoreWindow;
-                pvBeta[pvNum]=bestScore+ScoreWindow;
-            }
-            pvScore[pvNum]=bestScore;
-            //////////////////////////////////////////////////////////
             if (threadNum==0){
                 //reporting to interface
                 UciReport(info, table,pos,pvAlpha[pvNum],pvBeta[pvNum],bestScore,currentDepth,numberOfPvMoves,pvNum+1);

@@ -50,6 +50,11 @@ static const int BoundReportTime = 2500;
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
 
+static const int BetaPruningDepth = 8;
+static const int BetaMargin = 85;
+
+static const int WindowDepth = 5;
+
 
 //FUNCTIONS
 extern void initLMRTable();
