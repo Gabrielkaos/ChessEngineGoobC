@@ -256,6 +256,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //see if we improved on the last position
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
 
+
+    //RAZORING
+    //if staticEval is far below alpha, a full search is very unlikely to
+    //recover, verify with qsearch instead of expanding this node
+    if(!info->bruteForceMode && !pvNode && !inCheck &&
+    depth <= RazoringDepth &&
+    staticEval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
+        return Quiescence(alpha,beta,pos,info,table);
+    }
+
     // seemargin for this depth
     seeMargin[0] = SEENoisyMargin * depth * depth;
     seeMargin[1] = SEEQuietMargin * depth;

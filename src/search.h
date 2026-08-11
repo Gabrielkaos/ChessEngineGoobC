@@ -53,6 +53,11 @@ static const int SingularTacticalLimit = 3;
 static const int BetaPruningDepth = 8;
 static const int BetaMargin = 85;
 static const int WindowDepth = 5;
+
+#define RazoringDepth      2      // don't bother beyond this depth, margin gets too wide anyway
+#define RazorMarginBase    400    // start conservative relative to your eval scale
+#define RazorMarginCoeff   300
+
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);

@@ -1633,6 +1633,7 @@
     ->removed razoring
     ->removed IIR
     ->copy some heuristics to my favorite engine Ethereal 12.75 in search.c/search.h
+    ->added razoring
     ->
 
 	*/
