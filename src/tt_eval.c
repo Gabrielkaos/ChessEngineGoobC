@@ -25,11 +25,17 @@ void InitEvalTable(EVAL_TABLE *table,const int mb,int noisy){
     table->evalTable=(EVAL_ENTRY *) malloc(table->numEntries*sizeof(EVAL_ENTRY));
 
     if(table->evalTable==NULL){
+        if (mb <= 1) {
+            if (noisy) printf("info string Eval HashTable Initialization failed completely\n");
+            table->evalTable = NULL;
+            table->numEntries = 0;
+            return;
+        }
         if(noisy)printf("info string Eval HashTable Initialization failed with %d MB\n",mb);
         InitEvalTable(table,mb/2,noisy);
     }else{
-    clearEvalTable(table);
-    if(noisy)printf("info string Eval HashTable initialized size %d MB, entries %d\n",mb,table->numEntries);
+        clearEvalTable(table);
+        if(noisy)printf("info string Eval HashTable initialized size %d MB, entries %d\n",mb,table->numEntries);
     }
 }
 
@@ -84,6 +90,12 @@ void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy){
     table->paTable=(PAWNKING_ENTRY *) malloc(table->numEntries*sizeof(PAWNKING_ENTRY));
 
     if(table->paTable==NULL){
+        if (mb <= 1) {
+            if (noisy) printf("info string Pawn HashTable Initialization failed completely\n");
+            table->paTable = NULL;
+            table->numEntries = 0;
+            return;
+        }
         if(noisy)printf("info string Pawn HashTable Initialization failed with %d MB\n",mb);
         InitPawnKingTable(table,mb/2,noisy);
     }else{
