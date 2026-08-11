@@ -584,8 +584,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 alpha=Score;
                 if(alpha>=beta){
                     if(!moveIsTactical(pos,bestMove))updateHistories(pos,quietsTried,quietsPlayed,depth);
+
                     updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
-                    StoreHashEntry(pos, table, bestMove, beta, HFBETA, depth,staticEval);
+                    if(!rootNode || pos->currentPvNum==0){
+                        StoreHashEntry(pos, table, bestMove, beta, HFBETA, depth,staticEval);
+                    }
+                    
                     return beta;
                 }
             }
@@ -596,8 +600,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
     //update TT
-    if(oldAlpha != alpha)StoreHashEntry(pos, table,bestMove,bestScore,HFEXACT,depth,staticEval);
-    else                 StoreHashEntry(pos, table,bestMove,alpha    ,HFALPHA,depth,staticEval);
+    if(!rootNode || pos->currentPvNum==0){
+        if(oldAlpha != alpha)StoreHashEntry(pos, table,bestMove,bestScore,HFEXACT,depth,staticEval);
+        else                 StoreHashEntry(pos, table,bestMove,alpha    ,HFALPHA,depth,staticEval);
+    }
+    
 
     return alpha;
 }
@@ -833,6 +840,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         pos->excludedRootMoveCount = 0;
 
         for(pvNum=0;pvNum<multiPV;++pvNum){
+
+            pos->currentPvNum = pvNum;
 
             delta       = ScoreWindow;
             alpha       = -AB_BOUND;

@@ -59,6 +59,8 @@ typedef struct {
     int excludedRootMoveCount;
     int excludedRootMoves[MAXPOSMOVES];
 
+    int currentPvNum; 
+
     
     int32_t nnue_acc[2][NNUE_ACC_SIZE];
 
