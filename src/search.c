@@ -30,11 +30,12 @@
 //for threading
 thrd_t workerThreads[MAXTHREADS];
 
-int LMRTable[MAXDEPTH][MAXPOSMOVES];
+
+int LMRTable[64][64];
 void initLMRTable(){
     int i,j;
-    for(i=1;i<MAXDEPTH;++i){
-        for(j=1;j<MAXPOSMOVES;++j){
+    for(i=1;i<64;++i){
+        for(j=1;j<64;++j){
             LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
         }
     }
@@ -78,11 +79,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut);
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 
-//MultiPV: TRUE if this root move was already reported as an earlier PV
-//line at the current depth (see pos->excludedRootMoveCount). Mirrors
-//the existing tbRootMoves filtering pattern below. Only ever called at
-//rootNode, and pos->excludedRootMoveCount is 0 whenever MultiPV==1, so
-//this is a no-op branch (single failed comparison) in the default case.
+
 INLINE int isExcludedRootMove(const S_BOARD *pos,int move){
     int i;
     for(i=0;i<pos->excludedRootMoveCount;++i){
@@ -93,13 +90,11 @@ INLINE int isExcludedRootMove(const S_BOARD *pos,int move){
 
 
 //Quiescence search function to check if there are captures that can change the game
+
 int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     int value,moveInLoop,moveNum;
-    int bestMove = NOMOVE;
-    int oldAlpha = alpha;
-    int inCheck  = !!attackersToKingSq(pos,pos->side);
-    int Legal    = 0;
+    int best;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -122,73 +117,52 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         }
     }
 
-    //pruning standing pat
-    int eval;
-    if(inCheck){
-        eval = pos->eval_stack[pos->ply] = VALUE_NONE;   // no static eval to lean on — must respond to check
-    } else {
-        eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
-        if(eval>=beta){
-            StoreHashEntry(pos, table, NOMOVE, beta, HFBETA, 0, eval);
-            return beta;
-        }
-        alpha=MAX(alpha,eval);
-    }
+    //standing pat: save the static eval, then use it as our floor
+    int eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    best = eval;
+    alpha = MAX(alpha, eval);
+    if(alpha >= beta) return eval;
 
-
+    //DELTA PRUNING
+    //if even the best possible capture (or the DeltaMarginQ floor, whichever
+    //is larger) can't close the gap to alpha, there's no point generating
+    //or trying any capture here at all
+    if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
+        return eval;
 
     S_MOVELIST list[1];
-    if(inCheck){
-        GenerateAllMoves(pos,list);      // need all evasions, not just captures
-        InitAllScore(pos,list,ttMove,0);
-    } else {
-        GenerateAllNoisy(pos,list);
-        InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
-    }
+    GenerateAllNoisy(pos,list);
+    InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
+
     for(moveNum=0;moveNum<list->count;++moveNum){
         PickNextMove(moveNum,list);
         moveInLoop = list->moves[moveNum].move;
 
-
-        if(!inCheck && !info->bruteForceMode){
+        if(!info->bruteForceMode){
             //SEE Pruning
             //if the score for this noisy move is lesser than zero we dont bother checking it
             if(list->moves[moveNum].score < 0){
                 continue;
             }
-
-            //DELTA PRUNING
-            //to see if this capture has an effect
-            //if the capture barely improves the position plus a margin
-            //we dont bother checking the move
-            if ((eval+SEEPieceValues[getCapturedPiece(moveInLoop)]+DeltaMarginQ<alpha) &&
-                 PROMOTED(moveInLoop)==0 &&
-                 getGamePhase(pos) < PHASE_ENDING){
-                    continue;
-            }
         }
 
         if(!makeMove(pos,moveInLoop))continue;
-        Legal++;
         value=-Quiescence(-beta,-alpha,pos,info,table);
         takeMove(pos);
 
         if(info->stopped==TRUE)return 0;
 
-        if(value>alpha){
-            bestMove = moveInLoop;
-            if(value>=beta){
-                StoreHashEntry(pos, table, moveInLoop, beta, HFBETA, 0, eval);
-                return beta;
+        if(value>best){
+            best = value;
+            if(value>alpha){
+                alpha=value;
             }
-            alpha=value;
         }
+
+        if(alpha>=beta)return best;
     }
 
-    if(inCheck && Legal==0) return -AB_BOUND + pos->ply;
-
-    StoreHashEntry(pos, table, bestMove, alpha, oldAlpha != alpha ? HFEXACT : HFALPHA, 0, eval);
-    return alpha;
+    return best;
 }
 
 //main search function alpha beta
@@ -221,12 +195,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int capturesTried[MAXPOSMOVES];
     int hist            =0;
 
-    //go to qsearch if depth<=0
-    //if in check dont go to q search
-    if(depth<=0){
-        if(!inCheck)return Quiescence(alpha,beta,pos,info, table);
-        else depth = 1;
+    //go to qsearch if depth<=0 AND we are not in check.
+    if(depth<=0 && !inCheck){
+        return Quiescence(alpha,beta,pos,info, table);
     }
+
+    //clamp depth to a non-negative value right after the qsearch
+    depth = MAX(0, depth);
 
     //see if we should abort the search
     if((info->nodes & 2047)==0)checkUp(info);
@@ -265,13 +240,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     }
 
-    //Syzygy interior-node probe: once the position is small enough (and
-    //within the user-configured depth/piece-count limits), a WDL probe
-    //gives an exact, ground-truth result -- cheaper and more reliable
-    //than searching it out, so just return it directly. Skipped at the
-    //root, where TBProbeRoot()'s move-list filtering (see the main move
-    //loop below) already handles tablebase guidance instead, letting the
-    //ordinary search still choose the practically-best move.
+    //Syzygy interior-node probe
     if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
         int tbScore;
         if(TBProbeWDLSearch(pos, pos->ply, &tbScore)){
@@ -298,7 +267,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //we prune aggresively
         //means that the position is good enough that no deeper search needed
         if(depth <= BetaPruningDepth && staticEval - BetaMargin*depth > beta){
-            return staticEval - BetaMargin*depth;
+            return staticEval;
         }
 
         //null move
@@ -324,27 +293,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if(info->stopped==TRUE)return 0;
                 if(valueNull >= beta)return beta;
             }
-        }
-        //razoring
-        /*If the static evaluation plus some margin (pawn value) is still below beta,
-        the engine performs quiescence search rather than a full search at shallow depths,
-        potentially pruning bad lines early.*/
-        Score=staticEval+SEEPieceValues[wP];
-        int newScore;
-
-        //checking if the score will likely exceed beta
-        if(Score<beta){
-            if(depth==1){
-                newScore=Quiescence(alpha,beta,pos,info, table);
-                return (newScore>Score) ? newScore:Score;
-            }
-        }
-
-        //checking again for the value of a two pawn
-        Score+=SEEPieceValues[wP];
-        if(Score<beta && depth < 4){
-            newScore=Quiescence(alpha,beta,pos,info, table);
-            if(newScore<beta)return (newScore>Score) ? newScore:Score;
         }
     }
 
@@ -396,7 +344,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //Internal Iterative Reduction(IIR)
     //dont over search a position with no Transposition table data
     //means this position might not be critical
-    if(!info->bruteForceMode && depth>=4 && ttMove==NOMOVE)depth--;
+    // if(!info->bruteForceMode && depth>=4 && ttMove==NOMOVE)depth--;
 
 
     //generate the moves
@@ -412,16 +360,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         PickNextMove(moveNum,list);
         moveInLoop=list->moves[moveNum].move;
 
-        //Syzygy root filtering: if a root probe found tablebase-optimal
-        //moves for this position, only search among them -- every other
-        //legal move would throw away a proven win/draw.
+        //Syzygy root filtering
         if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
             continue;
         }
 
-        //MultiPV: this move already produced a better-scoring PV line
-        //earlier at this same depth -- skip it so this search finds the
-        //next-best root move instead. No-op whenever MultiPV==1.
+        //MultiPV
         if(rootNode && pos->excludedRootMoveCount>0 && isExcludedRootMove(pos,moveInLoop)){
             continue;
         }
@@ -468,7 +412,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             //check the countermove and follow up moves
             //prune them if they have a low history performance
-            R = LMRTable[MIN(depth, MAXDEPTH/2-1)][MIN(Legal, MAXDEPTH/2-1)];
+            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
             if ( list->moves[moveNum].score < SORT_COUNTER
                 && cmhist < CounterMoveHistoryLimit[improving]
@@ -533,7 +477,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //prunes if the move is quiet and that this is one of the many moves searched already
         //we prune if the move is unlikely promising
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
-            R = LMRTable[MIN(depth, MAXDEPTH/2-1)][MIN(Legal, MAXDEPTH/2-1)];
+            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
             R += !improving + !pvNode + extension;
 
@@ -573,25 +517,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(quietMove)quietsTried[quietsPlayed++] = moveInLoop;
         else capturesTried[capturesPlayed++]     = moveInLoop;
 
-        //see if we got a best move
-        //update table
-        //update history
         if(info->stopped==TRUE)return 0;
+
+        
         if(Score>bestScore){
             bestScore=Score;
             bestMove=moveInLoop;
             if(Score>alpha){
                 alpha=Score;
-                if(alpha>=beta){
-                    if(!moveIsTactical(pos,bestMove))updateHistories(pos,quietsTried,quietsPlayed,depth);
-
-                    updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
-                    if(!rootNode || pos->currentPvNum==0){
-                        StoreHashEntry(pos, table, bestMove, beta, HFBETA, depth,staticEval);
-                    }
-                    
-                    return beta;
-                }
+                if(alpha>=beta)break;
             }
         }
     }
@@ -599,14 +533,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
-    //update TT
-    if(!rootNode || pos->currentPvNum==0){
-        if(oldAlpha != alpha)StoreHashEntry(pos, table,bestMove,bestScore,HFEXACT,depth,staticEval);
-        else                 StoreHashEntry(pos, table,bestMove,alpha    ,HFALPHA,depth,staticEval);
-    }
-    
+    //update history counters on a fail high for a quiet move
+    if(bestScore>=beta && !moveIsTactical(pos,bestMove))
+        updateHistories(pos,quietsTried,quietsPlayed,depth);
 
-    return alpha;
+    if(bestScore>=beta)
+        updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
+
+    //update TT -- single fail-soft store, matching Ethereal's Step 20
+    if(!rootNode || pos->currentPvNum==0){
+        ttBound = bestScore>=beta    ? HFBETA
+                : bestScore>oldAlpha ? HFEXACT : HFALPHA;
+        StoreHashEntry(pos, table, bestMove, bestScore, ttBound, depth, staticEval);
+    }
+
+    return bestScore;
 }
 
 //Singularity
@@ -771,14 +712,7 @@ int SearchPositionThread(void *data){
     return 0;
 }
 
-//MultiPV support: counts how many strictly legal moves exist at the
-//root (honoring Syzygy root filtering, same as the real move loop).
-//Used only to clamp the user's requested MultiPV count to a number
-//that can actually be satisfied. This calls GenerateAllMoves and
-//makeMove/takeMove exactly like ordinary legality checking elsewhere
-//in the engine, then restores pos exactly as it found it -- it never
-//touches the TT, history tables, or calls AlphaBeta/Quiescence, so it
-//has no effect whatsoever on the actual search.
+//MultiPV support
 int countLegalRootMoves(S_BOARD *pos){
     S_MOVELIST list[1];
     GenerateAllMoves(pos,list);
@@ -810,16 +744,12 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     workerthread->ponderMove     = NOMOVE;
 
     //MultiPV: only thread 0 (the reporting thread) searches multiple
-    //root lines. Helper threads always search a single line with their
-    //own full window per depth, exactly as before -- their only job is
-    //to help fill the TT, and they never report to the GUI.
+    //root lines. 
     int rootLegalMoves = (threadNum==0) ? countLegalRootMoves(pos) : 1;
     int multiPV         = (threadNum==0) ? MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves)) : 1;
 
     //per-PV-line aspiration window state (and last score), carried
     //across depths exactly like the single alpha/beta pair used to be.
-    //When multiPV==1 this is byte-for-byte the same single window the
-    //engine always used.
     int pvAlpha[MAXPOSMOVES];
     int pvBeta[MAXPOSMOVES];
     int pvScore[MAXPOSMOVES];
@@ -848,14 +778,16 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             beta        =  AB_BOUND;
             searchDepth = currentDepth;
 
+            
             if(currentDepth >= WindowDepth && !info->bruteForceMode){
-                alpha = MAX(-AB_BOUND, pvScore[pvNum]-delta);
-                beta  = MIN( AB_BOUND, pvScore[pvNum]+delta);
+                alpha = MAX(-AB_BOUND, pvScore[0]-delta);
+                beta  = MIN( AB_BOUND, pvScore[0]+delta);
             }
 
             while(TRUE){
 
-                bestScore = AlphaBeta(alpha,beta,searchDepth,pos,info,table,threadNum,TRUE);
+                
+                bestScore = AlphaBeta(alpha,beta,MAX(1,searchDepth),pos,info,table,threadNum,TRUE);
 
                 if(info->stopped==TRUE)break;
 
@@ -908,9 +840,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 UciReport(info, table,pos,pvAlpha[pvNum],pvBeta[pvNum],bestScore,currentDepth,numberOfPvMoves,pvNum+1);
                 fflush(stdout);
 
-                //MultiPV: this line's move is now "used up" for the rest
-                //of this depth, so the next PV slot searches for the
-                //next-best root move instead of repeating this one.
+            
                 if(pos->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
                     pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->pvArray[0];
                 }
@@ -1002,12 +932,7 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     //init search things
     InitSearcher(pos,info, table);
 
-    //Syzygy root probe: ranks every legal root move by tablebase result
-    //and records the game-theoretic-optimal subset into pos->tbRootMoves
-    //(see syzygy.c). A no-op if no tablebases are loaded or the position
-    //is out of probing range. Must happen before the worker threads are
-    //spun up below, since setupWorkers() memcpy's this pos (tbHit and
-    //tbRootMoves included) into each worker's own copy.
+    //Syzygy root probe
     TBProbeRoot(pos);
 
     //setup the workers

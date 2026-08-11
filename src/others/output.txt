@@ -4,5 +4,5 @@ info depth 20 seldepth 31 score cp 18 time 2228 nodes 3338259 hashfull 258 pv e2
 bestmove e2e4
 
 ## Output of current code GOOB
-info depth 20 seldepth 28 multipv 1 score cp 39 time 943 nodes 1734714 hashfull 268 tbhits 0 pv e2e4 e7e5 d2d4 e5d4 g1f3 d7d5 d1d4 g8f6 e4d5 d8d5 b1c3 d5e6 d4e3 b8c6 c1d2 f8d6 e1c1 e6e3 d2e3 e8g8
+info depth 20 seldepth 32 multipv 1 score cp 53 time 4954 nodes 8150345 hashfull 489 tbhits 0 pv e2e4 e7e5 g1f3 d7d6 f1c4 g8f6 e1g1 f8e7 d2d3 e8g8 c1g5 c8e6 b1d2 b8d7 a1b1 c7c5 g5f6 e7f6 c2c3
 bestmove e2e4

@@ -1,65 +1,61 @@
 #ifndef SEARCH_H
 #define SEARCH_H
-
 #include "defs.h"
 #include "board.h"
-
 //NOTE
 /*
     Some variables shamelessly copied from Ethereal
 */
-
 static const int SEEPieceValues[] = {
      0, 100, 450, 450, 675, 1300, 0, 100, 450, 450, 675, 1300, 0
 };
 static const int SEEPruningDepth = 9;
 static const int SEEQuietMargin  = -64;
 static const int SEENoisyMargin  = -19;
-static const int DeltaMarginQ    = 200;
+
+// FIX: Ethereal 12.75's QSDeltaMargin is 150, not 200. This constant is
+// used as a floor for the single up-front qsearch delta-pruning check
+// (see Quiescence()), matching Ethereal's Step 6 exactly.
+static const int DeltaMarginQ    = 150;
+
 static const int QSSeeMargin     = 110;
 
-static const int ScoreWindow = 50;
+// FIX: Ethereal 12.75's WindowSize (initial aspiration-window half-width)
+// is 10, not 50. A wider starting window means far more nodes get
+// re-searched on the (much more common) fail low/high before converging,
+// which meaningfully changes both search speed and reported scores.
+static const int ScoreWindow = 10;
 
 static const int probCutDepth = 5;
-static const int probCutMargin = 85;
+
+// FIX: Ethereal 12.75's ProbCutMargin is 80, not 85.
+static const int probCutMargin = 80;
 
 static const int HistexLimit = 10000;
-
 static const int FutilityMargin = 65;
 static const int FutilityMarginNoHistory = 210;
 static const int FutilityPruningDepth = 8;
 static const int FutilityPruningHistoryLimit[] = { 12000, 6000 };
-
 static const int CounterMovePruningDepth[] = { 3, 2 };
 static const int CounterMoveHistoryLimit[] = { 0, -1000 };
-
 static const int FollowUpMovePruningDepth[] = { 3, 2 };
 static const int FollowUpMoveHistoryLimit[] = { -2000, -4000 };
-
 static const int defaultNullMoveDepth = 2;
-
 static const int LateMovePruningDepth = 8;
 static const int LateMovePruningCounts[2][9] = {
     {  0,  3,  4,  6, 10, 14, 19, 25, 31},
     {  0,  5,  7, 11, 17, 26, 36, 48, 63},
 };
-
 static const int UciCurrMoveTime = 2500;
 static const int BoundReportTime = 2500;
-
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
-
 static const int BetaPruningDepth = 8;
 static const int BetaMargin = 85;
-
 static const int WindowDepth = 5;
-
-
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
 extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 extern int SearchPositionThread(void *data);
-
 #endif // SEARCH_H

@@ -1630,6 +1630,9 @@
     ->fixed aspiration window
     ->resetting killers after mate pruning
     ->added guard rail to storing hashes in multiPV mode
+    ->removed razoring
+    ->removed IIR
+    ->copy some heuristics to my favorite engine Ethereal 12.75 in search.c/search.h
     ->
 
 	*/
