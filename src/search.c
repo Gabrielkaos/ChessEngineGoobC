@@ -74,6 +74,8 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->tbhits=0ULL;
 
     info->depthOneComplete=FALSE; 
+
+    pos->rootPvMove = NOMOVE;
 }
 
 
@@ -537,7 +539,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(bestScore>=beta)
         updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
 
-    //update TT -- single fail-soft store, matching Ethereal's Step 20
+    //update TT
+    if(rootNode) pos->rootPvMove = bestMove;
     if(!rootNode || pos->currentPvNum==0){
         ttBound = bestScore>=beta    ? HFBETA
                 : bestScore>oldAlpha ? HFEXACT : HFALPHA;
@@ -804,6 +807,22 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 if(threadNum==0){
                     numberOfPvMoves=getPvLine(searchDepth,pos,table);
+
+                    if(pos->rootPvMove != NOMOVE && pos->pvArray[0] != pos->rootPvMove){
+                        if(makeMove(pos, pos->rootPvMove)){
+                            int contLen = getPvLine(MAX(0,searchDepth-1), pos, table);
+
+                            int cpy;
+                            for(cpy=contLen; cpy>0; --cpy)
+                                pos->pvArray[cpy] = pos->pvArray[cpy-1];
+                            pos->pvArray[0] = pos->rootPvMove;
+                            numberOfPvMoves = contLen + 1;
+                        }else{
+                            pos->pvArray[0]  = pos->rootPvMove;
+                            numberOfPvMoves  = 1;
+                        }
+                    }
+
                     if(pvNum==0){
                         workerthread->bestMove   = pos->pvArray[0];
                         workerthread->ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;

@@ -64,6 +64,8 @@ typedef struct {
     
     int32_t nnue_acc[2][NNUE_ACC_SIZE];
 
+    int rootPvMove;
+
 } S_BOARD;
 
 //board.c

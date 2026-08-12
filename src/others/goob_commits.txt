@@ -1638,4 +1638,8 @@
 
     //CE_REMOVED
 
+    ->added rootMove in board struct
+    ->fixed multipv output
+    ->
+
 	*/
