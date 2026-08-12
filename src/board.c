@@ -57,7 +57,6 @@ int checkBoard(const S_BOARD *pos){
     ASSERT(pos->castleRights >= 0 && pos->castleRights <=15);
     //check posKey and pawnPosKey
     ASSERT(pos->posKey==GeneratePosKey(pos));
-    //ASSERT(pos->pawnPosKey==GeneratePawnPosKey(pos));
     ASSERT(pos->pkHash==GeneratePKHash(pos));
 
     //avoid variants make engine play chess960 or just standard chess
@@ -125,7 +124,6 @@ void MirrorBoard(S_BOARD *pos){
     pos->enPas=tempEnPass;
 
     pos->posKey=GeneratePosKey(pos);
-    //pos->pawnPosKey=GeneratePawnPosKey(pos);
     pos->pkHash=GeneratePKHash(pos);
 
     updateListMaterial(pos);
@@ -250,7 +248,6 @@ int ParseFEN(char *fen ,S_BOARD *pos){
 
     pos->pkHash=GeneratePKHash(pos);
     pos->posKey=GeneratePosKey(pos);
-    //pos->pawnPosKey=GeneratePawnPosKey(pos);
 
     updateListMaterial(pos);
     return 0;
@@ -285,7 +282,6 @@ void ResetBoard(S_BOARD *pos){
 
     pos->posKey=0ULL;
     pos->pkHash=0ULL;
-    //pos->pawnPosKey=0ULL;
 }
 
 void PrintBoard(const S_BOARD *pos){

@@ -13,7 +13,6 @@
 #define HASH_SIDE (pos->posKey ^= (sideKey))
 #define HASH_CA (pos->posKey ^= (castleKeys[(pos->castleRights)]))
 #define HASH_EP (pos->posKey ^= (pieceKeys[EMPTY][pos->enPas]))
-//#define HASH_PAWN(pce,sq) (pos->pawnPosKey^=(pieceKeys[(pce)][(sq)]))
 #define HASH_PK(pce,sq) (pos->pkHash^=(pieceKeys[(pce)][(sq)]))
 
 int getCapturedPiece(int move){

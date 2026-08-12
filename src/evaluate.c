@@ -1326,7 +1326,7 @@ int EvalPosition(S_BOARD *pos){
         int nn_score = nnue_eval(pos);
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
-        int score = nn_score + tempo;
+        score = nn_score + tempo;
         return pos->useFiftyMoveRule ? score * (100 - pos->fiftyMove) / 100 : score;
     }
 

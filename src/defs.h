@@ -211,11 +211,9 @@ typedef struct{
 #define ISRQ(p) (pieceRookQueen[(p)])
 #define ISKni(p) (pieceKnight[(p)])
 #define MIRROR64(sq) (Mirror64[(sq)])
-#define SQ64TO120(sq) (Squares64To120[(sq)])
 
 /*GLOBALS*/
 extern S_PVTABLE pvTable[1];
-extern const int Squares64To120[64];
 extern U64 king_attacks[BOARD_NUMS_SQ];
 extern U64 knight_attacks[BOARD_NUMS_SQ];
 extern U64 pawn_attacks[BOTH][BOARD_NUMS_SQ];
