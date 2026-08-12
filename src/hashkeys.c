@@ -12,7 +12,7 @@ U64 GeneratePosKey(const S_BOARD *pos){
     for(sq=0;sq<BOARD_NUMS_SQ;++sq){
         piece=pos->pieces[sq];
         //piece=pos->piece64[sq];
-        if(piece != EMPTY && piece != NO_SQ){
+        if(piece != EMPTY){
             finalKey ^= pieceKeys[piece][sq];
         }
     }
@@ -40,7 +40,7 @@ U64 GeneratePKHash(const S_BOARD *pos){
     for(sq=0;sq<BOARD_NUMS_SQ;++sq){
         piece=pos->pieces[sq];
         //piece=pos->piece64[sq];
-        if(piece != EMPTY && piece != NO_SQ && (piecePawn[piece] || pieceKing[piece])){
+        if(piece != EMPTY && (piecePawn[piece] || pieceKing[piece])){
             finalKey ^= pieceKeys[piece][sq];
         }
     }

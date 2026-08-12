@@ -581,30 +581,24 @@ INLINE int evaluateChess960Trapped(S_BOARD *pos,int color){
         }else if(testBit(ourRooks,H1) && (testBit(ourKings,G1) || testBit(ourKings,F1)) && testBit(ourPawns,H2)){
             eval+=RookTrapped;
         }
-
-
         return eval;
     }
-    else{
 
-        //bishop trapped
-        if(testBit(ourBishop,A8) && testBit(ourPawns,B7)){
-            flag=!!testBit(pos->occupancy[BLACK],B6);
-            eval+=BishopTrapped[flag];
-        }
-        if(testBit(ourBishop,H8) && testBit(ourPawns,G7)){
-            flag=!!testBit(ourOccupancy,G6);
-            eval+=BishopTrapped[flag];
-        }
+    //bishop trapped
+    if(testBit(ourBishop,A8) && testBit(ourPawns,B7)){
+        flag=!!testBit(pos->occupancy[BLACK],B6);
+        eval+=BishopTrapped[flag];
+    }
+    if(testBit(ourBishop,H8) && testBit(ourPawns,G7)){
+        flag=!!testBit(ourOccupancy,G6);
+        eval+=BishopTrapped[flag];
+    }
 
-        //rook trapped
-        if(testBit(ourRooks,A8) && (testBit(ourKings,B8) || testBit(ourKings,C8)) && testBit(ourPawns,A7)){
-            eval+=RookTrapped;
-        }else if(testBit(ourRooks,H8) && (testBit(ourKings,G8) || testBit(ourKings,F8)) && testBit(ourPawns,H7)){
-            eval+=RookTrapped;
-        }
-
-        return eval;
+    //rook trapped
+    if(testBit(ourRooks,A8) && (testBit(ourKings,B8) || testBit(ourKings,C8)) && testBit(ourPawns,A7)){
+        eval+=RookTrapped;
+    }else if(testBit(ourRooks,H8) && (testBit(ourKings,G8) || testBit(ourKings,F8)) && testBit(ourPawns,H7)){
+        eval+=RookTrapped;
     }
 
     return eval;
