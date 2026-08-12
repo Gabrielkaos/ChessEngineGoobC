@@ -5,7 +5,6 @@
 
 
 //makemove.c
-extern int getCapturedPiece(int move);
 extern int moveIsTactical(S_BOARD *pos,int move);
 extern int MoveBestCaseValue(S_BOARD *pos);
 extern int makeMove(S_BOARD *pos,int move);

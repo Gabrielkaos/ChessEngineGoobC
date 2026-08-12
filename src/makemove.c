@@ -15,17 +15,7 @@
 #define HASH_EP (pos->posKey ^= (pieceKeys[EMPTY][pos->enPas]))
 #define HASH_PK(pce,sq) (pos->pkHash^=(pieceKeys[(pce)][(sq)]))
 
-int getCapturedPiece(int move){
-    int captured = CAPTURED(move);
 
-    if(!captured){
-        if(MVFLAGEP & move)captured=wP;
-        if(MVFLAGPROM & move) captured=wP;
-    }
-
-    return captured;
-
-}
 int moveIsTactical(S_BOARD *pos,int move){
     return (pos->pieces[TOSQ(move)] != EMPTY && (move & MVFLAGCA)==0) ||
             (move & MVFLAGEP || PROMOTED(move) != 0);
