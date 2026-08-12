@@ -337,6 +337,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
     info->timeSet     =FALSE;
+    info->softTimeSet = FALSE;
     info->analyzeMode =EngineOptions->analysisMode;
     info->UciInfinite =FALSE;
     info->mateLimit   =-1;
@@ -393,8 +394,21 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     if(time != -1){
         time           /=movestogo;
         time           -=50;
+        if(time < 1) time = 1;
+
+
         info->timeSet  =TRUE;
         info->stoptime =info->starttime+time+inc;
+        info->maximumTime =info->stoptime;
+
+        if(movetime == -1){
+            int budget  = time + inc;
+            int optimum = (int)(budget * 0.6);
+            if(optimum < 1) optimum = 1;
+
+            info->softTimeSet  =TRUE;
+            info->optimumTime  =info->starttime+optimum;
+        }
     }
 
     //limits for limiting strength

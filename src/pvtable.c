@@ -82,6 +82,7 @@ int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table){
 
     int move=ProbePvTable(pos, table);
     int count =0;
+    int startPly = pos->ply;
 
     while(move != NOMOVE && count <depth){
 
@@ -94,7 +95,7 @@ int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table){
         move=ProbePvTable(pos, table);
     }
 
-    while(pos->ply>0){
+    while(pos->ply > startPly){
         takeMove(pos);
     }
 

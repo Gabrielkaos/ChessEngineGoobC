@@ -764,13 +764,16 @@ int countLegalRootMoves(S_BOARD *pos){
 //searches for each threads
 void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
-    S_SEARCHINFO *info = workerthread->info;
-    S_BOARD *pos        = workerthread->originalPos;
-    S_PVTABLE *table    = workerthread->ttable;
+    S_SEARCHINFO *info   = workerthread->info;
+    S_BOARD *pos         = workerthread->originalPos;
+    S_PVTABLE *table     = workerthread->ttable;
     int threadNum        = workerthread->threadNumber;
 
     int currentDepth,numberOfPvMoves,bestScore;
     int pvNum;
+
+    int prevBestMove        = NOMOVE;
+    double bestMoveChanges  = 0.0;
 
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
@@ -809,6 +812,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
     //iterative deepening
     for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
+
+        bestMoveChanges /= 2.0;
 
         //MultiPV: nothing has been reported yet at this depth, so every
         //root move is a candidate for PV line 1 again. No-op when
@@ -864,10 +869,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 //report a fail-low/fail-high bound if it's taking a while
                 if(threadNum==0
-                && (bestScore<=alpha || bestScore>=beta)
-                && (getTimeMs()-info->starttime)>BoundReportTime){
-                    UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
-                    fflush(stdout);
+                    && (bestScore<=alpha || bestScore>=beta)
+                    && (getTimeMs()-info->starttime)>BoundReportTime){
+                        UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
+                        fflush(stdout);
                 }
 
                 //fail low: widen downward, reset depth to full requested depth
@@ -904,6 +909,13 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 UciReport(info, table,pos,pvAlpha[pvNum],pvBeta[pvNum],bestScore,currentDepth,numberOfPvMoves,pvNum+1);
                 fflush(stdout);
 
+                if(pvNum==0){
+                    if(prevBestMove != NOMOVE && workerthread->bestMove != prevBestMove){
+                        bestMoveChanges += 1.0;
+                    }
+                    prevBestMove = workerthread->bestMove;
+                }
+
             
                 if(pos->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
                     pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->pvArray[0];
@@ -917,6 +929,18 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         if(!info->ponder && !info->UciInfinite){
             //limited by depth
             if(info->depthSet && currentDepth>=info->depth)break;
+
+            if(threadNum==0 && info->softTimeSet && currentDepth > 4){
+                double instabilityFactor = 1.0 + 0.5 * bestMoveChanges;
+                int softLimit = (int)((info->optimumTime - info->starttime) * instabilityFactor);
+                int elapsed   = getTimeMs() - info->starttime;
+
+                if(elapsed > softLimit){
+                    info->stopped = TRUE;
+                    break;
+                }
+            }
+
             //mate limits
             if(abs(pvScore[0]) > ISMATE && workerthread->bestMove != NOMOVE){
                 int mateIn  = (AB_BOUND - abs(pvScore[0]) + 1) / 2;

@@ -178,6 +178,11 @@ typedef struct {
     int setOptionPonder;
     int multiPV;
 
+    //soft time management
+    int optimumTime;
+    int maximumTime;
+    int softTimeSet;
+
 
     //thread
     int threadNum;
