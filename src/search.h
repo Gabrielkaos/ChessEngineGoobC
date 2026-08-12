@@ -54,9 +54,9 @@ static const int BetaPruningDepth = 8;
 static const int BetaMargin = 85;
 static const int WindowDepth = 5;
 
-#define RazoringDepth      2      // don't bother beyond this depth, margin gets too wide anyway
-#define RazorMarginBase    400    // start conservative relative to your eval scale
-#define RazorMarginCoeff   300
+#define RazoringDepth      2      
+#define RazorMarginBase    450    
+#define RazorMarginCoeff   350
 
 //FUNCTIONS
 extern void initLMRTable();
