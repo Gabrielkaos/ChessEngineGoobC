@@ -30,43 +30,43 @@ void initDistancesForEval(){
 
 // Closedness Evaluation Terms
 
-const int ClosednessKnightAdjustment[9] = {
-    S(  -7,  10), S(  -7,  29), S(  -9,  37), S(  -5,  37),
-    S(  -3,  44), S(  -1,  36), S(   1,  33), S( -10,  51),
-    S(  -7,  30),
-};
+// const int ClosednessKnightAdjustment[9] = {
+//     S(  -7,  10), S(  -7,  29), S(  -9,  37), S(  -5,  37),
+//     S(  -3,  44), S(  -1,  36), S(   1,  33), S( -10,  51),
+//     S(  -7,  30),
+// };
 
-const int ClosednessRookAdjustment[9] = {
-    S(  42,  43), S(  -6,  80), S(   3,  59), S(  -5,  47),
-    S(  -7,  41), S(  -3,  23), S(  -6,  11), S( -17,  11),
-    S( -34, -12),
-};
+// const int ClosednessRookAdjustment[9] = {
+//     S(  42,  43), S(  -6,  80), S(   3,  59), S(  -5,  47),
+//     S(  -7,  41), S(  -3,  23), S(  -6,  11), S( -17,  11),
+//     S( -34, -12),
+// };
 
-// Complexity Evaluation Terms
+// // Complexity Evaluation Terms
 
-const int ComplexityTotalPawns  = S(   0,   8);
-const int ComplexityPawnFlanks  = S(   0,  82);
-const int ComplexityPawnEndgame = S(   0,  76);
-const int ComplexityAdjustment  = S(   0,-157);
+// const int ComplexityTotalPawns  = S(   0,   8);
+// const int ComplexityPawnFlanks  = S(   0,  82);
+// const int ComplexityPawnEndgame = S(   0,  76);
+// const int ComplexityAdjustment  = S(   0,-157);
 
-//Threat
+// //Threat
 
-const int ThreatWeakPawn             = S( -11, -38);
-const int ThreatMinorAttackedByPawn  = S( -55, -83);
-const int ThreatMinorAttackedByMinor = S( -25, -45);
-const int ThreatMinorAttackedByMajor = S( -30, -55);
-const int ThreatRookAttackedByLesser = S( -48, -28);
-const int ThreatMinorAttackedByKing  = S( -43, -21);
-const int ThreatRookAttackedByKing   = S( -33, -18);
-const int ThreatQueenAttackedByOne   = S( -50,  -7);
-const int ThreatOverloadedPieces     = S(  -7, -16);
-const int ThreatByPawnPush           = S(  15,  32);
+// const int ThreatWeakPawn             = S( -11, -38);
+// const int ThreatMinorAttackedByPawn  = S( -55, -83);
+// const int ThreatMinorAttackedByMinor = S( -25, -45);
+// const int ThreatMinorAttackedByMajor = S( -30, -55);
+// const int ThreatRookAttackedByLesser = S( -48, -28);
+// const int ThreatMinorAttackedByKing  = S( -43, -21);
+// const int ThreatRookAttackedByKing   = S( -33, -18);
+// const int ThreatQueenAttackedByOne   = S( -50,  -7);
+// const int ThreatOverloadedPieces     = S(  -7, -16);
+// const int ThreatByPawnPush           = S(  15,  32);
 
-// Space
+// // Space
 
-const int SpaceRestrictPiece = S(  -4,  -1);
-const int SpaceRestrictEmpty = S(  -4,  -2);
-const int SpaceCenterControl = S(   3,   0);
+// const int SpaceRestrictPiece = S(  -4,  -1);
+// const int SpaceRestrictEmpty = S(  -4,  -2);
+// const int SpaceCenterControl = S(   3,   0);
 
 /*Variables*/
 
@@ -391,153 +391,153 @@ const int tempo = 20;
 
 
 /*Functions*/
-INLINE int evaluateComplexity(S_BOARD *pos, EVAL_INFO *eval_info, int eval) {
+// INLINE int evaluateComplexity(S_BOARD *pos, EVAL_INFO *eval_info, int eval) {
 
-    //penalty for drawish positions.
+//     //penalty for drawish positions.
 
-    int complexity;
-    int eg = ScoreEG(eval);
-    int sign = (eg > 0) - (eg < 0);
+//     int complexity;
+//     int eg = ScoreEG(eval);
+//     int sign = (eg > 0) - (eg < 0);
 
-    int pawnsOnBothFlanks = (eval_info->pawnsBB & (FileBBMask[FILE_A] | FileBBMask[FILE_B] | FileBBMask[FILE_C] | FileBBMask[FILE_D]))
-                         && (eval_info->pawnsBB & (FileBBMask[FILE_E] | FileBBMask[FILE_F] | FileBBMask[FILE_G] | FileBBMask[FILE_H]));
+//     int pawnsOnBothFlanks = (eval_info->pawnsBB & (FileBBMask[FILE_A] | FileBBMask[FILE_B] | FileBBMask[FILE_C] | FileBBMask[FILE_D]))
+//                          && (eval_info->pawnsBB & (FileBBMask[FILE_E] | FileBBMask[FILE_F] | FileBBMask[FILE_G] | FileBBMask[FILE_H]));
 
-    // Compute the initiative bonus or malus for the attacking side
-    complexity =  ComplexityTotalPawns  * COUNTBIT(eval_info->pawnsBB)
-               +  ComplexityPawnFlanks  * pawnsOnBothFlanks
-               +  ComplexityPawnEndgame * !(eval_info->knightsBB | eval_info->bishopsBB | eval_info->rooksBB | eval_info->queensBB)
-               +  ComplexityAdjustment;
+//     // Compute the initiative bonus or malus for the attacking side
+//     complexity =  ComplexityTotalPawns  * COUNTBIT(eval_info->pawnsBB)
+//                +  ComplexityPawnFlanks  * pawnsOnBothFlanks
+//                +  ComplexityPawnEndgame * !(eval_info->knightsBB | eval_info->bishopsBB | eval_info->rooksBB | eval_info->queensBB)
+//                +  ComplexityAdjustment;
 
-    // Avoid changing which side has the advantage
-    int v = sign * MAX(ScoreEG(complexity), -abs(eg));
+//     // Avoid changing which side has the advantage
+//     int v = sign * MAX(ScoreEG(complexity), -abs(eg));
 
-    return MakeScore(0, v);
-}
-
-
-INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
-
-    int closedness, count, eval = 0;
-
-    U64 white = pos->occupancy[WHITE];
-    U64 black = pos->occupancy[BLACK];
-
-    // Compute Closedness factor for this position
-    closedness = 1 * COUNTBIT(eval_info->pawnsBB)
-               + 3 * COUNTBIT(eval_info->rammedPawns[WHITE])
-               - 4 * openFileCount(eval_info->pawnsBB);
-    closedness = MAX(0, MIN(8, closedness / 3));
-
-    // Evaluate Knights based on how Closed the position is
-    count = COUNTBIT(white & eval_info->knightsBB) - COUNTBIT(black & eval_info->knightsBB);
-    eval += count * ClosednessKnightAdjustment[closedness];
-
-    // Evaluate Rooks based on how Closed the position is
-    count = COUNTBIT(white & eval_info->rooksBB) - COUNTBIT(black & eval_info->rooksBB);
-    eval += count * ClosednessRookAdjustment[closedness];
-
-    return eval;
-}
+//     return MakeScore(0, v);
+// }
 
 
-INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
+// INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
 
-    const int US = color, THEM = !color;
+//     int closedness, count, eval = 0;
 
-    int count, eval = 0;
+//     U64 white = pos->occupancy[WHITE];
+//     U64 black = pos->occupancy[BLACK];
 
-    U64 friendly = pos->occupancy[  US];
-    U64 enemy    = pos->occupancy[THEM];
+//     // Compute Closedness factor for this position
+//     closedness = 1 * COUNTBIT(eval_info->pawnsBB)
+//                + 3 * COUNTBIT(eval_info->rammedPawns[WHITE])
+//                - 4 * openFileCount(eval_info->pawnsBB);
+//     closedness = MAX(0, MIN(8, closedness / 3));
 
-    // Squares we attack with more enemy attackers and no friendly pawn attacks
-    U64 uncontrolled =   eval_info->attackedBy2[THEM] & eval_info->attacked[US]
-                           & ~eval_info->attackedBy2[US  ] & ~eval_info->attacks_array_pawns[US];
+//     // Evaluate Knights based on how Closed the position is
+//     count = COUNTBIT(white & eval_info->knightsBB) - COUNTBIT(black & eval_info->knightsBB);
+//     eval += count * ClosednessKnightAdjustment[closedness];
 
-    // Penalty for restricted piece moves
-    count = COUNTBIT(uncontrolled & (friendly | enemy));
-    eval += count * SpaceRestrictPiece;
+//     // Evaluate Rooks based on how Closed the position is
+//     count = COUNTBIT(white & eval_info->rooksBB) - COUNTBIT(black & eval_info->rooksBB);
+//     eval += count * ClosednessRookAdjustment[closedness];
 
-    count = COUNTBIT(uncontrolled & ~friendly & ~enemy);
-    eval += count * SpaceRestrictEmpty;
-
-    // Bonus for uncontested central squares, only when enough material remains
-    if (      COUNTBIT(eval_info->knightsBB | eval_info->bishopsBB)
-        + 2 * COUNTBIT(eval_info->rooksBB | eval_info->queensBB) > 12) {
-        count = COUNTBIT(~eval_info->attacked[THEM] & (eval_info->attacked[US] | friendly) & CENTER_BIG);
-        eval += count * SpaceCenterControl;
-    }
-
-    return eval;
-}
+//     return eval;
+// }
 
 
-INLINE int evaluateThreats(S_BOARD *pos, EVAL_INFO *eval_info, int color){
+// INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
 
-    const int US = color, THEM = !color;
-    const int Rank3Rel = color==WHITE ? RANK_3:RANK_6;
+//     const int US = color, THEM = !color;
 
-    U64 enemy    = pos->occupancy[THEM];
-    U64 occupied = pos->occupancy[BOTH];
+//     int count, eval = 0;
 
-    U64 KNIGHTS = eval_info->knightsBB;
-    U64 ROOKS   = eval_info->rooksBB;
-    U64 BISHOPS = eval_info->bishopsBB;
-    U64 QUEENS  = eval_info->queensBB;
-    U64 PAWNS   = eval_info->pawnsBB;
+//     U64 friendly = pos->occupancy[  US];
+//     U64 enemy    = pos->occupancy[THEM];
 
-    U64 attacksByPawn   = eval_info->attacks_array_pawns[THEM];
-    U64 attacksByMinors = eval_info->attacks_array_minors[THEM];
-    U64 attacksByMajors = eval_info->attacks_array_queens[THEM] | eval_info->attacks_array_rooks[THEM];
+//     // Squares we attack with more enemy attackers and no friendly pawn attacks
+//     U64 uncontrolled =   eval_info->attackedBy2[THEM] & eval_info->attacked[US]
+//                            & ~eval_info->attackedBy2[US  ] & ~eval_info->attacks_array_pawns[US];
 
-    // Squares with more attackers, few defenders, and no pawn support
-    U64 poorlyDefended = (eval_info->attacked[THEM] & ~eval_info->attacked[US])
-                            | (eval_info->attackedBy2[THEM] & ~eval_info->attackedBy2[US] & ~eval_info->attacks_array_pawns[US]);
+//     // Penalty for restricted piece moves
+//     count = COUNTBIT(uncontrolled & (friendly | enemy));
+//     eval += count * SpaceRestrictPiece;
 
-    U64 weakMinors = (KNIGHTS | BISHOPS) & poorlyDefended;
+//     count = COUNTBIT(uncontrolled & ~friendly & ~enemy);
+//     eval += count * SpaceRestrictEmpty;
 
-    // A friendly minor or major is overloaded if attacked and defended by exactly one
-    U64 overloaded = (KNIGHTS | BISHOPS | ROOKS | QUEENS)
-                        & eval_info->attacked[  US] & ~eval_info->attackedBy2[  US]
-                        & eval_info->attacked[THEM] & ~eval_info->attackedBy2[THEM];
+//     // Bonus for uncontested central squares, only when enough material remains
+//     if (      COUNTBIT(eval_info->knightsBB | eval_info->bishopsBB)
+//         + 2 * COUNTBIT(eval_info->rooksBB | eval_info->queensBB) > 12) {
+//         count = COUNTBIT(~eval_info->attacked[THEM] & (eval_info->attacked[US] | friendly) & CENTER_BIG);
+//         eval += count * SpaceCenterControl;
+//     }
 
-    U64 pushThreat  = pawnAdvance(PAWNS, occupied, US);
-    pushThreat |= pawnAdvance(pushThreat & ~attacksByPawn & Rank3Rel, occupied, US);
-    pushThreat &= ~attacksByPawn & (eval_info->attacked[US] | ~eval_info->attacked[THEM]);
-    pushThreat  = pawnAttackSpan(pushThreat, enemy & ~eval_info->attacks_array_pawns[US], US);
+//     return eval;
+// }
 
-    int eval = 0;
-    int count = COUNTBIT(PAWNS & ~attacksByPawn & poorlyDefended);
-    eval += count * ThreatWeakPawn;
 
-    count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByPawn);
-    eval += count * ThreatMinorAttackedByPawn;
+// INLINE int evaluateThreats(S_BOARD *pos, EVAL_INFO *eval_info, int color){
 
-    count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByMinors);
-    eval += count * ThreatMinorAttackedByMinor;
+//     const int US = color, THEM = !color;
+//     const int Rank3Rel = color==WHITE ? RANK_3:RANK_6;
 
-    count = COUNTBIT(weakMinors & attacksByMajors);
-    eval += count * ThreatMinorAttackedByMajor;
+//     U64 enemy    = pos->occupancy[THEM];
+//     U64 occupied = pos->occupancy[BOTH];
 
-    count = COUNTBIT(ROOKS & (attacksByPawn | attacksByMinors));
-    eval += count * ThreatRookAttackedByLesser;
+//     U64 KNIGHTS = eval_info->knightsBB;
+//     U64 ROOKS   = eval_info->rooksBB;
+//     U64 BISHOPS = eval_info->bishopsBB;
+//     U64 QUEENS  = eval_info->queensBB;
+//     U64 PAWNS   = eval_info->pawnsBB;
 
-    count = COUNTBIT(weakMinors & king_attacks[eval_info->kingSq[THEM]]);
-    eval += count * ThreatMinorAttackedByKing;
+//     U64 attacksByPawn   = eval_info->attacks_array_pawns[THEM];
+//     U64 attacksByMinors = eval_info->attacks_array_minors[THEM];
+//     U64 attacksByMajors = eval_info->attacks_array_queens[THEM] | eval_info->attacks_array_rooks[THEM];
 
-    count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[eval_info->kingSq[THEM]]);
-    eval += count * ThreatRookAttackedByKing;
+//     // Squares with more attackers, few defenders, and no pawn support
+//     U64 poorlyDefended = (eval_info->attacked[THEM] & ~eval_info->attacked[US])
+//                             | (eval_info->attackedBy2[THEM] & ~eval_info->attackedBy2[US] & ~eval_info->attacks_array_pawns[US]);
 
-    count = COUNTBIT(QUEENS & eval_info->attacked[THEM]);
-    eval += count * ThreatQueenAttackedByOne;
+//     U64 weakMinors = (KNIGHTS | BISHOPS) & poorlyDefended;
 
-    count = COUNTBIT(overloaded);
-    eval += count * ThreatOverloadedPieces;
+//     // A friendly minor or major is overloaded if attacked and defended by exactly one
+//     U64 overloaded = (KNIGHTS | BISHOPS | ROOKS | QUEENS)
+//                         & eval_info->attacked[  US] & ~eval_info->attackedBy2[  US]
+//                         & eval_info->attacked[THEM] & ~eval_info->attackedBy2[THEM];
 
-    count = COUNTBIT(pushThreat);
-    eval += count * ThreatByPawnPush;
+//     U64 pushThreat  = pawnAdvance(PAWNS, occupied, US);
+//     pushThreat |= pawnAdvance(pushThreat & ~attacksByPawn & Rank3Rel, occupied, US);
+//     pushThreat &= ~attacksByPawn & (eval_info->attacked[US] | ~eval_info->attacked[THEM]);
+//     pushThreat  = pawnAttackSpan(pushThreat, enemy & ~eval_info->attacks_array_pawns[US], US);
 
-    return eval;
-}
+//     int eval = 0;
+//     int count = COUNTBIT(PAWNS & ~attacksByPawn & poorlyDefended);
+//     eval += count * ThreatWeakPawn;
+
+//     count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByPawn);
+//     eval += count * ThreatMinorAttackedByPawn;
+
+//     count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByMinors);
+//     eval += count * ThreatMinorAttackedByMinor;
+
+//     count = COUNTBIT(weakMinors & attacksByMajors);
+//     eval += count * ThreatMinorAttackedByMajor;
+
+//     count = COUNTBIT(ROOKS & (attacksByPawn | attacksByMinors));
+//     eval += count * ThreatRookAttackedByLesser;
+
+//     count = COUNTBIT(weakMinors & king_attacks[eval_info->kingSq[THEM]]);
+//     eval += count * ThreatMinorAttackedByKing;
+
+//     count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[eval_info->kingSq[THEM]]);
+//     eval += count * ThreatRookAttackedByKing;
+
+//     count = COUNTBIT(QUEENS & eval_info->attacked[THEM]);
+//     eval += count * ThreatQueenAttackedByOne;
+
+//     count = COUNTBIT(overloaded);
+//     eval += count * ThreatOverloadedPieces;
+
+//     count = COUNTBIT(pushThreat);
+//     eval += count * ThreatByPawnPush;
+
+//     return eval;
+// }
 
 
 INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
@@ -1265,8 +1265,8 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
     eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
         
-    eval+= evaluateSpace(pos,eval_info,WHITE)-evaluateSpace(pos,eval_info,BLACK);
-    eval+= evaluateThreats(pos,eval_info,WHITE)-evaluateThreats(pos,eval_info,BLACK);
+    // eval+= evaluateSpace(pos,eval_info,WHITE)-evaluateSpace(pos,eval_info,BLACK);
+    // eval+= evaluateThreats(pos,eval_info,WHITE)-evaluateThreats(pos,eval_info,BLACK);
 
     if (!pos->usePKNet || !pknet_loaded) {
         eval+= evaluateKingsPawns(pos,eval_info,WHITE) - evaluateKingsPawns(pos,eval_info,BLACK);
@@ -1341,8 +1341,8 @@ int EvalPosition(S_BOARD *pos){
 
     //get classical eval
     int eval =  getClassicalEval(pos, eval_info);
-    eval     += evaluateClosedness(pos, eval_info);
-    eval     += evaluateComplexity(pos, eval_info, eval);
+    // eval     += evaluateClosedness(pos, eval_info);
+    // eval     += evaluateComplexity(pos, eval_info, eval);
 
     //scale factor
     int factor=ScaleFactor(pos, ScoreEG(eval), eval_info);

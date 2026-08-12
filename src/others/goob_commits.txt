@@ -1632,11 +1632,10 @@
     ->added guard rail to storing hashes in multiPV mode
     ->removed razoring
     ->removed IIR
-    ->copy some heuristics to my favorite engine Ethereal 12.75 in search.c/search.h
-    ->added razoring
+    ->copy some heuristics from my favorite engine Ethereal 12.75 in search.c/search.h
+    ->added safety rails so search never returns garbage move if time runs out
+    ->removed threats/space/complexity/closedness
 
-    //CE_RAZOR
-
-    ->
+    //CE_REMOVED
 
 	*/

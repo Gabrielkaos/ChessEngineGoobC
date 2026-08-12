@@ -181,6 +181,7 @@ typedef struct {
 
     //thread
     int threadNum;
+    int depthOneComplete;
 
 } S_SEARCHINFO;
 

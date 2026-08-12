@@ -54,9 +54,12 @@ static const int BetaPruningDepth = 8;
 static const int BetaMargin = 85;
 static const int WindowDepth = 5;
 
-#define RazoringDepth      2      
-#define RazorMarginBase    450    
-#define RazorMarginCoeff   350
+// #define RazoringDepth      2      
+// #define RazorMarginBase    450    
+// #define RazorMarginCoeff   350
+
+
+// #define SmallProbCutMargin 400
 
 //FUNCTIONS
 extern void initLMRTable();

@@ -44,6 +44,7 @@ void initLMRTable(){
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
+        if(!info->depthOneComplete) return; //ensure at least one depth finishes
         if((!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
            (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
            (info->nodeSet==TRUE && info->nodes>=info->nodeLimit)){
@@ -72,6 +73,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->nodes=0ULL;
     info->tbhits=0ULL;
 
+    info->depthOneComplete=FALSE; 
 }
 
 
@@ -257,15 +259,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
 
 
-    //RAZORING
-    //if staticEval is far below alpha, a full search is very unlikely to
-    //recover, verify with qsearch instead of expanding this node
-    if(!info->bruteForceMode && !pvNode && !inCheck &&
-    depth <= RazoringDepth &&
-    staticEval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
-        return Quiescence(alpha,beta,pos,info,table);
-    }
-
     // seemargin for this depth
     seeMargin[0] = SEENoisyMargin * depth * depth;
     seeMargin[1] = SEEQuietMargin * depth;
@@ -350,12 +343,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             }
     }
-
-    //Internal Iterative Reduction(IIR)
-    //dont over search a position with no Transposition table data
-    //means this position might not be critical
-    // if(!info->bruteForceMode && depth>=4 && ttMove==NOMOVE)depth--;
-
 
     //generate the moves
     S_MOVELIST list[1];
@@ -753,6 +740,20 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
 
+    if(threadNum==0){
+        S_MOVELIST rootList[1];
+        GenerateAllMoves(pos, rootList);
+        int rmi;
+        for(rmi=0;rmi<rootList->count;++rmi){
+            int mv = rootList->moves[rmi].move;
+            if(makeMove(pos, mv)){
+                takeMove(pos);
+                workerthread->bestMove = mv;
+                break;
+            }
+        }
+    }
+
     //MultiPV: only thread 0 (the reporting thread) searches multiple
     //root lines. 
     int rootLegalMoves = (threadNum==0) ? countLegalRootMoves(pos) : 1;
@@ -837,6 +838,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
 
                 delta += delta/2;
+            }
+
+            if(currentDepth==1 && pvNum==0 && threadNum==0){
+                info->depthOneComplete = TRUE;
             }
 
             if(info->stopped==TRUE)break;
