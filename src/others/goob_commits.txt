@@ -1641,7 +1641,7 @@
     //CE_REMOVED
 
     ->fixed multi pv solution
-    ->
+    ->added time management with Soft Limit
     ->
     ->
     ->
