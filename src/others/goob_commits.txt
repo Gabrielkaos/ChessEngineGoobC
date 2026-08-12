@@ -1635,11 +1635,15 @@
     ->copy some heuristics from my favorite engine Ethereal 12.75 in search.c/search.h
     ->added safety rails so search never returns garbage move if time runs out
     ->removed threats/space/complexity/closedness
+    ->added rootMove in board struct
+    ->fixed multipv output
 
     //CE_REMOVED
 
-    ->added rootMove in board struct
-    ->fixed multipv output
+    ->fixed multi pv solution
+    ->
+    ->
+    ->
     ->
 
 	*/

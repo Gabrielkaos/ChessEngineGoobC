@@ -244,6 +244,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     }
 
+    //SMALL PROBCUT
+    //cheap TT-only cutoff: if we already have a lower-bound entry from a
+    //reasonably deep search that clears beta by a solid margin, trust it
+    //without generating a single move
+    
+    // int smallProbCutBeta = beta + SmallProbCutMargin;
+    // if(!rootNode &&
+    //    ttHit &&
+    //    (ttBound == HFBETA) &&
+    //    ttDepth >= depth - 4 &&
+    //    ttValue >= smallProbCutBeta &&
+    //    abs(beta) < ISMATE &&
+    //    abs(ttValue) < ISMATE){
+    //     return smallProbCutBeta;
+    // }
+
     //Syzygy interior-node probe
     if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
         int tbScore;
@@ -259,6 +275,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //see if we improved on the last position
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
+
+    //RAZORING
+    //if staticEval is far below alpha, a full search is very unlikely to
+    //recover — verify with qsearch instead of expanding this node
+    // if(!info->bruteForceMode && !pvNode && !inCheck &&
+    // depth <= RazoringDepth &&
+    // staticEval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
+    //     return Quiescence(alpha,beta,pos,info,table);
+    // }
 
 
     // seemargin for this depth
@@ -531,6 +556,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
+
+    //soften fail-high scores toward beta — avoids overshoot noise,
+    //skip this near mate scores where exact values matter
+    // if(bestScore>=beta && abs(bestScore)<ISMATE && abs(alpha)<ISMATE){
+    //     bestScore = (bestScore*depth + beta) / (depth+1);
+    // }
+
 
     //update history counters on a fail high for a quiet move
     if(bestScore>=beta && !moveIsTactical(pos,bestMove))
@@ -811,15 +843,13 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     if(pos->rootPvMove != NOMOVE && pos->pvArray[0] != pos->rootPvMove){
                         if(makeMove(pos, pos->rootPvMove)){
                             int contLen = getPvLine(MAX(0,searchDepth-1), pos, table);
+                            takeMove(pos);
 
                             int cpy;
                             for(cpy=contLen; cpy>0; --cpy)
                                 pos->pvArray[cpy] = pos->pvArray[cpy-1];
                             pos->pvArray[0] = pos->rootPvMove;
                             numberOfPvMoves = contLen + 1;
-                        }else{
-                            pos->pvArray[0]  = pos->rootPvMove;
-                            numberOfPvMoves  = 1;
                         }
                     }
 

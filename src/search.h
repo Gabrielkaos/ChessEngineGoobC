@@ -55,8 +55,8 @@ static const int BetaMargin = 85;
 static const int WindowDepth = 5;
 
 // #define RazoringDepth      2      
-// #define RazorMarginBase    450    
-// #define RazorMarginCoeff   350
+// #define RazorMarginBase    500    
+// #define RazorMarginCoeff   400
 
 
 // #define SmallProbCutMargin 400
