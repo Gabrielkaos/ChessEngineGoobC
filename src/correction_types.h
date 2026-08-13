@@ -8,5 +8,6 @@
 #define CORR_HIST_SCALE     256
 
 typedef int16_t PawnCorrectionTable[2][CORR_HIST_SIZE];
+typedef int16_t NonPawnCorrectionTable[2][CORR_HIST_SIZE];
 
 #endif

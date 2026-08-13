@@ -52,6 +52,7 @@ typedef struct {
     ALIGN64 HistoryTable histtable;
     ALIGN64 CounterMoveTable cmtable;
     ALIGN64 PawnCorrectionTable pawnCorrHist;
+    ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
 
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;

@@ -1661,7 +1661,10 @@
 
     //CE_CORRECTION
 
-    ->
+    ->added nonpawn correction
+
+    //CE_PAWN_AND_NONPAWN_CORRECTION
+    
     ->
     ->
 

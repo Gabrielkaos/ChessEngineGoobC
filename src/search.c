@@ -596,6 +596,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int alphaRaised = bestScore > oldAlpha;
         if((bestScore > staticEval) == alphaRaised){
             updateCorrectionHistory(pos, depth, diff);
+            updateNonPawnCorrectionHistory(pos, depth, diff);
         }
     }
 
