@@ -3,6 +3,7 @@
 
 
 #include "defs.h"
+#include "correction_types.h"
 
 /* Must match the l1_size (per-perspective accumulator width) of the
    exported NNUE net. Update this to match whatever L1 size you train
@@ -44,10 +45,13 @@ typedef struct {
     int eval_stack[MAXDEPTH];
     int moveStack[MAXDEPTH];
     int pieceStack[MAXDEPTH];
+
+
     ALIGN64 ContinuationTable continuation;
     ALIGN64 CaptureHistoryTable chist;
     ALIGN64 HistoryTable histtable;
     ALIGN64 CounterMoveTable cmtable;
+    ALIGN64 PawnCorrectionTable pawnCorrHist;
 
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;
@@ -67,6 +71,8 @@ typedef struct {
     int rootPvMove;
 
 } S_BOARD;
+
+#include "correction.h"
 
 //board.c
 extern void resetContinuationTable(S_BOARD *pos);

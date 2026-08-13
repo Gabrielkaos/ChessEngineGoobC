@@ -21,6 +21,7 @@
 #include "tinycthread.h"
 #include "tt_eval.h"
 #include "syzygy.h"
+#include "correction.h"
 
 //NOTE
 /*
@@ -272,7 +273,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //store in eval_stack each staticEval
-    int staticEval=pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval:EvalPosition(pos);
+    //history stays independent of how much correction was already
+    //applied when this position was last stored
+    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+
+    //store in eval_stack each staticEval (corrected, used for all pruning)
+    int staticEval = pos->eval_stack[pos->ply] =
+        inCheck ? rawEval : correctedStaticEval(pos, rawEval);
 
     //see if we improved on the last position
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
@@ -580,12 +587,25 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(bestScore>=beta)
         updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
 
+    //correction history update — only meaningful when staticEval was
+    //actually used (not in check), and when the best move wasn't a
+    //capture (captures move material, they don't tell you your eval
+    //of the position's structure was wrong)
+    if(!inCheck && (bestMove==NOMOVE || !moveIsTactical(pos,bestMove))){
+        int diff = bestScore - staticEval;
+        int alphaRaised = bestScore > oldAlpha;
+        if((bestScore > staticEval) == alphaRaised){
+            updateCorrectionHistory(pos, depth, diff);
+        }
+    }
+
     //update TT
     if(rootNode) pos->rootPvMove = bestMove;
+
     if(!rootNode || pos->currentPvNum==0){
         ttBound = bestScore>=beta    ? HFBETA
                 : bestScore>oldAlpha ? HFEXACT : HFALPHA;
-        StoreHashEntry(pos, table, bestMove, bestScore, ttBound, depth, staticEval);
+        StoreHashEntry(pos, table, bestMove, bestScore, ttBound, depth, rawEval);
     }
 
     return bestScore;

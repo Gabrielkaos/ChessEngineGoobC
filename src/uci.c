@@ -19,6 +19,7 @@
 #include "nnue_loader.h"
 #include "pknet_loader.h"
 #include "syzygy.h"
+#include "correction.h"
 
 #define INPUTBUFFER 400*6
 #define Euler 2.8
@@ -162,6 +163,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         clearPvTable(pvTable);
         clearEvalTable(pos->eTable);
         clearPawnKingTable(pos->pawnKingTable);
+        clearCorrectionHistory(pos);
     }
 
     else if (!strncmp(line, "setoption name EvalHash value ", 30)) {
@@ -532,6 +534,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             clearEvalTable(pos->eTable);
             clearPawnKingTable(pos->pawnKingTable);
             resetContinuationTable(pos);
+            clearCorrectionHistory(pos);
         }
 
         else if (strStartsWith(str, "setoption")) {
