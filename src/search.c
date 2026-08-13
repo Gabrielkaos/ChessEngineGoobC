@@ -326,6 +326,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
+    if(!info->bruteForceMode && !pvNode && depth>=IIRDepth && ttMove==NOMOVE)
+        depth--;
+
     //PROBCUT
     //prune unlikely moves
     //if not bruteforce and not in princiap variation line

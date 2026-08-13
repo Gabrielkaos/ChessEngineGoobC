@@ -61,6 +61,8 @@ static const int WindowDepth = 5;
 
 // #define SmallProbCutMargin 400
 
+#define IIRDepth 6
+
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
