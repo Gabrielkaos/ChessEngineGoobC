@@ -516,7 +516,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R -= MAX(-2, MIN(2, hist / 5000));
 
-            // if(allNode) R += 1;
+            //scale up reduction further at expected all-nodes, proportional to
+            //existing R rather than a flat bump, so it doesn't dominate at low depth
+            if(allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);
 
             R = MIN(depth - 1, MAX(R, 1));
         }

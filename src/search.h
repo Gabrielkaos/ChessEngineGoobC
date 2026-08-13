@@ -13,22 +13,16 @@ static const int SEEPruningDepth = 9;
 static const int SEEQuietMargin  = -64;
 static const int SEENoisyMargin  = -19;
 
-// FIX: Ethereal 12.75's QSDeltaMargin is 150, not 200. This constant is
-// used as a floor for the single up-front qsearch delta-pruning check
-// (see Quiescence()), matching Ethereal's Step 6 exactly.
+
 static const int DeltaMarginQ    = 150;
 
 static const int QSSeeMargin     = 110;
 
-// FIX: Ethereal 12.75's WindowSize (initial aspiration-window half-width)
-// is 10, not 50. A wider starting window means far more nodes get
-// re-searched on the (much more common) fail low/high before converging,
-// which meaningfully changes both search speed and reported scores.
+
 static const int ScoreWindow = 10;
 
 static const int probCutDepth = 5;
 
-// FIX: Ethereal 12.75's ProbCutMargin is 80, not 85.
 static const int probCutMargin = 80;
 
 static const int HistexLimit = 10000;
@@ -62,6 +56,9 @@ static const int WindowDepth = 5;
 // #define SmallProbCutMargin 400
 
 #define IIRDepth 6
+
+#define AllNodeScale 276
+#define AllNodeBase  268
 
 //FUNCTIONS
 extern void initLMRTable();
