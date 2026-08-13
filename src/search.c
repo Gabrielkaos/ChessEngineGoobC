@@ -170,7 +170,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 }
 
 //main search function alpha beta
-int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int doNULL){
+int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int doNULL, int cutNode){
 
     int R,improving,quietMove,moveInLoop,newDepth,singular,extension,seeMargin[2];
     int fmhist          =0;
@@ -180,6 +180,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int Score           =-AB_BOUND;
     int pvNode          =(alpha != beta-1);
     int rootNode        =pos->ply==0;
+    int allNode         =!(pvNode || cutNode);
     int quietsSeen      =0;
     int bestMove        =NOMOVE;
     int oldAlpha        =alpha;
@@ -318,7 +319,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 R = 4 + depth / 6 + MIN(3, (staticEval - beta) / 200);
 
-                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE);
+                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
                 if(valueNull >= beta)return beta;
@@ -326,7 +327,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
-    if(!info->bruteForceMode && !pvNode && depth>=IIRDepth && ttMove==NOMOVE)
+    if(!info->bruteForceMode && !allNode && depth>=IIRDepth && ttMove==NOMOVE)
         depth--;
 
     //PROBCUT
@@ -363,9 +364,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE);
+                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE);
+
                 //now at shallow depth perform a more deeper search to confirm
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE);
+                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE);
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
@@ -514,6 +516,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R -= MAX(-2, MIN(2, hist / 5000));
 
+            // if(allNode) R += 1;
+
             R = MIN(depth - 1, MAX(R, 1));
         }
         //for non quiet moves
@@ -527,16 +531,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //LMR
         //see if the move can exceed current alpha
         //if not, no need to explore deeply
-        if(R != 1) Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE);
+        if(R != 1) Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE);
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode);
         }
 
         //Normal Search
         if(pvNode && (Legal == 1 || Score > alpha)){
-            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE);
+            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, FALSE);
         }
 
 
@@ -624,7 +628,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         if(moveInLoop==ttMove)continue;
 
         if(!makeMove(pos,moveInLoop))continue;
-        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE);
+        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE);
         takeMove(pos);
         if(info->stopped==TRUE)break;
         //if found a stronger move breaks, triggers MultiCut
@@ -841,7 +845,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             while(TRUE){
 
                 
-                bestScore = AlphaBeta(alpha,beta,MAX(1,searchDepth),pos,info,table,threadNum,TRUE);
+                bestScore = AlphaBeta(alpha,beta,MAX(1,searchDepth),pos,info,table,threadNum,TRUE, FALSE);
 
                 if(info->stopped==TRUE)break;
 
