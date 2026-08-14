@@ -42,7 +42,9 @@ typedef struct {
     int seldepth;
     int pvArray[MAXDEPTH];
     int searchKillers[2][MAXDEPTH];
+
     int eval_stack[MAXDEPTH];
+    int reduction_stack[MAXDEPTH];
     int moveStack[MAXDEPTH];
     int pieceStack[MAXDEPTH];
 

@@ -1665,6 +1665,13 @@
 
     //CE_PAWN_AND_NONPAWN_CORRECTION
     
+    ->addede reduction stack to board h
+    ->added reduction and opponent worsening for lmr reduction
+
+    //CE_REDUCTION
+
+    ->
+    ->
     ->
     ->
 

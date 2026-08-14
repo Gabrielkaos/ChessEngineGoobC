@@ -284,6 +284,18 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //see if we improved on the last position
     improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
 
+
+    //hindsight depth adjustment based on how much the parent reduced
+    //to reach this node, and whether the position has kept getting
+    //worse for the opponent since
+    int priorReduction = pos->ply >= 1 ? pos->reduction_stack[pos->ply] : 0;
+    int opponentWorsening = pos->ply >= 1 && staticEval > -pos->eval_stack[pos->ply-1];
+
+    if(!info->bruteForceMode){
+        if(priorReduction >= 3 && !opponentWorsening) depth++;
+        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->eval_stack[pos->ply-1] > HindsightMargin) depth--;
+    }
+
     //RAZORING
     //if staticEval is far below alpha, a full search is very unlikely to
     //recover — verify with qsearch instead of expanding this node
@@ -540,7 +552,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //LMR
         //see if the move can exceed current alpha
         //if not, no need to explore deeply
-        if(R != 1) Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE);
+        if(R != 1){
+            pos->reduction_stack[pos->ply] = R;
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE);
+            pos->reduction_stack[pos->ply] = 0;
+        }
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){

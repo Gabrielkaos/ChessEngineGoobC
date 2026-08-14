@@ -165,10 +165,11 @@ int ProbePvTable(const S_BOARD *pos, S_PVTABLE *table){
     int index=pos->posKey % table->numEntries;
     ASSERT(index>=0 && index<=table->numEntries-1);
 
-    U64 test_key = pos->posKey ^ table->pTable[index].smp_data;
+    U64 data = table->pTable[index].smp_data;   // single snapshot
+    U64 test_key = pos->posKey ^ data;
 
     if(table->pTable[index].smp_key==test_key){
-        return EXTRACT_MOVE(table->pTable[index].smp_data);
+        return EXTRACT_MOVE(data);
     }
 
     return NOMOVE;
@@ -179,17 +180,18 @@ int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *tt
 	int index = pos->posKey % table->numEntries;
 	ASSERT(index>=0 && index<=table->numEntries-1);
 
-    U64 test_key = pos->posKey ^ table->pTable[index].smp_data;
+    U64 data = table->pTable[index].smp_data;   // single snapshot
+    U64 test_key = pos->posKey ^ data;
 
 	if( table->pTable[index].smp_key == test_key) {
 
         table->pTable[index].generation = table->generation;
         *ttEval = table->pTable[index].eval;
 
-		*move    = EXTRACT_MOVE(table->pTable[index].smp_data);
-		*ttDepth = EXTRACT_DEPTH(table->pTable[index].smp_data);
-		*ttBound = EXTRACT_FLAGS(table->pTable[index].smp_data);
-		*score   = EXTRACT_SCORE(table->pTable[index].smp_data);
+		*move    = EXTRACT_MOVE(data);
+        *ttDepth = EXTRACT_DEPTH(data);
+        *ttBound = EXTRACT_FLAGS(data);
+        *score   = EXTRACT_SCORE(data);
         return TRUE;
 	}
 

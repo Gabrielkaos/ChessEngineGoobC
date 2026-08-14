@@ -60,6 +60,7 @@ static const int WindowDepth = 5;
 #define AllNodeScale 276
 #define AllNodeBase  268
 
+#define HindsightMargin 166   // Stockfish's value
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);

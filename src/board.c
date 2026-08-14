@@ -22,6 +22,7 @@ void initStacks(S_BOARD *pos){
         pos->eval_stack[index]=0;
         pos->moveStack[index] =NOMOVE;
         pos->pieceStack[index]=0;
+        pos->reduction_stack[index]=0;
     }
 }
 
