@@ -77,6 +77,8 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->depthOneComplete=FALSE; 
 
     pos->rootPvMove = NOMOVE;
+
+    pos->nmpMinPly = 0;
 }
 
 
@@ -329,6 +331,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if(!rootNode &&
                 staticEval >= beta &&
                 depth >= defaultNullMoveDepth &&
+                pos->ply >= pos->nmpMinPly &&
                 boardHasNonPawnMaterial(pos,pos->side) &&
                 (pos->ply < 1 || pos->moveStack[pos->ply-1] != NULLMOVE) &&
                 (pos->ply < 2 || pos->moveStack[pos->ply-2] != NULLMOVE) &&
@@ -341,7 +344,28 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
-                if(valueNull >= beta)return beta;
+
+                if(valueNull >= beta){
+                    //don't trust an unproven mate/near-mate score from null move
+                    if(abs(valueNull) >= ISMATE) return beta;
+
+                    //at low depth or already inside a verification subtree,
+                    //trust the null move result directly — not worth the
+                    //extra search cost
+                    if(pos->nmpMinPly > 0 || depth < NMPVerifyDepth) return beta;
+
+                    //verification search: disable NMP until ply passes this
+                    //threshold, to avoid a recursive false-positive, then
+                    //confirm the cutoff holds without the null-move shortcut
+                    pos->nmpMinPly = pos->ply + 3 * (depth - R) / 4;
+
+                    int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE);
+
+                    pos->nmpMinPly = 0;
+
+                    if(info->stopped==TRUE)return 0;
+                    if(v >= beta) return beta;
+                }
             }
         }
     }

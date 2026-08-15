@@ -1670,7 +1670,7 @@
 
     //CE_REDUCTION
 
-    ->
+    ->added Null Move Pruning Verfication
     ->
     ->
     ->

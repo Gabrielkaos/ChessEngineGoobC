@@ -73,6 +73,8 @@ typedef struct {
 
     int rootPvMove;
 
+    int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
+
 } S_BOARD;
 
 #include "correction.h"
