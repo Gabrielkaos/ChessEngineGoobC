@@ -573,3 +573,242 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
         }
     }
 }
+
+int moveIsPseudoLegal(const S_BOARD *pos, int move){
+
+    if(move == NOMOVE || move == NULLMOVE) return FALSE;
+
+    int from = FROMSQ(move);
+    int to   = TOSQ(move);
+
+    //FROMSQ/TOSQ mask 7 bits (0-127) but the board is only 0-63 -
+    //reject out-of-range squares before they're used to index pos->pieces
+    if(from > H8 || to > H8) return FALSE;
+
+    int side = pos->side;
+    int pce  = pos->pieces[from];
+
+    if(pce == EMPTY || pieceCol[pce] != side) return FALSE;
+
+    int cap  = CAPTURED(move);
+    int prom = PROMOTED(move);
+    int targetPce = pos->pieces[to];
+
+    //-------- castling --------
+    if(move & MVFLAGCA){
+        if(!pieceKing[pce] || cap != EMPTY || prom != EMPTY) return FALSE;
+
+        if(side == WHITE){
+            if(from != E1) return FALSE;
+            if(to == G1)
+                return (pos->castleRights & WKCA)
+                    && !GETBIT(pos->occupancy[BOTH],F1)
+                    && !GETBIT(pos->occupancy[BOTH],G1)
+                    && !is_square_attacked_BB(E1,BLACK,pos)
+                    && !is_square_attacked_BB(F1,BLACK,pos);
+            if(to == C1)
+                return (pos->castleRights & WQCA)
+                    && !GETBIT(pos->occupancy[BOTH],D1)
+                    && !GETBIT(pos->occupancy[BOTH],C1)
+                    && !GETBIT(pos->occupancy[BOTH],B1)
+                    && !is_square_attacked_BB(E1,BLACK,pos)
+                    && !is_square_attacked_BB(D1,BLACK,pos);
+            return FALSE;
+        }else{
+            if(from != E8) return FALSE;
+            if(to == G8)
+                return (pos->castleRights & BKCA)
+                    && !GETBIT(pos->occupancy[BOTH],F8)
+                    && !GETBIT(pos->occupancy[BOTH],G8)
+                    && !is_square_attacked_BB(E8,WHITE,pos)
+                    && !is_square_attacked_BB(F8,WHITE,pos);
+            if(to == C8)
+                return (pos->castleRights & BQCA)
+                    && !GETBIT(pos->occupancy[BOTH],D8)
+                    && !GETBIT(pos->occupancy[BOTH],C8)
+                    && !GETBIT(pos->occupancy[BOTH],B8)
+                    && !is_square_attacked_BB(E8,WHITE,pos)
+                    && !is_square_attacked_BB(D8,WHITE,pos);
+            return FALSE;
+        }
+    }
+
+    //-------- en passant --------
+    if(move & MVFLAGEP){
+        if(!piecePawn[pce] || prom != EMPTY) return FALSE;
+        if(pos->enPas == NO_SQ || to != pos->enPas) return FALSE;
+        if(targetPce != EMPTY) return FALSE;
+        return !!GETBIT(pawn_attacks[side][from], to);
+    }
+
+    //-------- pawn pushes / captures --------
+    if(piecePawn[pce]){
+        int promRank    = (side == WHITE) ? RANK_7 : RANK_2;
+        int mustPromote = (ranksBoard[from] == promRank);
+
+        if(mustPromote){
+            if(prom == EMPTY || pieceCol[prom] != side ||
+               pieceType[prom] == p_pawn || pieceType[prom] == p_king)
+                return FALSE;
+        }else if(prom != EMPTY) return FALSE;
+
+        int push = (side == WHITE) ? from + 8 : from - 8;
+
+        if(move & MVFLAGPS){
+            int startRank = (side == WHITE) ? RANK_2 : RANK_7;
+            int dbl       = (side == WHITE) ? from + 16 : from - 16;
+            if(cap != EMPTY || ranksBoard[from] != startRank || to != dbl) return FALSE;
+            return !GETBIT(pos->occupancy[BOTH], push) && !GETBIT(pos->occupancy[BOTH], to);
+        }
+
+        if(to == push){
+            if(cap != EMPTY) return FALSE;
+            return !GETBIT(pos->occupancy[BOTH], to);
+        }
+
+        //capture
+        if(!GETBIT(pawn_attacks[side][from], to)) return FALSE;
+        if(targetPce == EMPTY || pieceCol[targetPce] == side) return FALSE;
+        return cap == targetPce;
+    }
+
+    //-------- knight / bishop / rook / queen / king --------
+    if(prom != EMPTY) return FALSE;
+
+    U64 attackSet;
+    if(pieceKnight[pce])          attackSet = knight_attacks[from];
+    else if(pieceKing[pce])       attackSet = king_attacks[from];
+    else if(pce==wB || pce==bB)   attackSet = get_bishop_attacks(from, pos->occupancy[BOTH]);
+    else if(pce==wR || pce==bR)   attackSet = get_rook_attacks(from, pos->occupancy[BOTH]);
+    else if(pce==wQ || pce==bQ)   attackSet = get_queen_attacks(from, pos->occupancy[BOTH]);
+    else return FALSE;
+
+    if(!GETBIT(attackSet, to)) return FALSE;
+
+    if(targetPce == EMPTY) return cap == EMPTY;
+    if(pieceCol[targetPce] == side) return FALSE;
+    return cap == targetPce;
+}
+
+void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
+
+    ASSERT(checkBoard(pos));
+
+    int side = pos->side;
+    int source_square, target_square;
+    U64 bitboard, quiets;
+
+    int base = (side == WHITE) ? wP : bP;
+
+    for (int piece = base; piece <= base + 5; piece++)
+    {
+        bitboard = pos->bitboards[piece];
+
+        if (side == WHITE && piece == wP)
+        {
+            while (bitboard)
+            {
+                source_square = LSBINDEX(bitboard);
+                target_square = source_square + 8;
+
+                //skip promotion-rank pushes entirely - those are noisy
+                if (ranksBoard[source_square] != RANK_7 &&
+                    !GETBIT(pos->occupancy[BOTH], target_square))
+                {
+                    AddMovee(pos,MOVE(source_square,target_square,EMPTY,EMPTY,0),list);
+
+                    if (source_square >= A2 && source_square <= H2 &&
+                        !GETBIT(pos->occupancy[BOTH], (target_square + 8)))
+                        AddMovee(pos,MOVE(source_square,(target_square+8),0,0,MVFLAGPS),list);
+                }
+                bitboard &= bitboard - 1;
+            }
+        }
+        else if (side == BLACK && piece == bP)
+        {
+            while (bitboard)
+            {
+                source_square = LSBINDEX(bitboard);
+                target_square = source_square - 8;
+
+                if (ranksBoard[source_square] != RANK_2 &&
+                    !GETBIT(pos->occupancy[BOTH], target_square))
+                {
+                    AddMovee(pos,MOVE(source_square,target_square,EMPTY,EMPTY,0),list);
+
+                    if (source_square >= A7 && source_square <= H7 &&
+                        !GETBIT(pos->occupancy[BOTH], (target_square - 8)))
+                        AddMovee(pos,MOVE(source_square,(target_square-8),0,0,MVFLAGPS),list);
+                }
+                bitboard &= bitboard - 1;
+            }
+        }
+
+        if (side == WHITE && piece == wK)
+        {
+            if (pos->castleRights & WKCA)
+                if (!GETBIT(pos->occupancy[BOTH], F1) && !GETBIT(pos->occupancy[BOTH], G1))
+                    if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(F1, BLACK,pos))
+                        AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
+
+            if (pos->castleRights & WQCA)
+                if (!GETBIT(pos->occupancy[BOTH], D1) && !GETBIT(pos->occupancy[BOTH], C1) && !GETBIT(pos->occupancy[BOTH], B1))
+                    if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(D1, BLACK,pos))
+                        AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
+        }
+
+        if (side == BLACK && piece == bK)
+        {
+            if (pos->castleRights & BKCA)
+                if (!GETBIT(pos->occupancy[BOTH], F8) && !GETBIT(pos->occupancy[BOTH], G8))
+                    if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(F8, WHITE,pos))
+                        AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
+
+            if (pos->castleRights & BQCA)
+                if (!GETBIT(pos->occupancy[BOTH], D8) && !GETBIT(pos->occupancy[BOTH], C8) && !GETBIT(pos->occupancy[BOTH], B8))
+                    if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(D8, WHITE,pos))
+                        AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
+        }
+
+        if (piece == base + 1){ //knights
+            while (bitboard){
+                source_square = LSBINDEX(bitboard);
+                quiets = knight_attacks[source_square] & ~pos->occupancy[BOTH];
+                while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
+                bitboard &= bitboard - 1;
+            }
+        }
+        if (piece == base + 2){ //bishops
+            while (bitboard){
+                source_square = LSBINDEX(bitboard);
+                quiets = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
+                bitboard &= bitboard - 1;
+            }
+        }
+        if (piece == base + 3){ //rooks
+            while (bitboard){
+                source_square = LSBINDEX(bitboard);
+                quiets = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
+                bitboard &= bitboard - 1;
+            }
+        }
+        if (piece == base + 4){ //queens
+            while (bitboard){
+                source_square = LSBINDEX(bitboard);
+                quiets = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
+                bitboard &= bitboard - 1;
+            }
+        }
+        if (piece == base + 5){ //kings
+            while (bitboard){
+                source_square = LSBINDEX(bitboard);
+                quiets = king_attacks[source_square] & ~pos->occupancy[BOTH];
+                while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
+                bitboard &= bitboard - 1;
+            }
+        }
+    }
+}

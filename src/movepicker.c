@@ -1,93 +1,188 @@
-
 #include "movepicker.h"
 #include "search.h"
 #include "makemove.h"
+#include "history.h"
 
-void PickNextMove(int moveNum,S_MOVELIST *list){
-    S_MOVE temp;
-    int index=0;
-    int bestNum=moveNum;
-    int bestScore=list->moves[moveNum].score;
+static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600};
 
-    for(index=moveNum;index<list->count;++index){
-        if(list->moves[index].score>bestScore){
-            bestScore=list->moves[index].score;
-            bestNum=index;
-        }
-    }
-
-    temp=list->moves[moveNum];
-    list->moves[moveNum]=list->moves[bestNum];
-    list->moves[bestNum]=temp;
-
+static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
+    int best = lo;
+    for(int i = lo + 1; i < lo + count; ++i)
+        if(moves[i].score > moves[best].score) best = i;
+    return best;
 }
 
-void InitAllScore(S_BOARD *pos, S_MOVELIST *movelist, int ttMove, int threshold){
-
-    static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600};
-
-    int index;
-    int move;
-    int pce;
-    int captured,to;
-
-    
-    int counter = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
-    int cmTo    = TOSQ(counter);
-
-    int follow = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-    int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
-    int fmTo    = TOSQ(follow);
-
-
-    for(index=0;index<movelist->count;++index){
-        move = movelist->moves[index].move;
-        pce = pos->pieces[FROMSQ(move)];
-
-        //table move
-        if(move==ttMove){
-            movelist->moves[index].score = SORT_PV_MOVE;
-            continue;
-        }
-
-        //quiet moves
-        if(!moveIsTactical(pos,move)){
-            if(move==pos->searchKillers[0][pos->ply])     movelist->moves[index].score = SORT_KILLER0;
-            else if(move==pos->searchKillers[1][pos->ply])movelist->moves[index].score = SORT_KILLER1;
-            else if(move==pos->cmtable[!pos->side][cmPiece][cmTo])movelist->moves[index].score = SORT_COUNTER;
-            else{
-                movelist->moves[index].score = pos->histtable[pos->side][FROMSQ(move)][TOSQ(move)];
-                if(counter != NOMOVE && counter != NULLMOVE){
-                    movelist->moves[index].score += pos->continuation[0][cmPiece][cmTo][pieceType[pce]][TOSQ(move)];
-                }
-                if(follow != NOMOVE && follow != NULLMOVE){
-                    movelist->moves[index].score += pos->continuation[1][fmPiece][fmTo][pieceType[pce]][TOSQ(move)];
-                }
-            }
-        }
-
-        //capture moves
-        else{
-
-            if(!StaticExchangeEvaluation(pos,move,threshold)){
-                movelist->moves[index].score = -1;
-                continue;
-            }
-
-            to = TOSQ(move);
-            captured = pieceType[pos->pieces[to]];
-            if(move & MVFLAGEP) captured = p_pawn;
-            if(move & MVFLAGPROM) captured = p_pawn;
-
-            movelist->moves[index].score = pos->chist[pieceType[pce]][to][captured];
-            if(pieceType[PROMOTED(move)]==p_queen)movelist->moves[index].score += 100;
-            movelist->moves[index].score += MVVAugment[captured] + SORT_CAPTURE;
-
-        }
-
-    }
+static int mp_popMoveAt(S_MOVE *moves, int lo, int *size, int index){
+    int popped = moves[index].move;
+    moves[index] = moves[lo + --(*size)];
+    return popped;
 }
 
+void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
 
+    mp->list->count = 0;
+    mp->stage       = STAGE_TABLE;
+    mp->tableMove   = ttMove;
+    mp->threshold   = 0;
+    mp->type        = NORMAL_PICKER;
 
+    int counter  = pos->ply > 0 ? pos->moveStack[pos->ply - 1] : NOMOVE;
+    int cmPiece  = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
+    int cmTo     = TOSQ(counter);
+
+    mp->killer1 = pos->searchKillers[0][pos->ply];
+    mp->killer2 = pos->searchKillers[1][pos->ply];
+    mp->counter = (counter != NOMOVE && counter != NULLMOVE)
+                ? pos->cmtable[!pos->side][cmPiece][cmTo] : NOMOVE;
+}
+
+void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
+    initMovePicker(mp, pos, ttMove);
+    mp->stage = STAGE_GENERATE_NOISY;   // skip offering ttMove a second time
+}
+
+void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold){
+    mp->list->count = 0;
+    mp->stage       = STAGE_GENERATE_NOISY;
+    mp->tableMove = mp->killer1 = mp->killer2 = mp->counter = NOMOVE;
+    mp->threshold   = threshold;
+    mp->type        = NOISY_PICKER;
+}
+
+int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
+
+    int best, move;
+
+    switch(mp->stage){
+
+        case STAGE_TABLE:
+            mp->stage = STAGE_GENERATE_NOISY;
+            if(moveIsPseudoLegal(pos, mp->tableMove)){
+                mp->lastStage = STAGE_TABLE;
+                return mp->tableMove;
+            }
+            /* fallthrough */
+
+        case STAGE_GENERATE_NOISY: {
+            GenerateAllNoisy(pos, mp->list);
+            for(int i = 0; i < mp->list->count; ++i){
+                move = mp->list->moves[i].move;
+                int to = TOSQ(move);
+                int captured = pieceType[pos->pieces[to]];
+                if(move & MVFLAGEP)   captured = p_pawn;
+                if(move & MVFLAGPROM) captured = p_pawn;
+                mp->list->moves[i].score = getCaptureHistory(pos, move) + MVVAugment[captured];
+            }
+            mp->split = mp->noisySize = mp->list->count;
+            mp->stage = STAGE_GOOD_NOISY;
+        }
+        /* fallthrough */
+
+        case STAGE_GOOD_NOISY:
+            while(mp->noisySize){
+                best = mp_getBestIndex(mp->list->moves, 0, mp->noisySize);
+
+                if(mp->list->moves[best].score < 0) break; // rest are worse - defer to STAGE_BAD_NOISY
+
+                if(!StaticExchangeEvaluation(pos, mp->list->moves[best].move, mp->threshold)){
+                    mp->list->moves[best].score = -1;
+                    continue;
+                }
+
+                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, best);
+
+                if(move == mp->tableMove) continue;
+                if(move == mp->killer1) mp->killer1 = NOMOVE;
+                if(move == mp->killer2) mp->killer2 = NOMOVE;
+                if(move == mp->counter) mp->counter = NOMOVE;
+
+                mp->lastStage = STAGE_GOOD_NOISY;
+                return move;
+            }
+
+            if(skipQuiets || mp->type == NOISY_PICKER){
+                mp->stage = STAGE_BAD_NOISY;
+                return selectNextMove(mp, pos, skipQuiets);
+            }
+
+            mp->stage = STAGE_KILLER_1;
+            /* fallthrough */
+
+        case STAGE_KILLER_1:
+            mp->stage = STAGE_KILLER_2;
+            if(!skipQuiets && mp->killer1 != mp->tableMove && moveIsPseudoLegal(pos, mp->killer1)){
+                mp->lastStage = STAGE_KILLER_1;
+                return mp->killer1;
+            }
+            /* fallthrough */
+
+        case STAGE_KILLER_2:
+            mp->stage = STAGE_COUNTER_MOVE;
+            if(!skipQuiets && mp->killer2 != mp->tableMove && moveIsPseudoLegal(pos, mp->killer2)){
+                mp->lastStage = STAGE_KILLER_2;
+                return mp->killer2;
+            }
+            /* fallthrough */
+
+        case STAGE_COUNTER_MOVE:
+            mp->stage = STAGE_GENERATE_QUIET;
+            if(!skipQuiets
+                && mp->counter != mp->tableMove
+                && mp->counter != mp->killer1
+                && mp->counter != mp->killer2
+                && moveIsPseudoLegal(pos, mp->counter)){
+                mp->lastStage = STAGE_COUNTER_MOVE;
+                return mp->counter;
+            }
+            /* fallthrough */
+
+        case STAGE_GENERATE_QUIET:
+            if(!skipQuiets){
+                int fm, cm;
+                int startCount = mp->list->count; // == mp->split
+                GenerateAllQuiet(pos, mp->list);   // appends
+                mp->quietSize = mp->list->count - startCount;
+                for(int i = mp->split; i < mp->list->count; ++i){
+                    move = mp->list->moves[i].move;
+                    mp->list->moves[i].score = getHistory(pos, move, &fm, &cm);
+                }
+            }
+            mp->stage = STAGE_QUIET;
+            /* fallthrough */
+
+        case STAGE_QUIET:
+            while(!skipQuiets && mp->quietSize){
+                best = mp_getBestIndex(mp->list->moves, mp->split, mp->quietSize);
+                move = mp_popMoveAt(mp->list->moves, mp->split, &mp->quietSize, best);
+
+                if(move == mp->tableMove || move == mp->killer1 ||
+                   move == mp->killer2  || move == mp->counter)
+                    continue;
+
+                mp->lastStage = STAGE_QUIET;
+                return move;
+            }
+
+            mp->stage = STAGE_BAD_NOISY;
+            /* fallthrough */
+
+        case STAGE_BAD_NOISY:
+            if(mp->noisySize && mp->type != NOISY_PICKER){
+                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, 0);
+
+                if(move == mp->tableMove || move == mp->killer1 ||
+                   move == mp->killer2  || move == mp->counter)
+                    return selectNextMove(mp, pos, skipQuiets);
+
+                mp->lastStage = STAGE_BAD_NOISY;
+                return move;
+            }
+
+            mp->stage = STAGE_DONE;
+            /* fallthrough */
+
+        case STAGE_DONE:
+        default:
+            return NOMOVE;
+    }
+}

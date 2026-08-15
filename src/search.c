@@ -137,21 +137,10 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
         return eval;
 
-    S_MOVELIST list[1];
-    GenerateAllNoisy(pos,list);
-    InitAllScore(pos,list,ttMove,MAX(1,alpha-eval-QSSeeMargin));
+    S_MOVEPICKER mp[1];
+    initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin));
 
-    for(moveNum=0;moveNum<list->count;++moveNum){
-        PickNextMove(moveNum,list);
-        moveInLoop = list->moves[moveNum].move;
-
-        if(!info->bruteForceMode){
-            //SEE Pruning
-            //if the score for this noisy move is lesser than zero we dont bother checking it
-            if(list->moves[moveNum].score < 0){
-                continue;
-            }
-        }
+    while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
         if(!makeMove(pos,moveInLoop))continue;
         value=-Quiescence(-beta,-alpha,pos,info,table);
@@ -187,7 +176,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int quietsSeen      =0;
     int bestMove        =NOMOVE;
     int oldAlpha        =alpha;
-    int moveNum         =0;
     int Legal           =0;
     int bestScore       =-AB_BOUND;
     int inCheck         =!!attackersToKingSq(pos,pos->side);
@@ -370,6 +358,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
+    //IIR
     if(!info->bruteForceMode && !allNode && depth>=IIRDepth && ttMove==NOMOVE)
         depth--;
 
@@ -387,21 +376,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         (staticEval>=beta || staticEval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
 
             int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
-            int move_in_prob,move_num;
+            int move_in_prob;
             //int probThresh = rBeta - staticEval;
 
-            S_MOVELIST problist[1];
-            GenerateAllNoisy(pos,problist);
-            InitAllScore(pos,problist,NOMOVE,rBeta - staticEval);
-            for(move_num=0;move_num<problist->count;++move_num){
-                PickNextMove(move_num,problist);
-                move_in_prob=problist->moves[move_num].move;
-
-
-                //SEE Pruning
-                if(problist->moves[move_num].score < 0){
-                    continue;
-                }
+            S_MOVEPICKER probmp[1];
+            initNoisyMovePicker(probmp, rBeta - staticEval);
+            while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
                 if (!makeMove(pos,move_in_prob))continue;
 
@@ -420,17 +400,18 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //generate the moves
-    S_MOVELIST list[1];
-    GenerateAllMoves(pos,list);
-    InitAllScore(pos,list,ttMove,0);
+    S_MOVEPICKER mp[1];
+    initMovePicker(mp, pos, ttMove);
 
     Score = -AB_BOUND;
     int skipQuiets = 0;
 
     //main move loop
-    for(moveNum=0;moveNum<list->count;++moveNum){
-        PickNextMove(moveNum,list);
-        moveInLoop=list->moves[moveNum].move;
+    while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
+
+        int isExempt      = (mp->lastStage==STAGE_TABLE || mp->lastStage==STAGE_GOOD_NOISY);
+        int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE);
+        int isSpecial     = isExempt || isRefutation;
 
         //Syzygy root filtering
         if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
@@ -444,16 +425,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //count the quiets seen and check if the move is tactical
         quietsSeen+=(quietMove=!moveIsTactical(pos,moveInLoop));
-
-        //if tje skipQuiets flag is 1
-        //and is quiet move
-        //and move not a ttmove
-        //then we skip that move
-        if(skipQuiets
-            && quietMove
-            && moveInLoop != ttMove){
-            continue;
-        }
 
         //get history
         //get history of the move
@@ -486,13 +457,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //prune them if they have a low history performance
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
-            if ( list->moves[moveNum].score < SORT_COUNTER
+            if ( !isSpecial
                 && cmhist < CounterMoveHistoryLimit[improving]
                 && depth - R <= CounterMovePruningDepth[improving]){
                     continue;
                 }
 
-            if ( list->moves[moveNum].score < SORT_COUNTER
+            if ( !isSpecial
                 && fmhist < FollowUpMoveHistoryLimit[improving]
                 && depth - R <= FollowUpMovePruningDepth[improving]){
                     continue;
@@ -504,7 +475,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //if it actually gained material
         if (    !info->bruteForceMode
             &&  bestScore > -ISMATE
-            && list->moves[moveNum].score < SORT_CAPTURE
+            && !isExempt
             &&  depth <= SEEPruningDepth
             && !StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])){
             continue;
@@ -555,7 +526,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += inCheck && pieceKing[pos->pieces[TOSQ(moveInLoop)]];
 
-            R -= list->moves[moveNum].score >= SORT_COUNTER;
+            R -= isSpecial;
 
             R -= MAX(-2, MIN(2, hist / 5000));
 
@@ -657,7 +628,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //also checks if a stornger move if found(MULTICUT)
 int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut){
 
-    int moveNum;
     int moveInLoop = NOMOVE;
     int skipQuiets = 0;
     int quiets     = 0;
@@ -670,25 +640,12 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
     takeMove(pos);
 
     //generate the moves
-    S_MOVELIST singularList[1];
-    GenerateAllMoves(pos,singularList);
-    InitAllScore(pos,singularList,NOMOVE,0);
+    S_MOVEPICKER smp[1];
+    initSingularMovePicker(smp, pos, ttMove);
 
-    for(moveNum=0;moveNum<singularList->count;++moveNum){
-        PickNextMove(moveNum,singularList);
-        moveInLoop = singularList->moves[moveNum].move;
+    while((moveInLoop = selectNextMove(smp,pos,skipQuiets)) != NOMOVE){
 
         quietMove = !moveIsTactical(pos,moveInLoop);
-
-        //skipQuiets if too many quiet moves has been seen
-        if(skipQuiets
-            && quietMove
-            && moveInLoop != ttMove){
-            continue;
-        }
-
-        //skip the pvMove
-        if(moveInLoop==ttMove)continue;
 
         if(!makeMove(pos,moveInLoop))continue;
         value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE);

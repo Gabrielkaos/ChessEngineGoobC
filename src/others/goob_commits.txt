@@ -1671,7 +1671,10 @@
     //CE_REDUCTION
 
     ->added Null Move Pruning Verfication
-    ->
+    ->implemented Staged Move Generation
+
+    //CE_STAGED
+
     ->
     ->
 
