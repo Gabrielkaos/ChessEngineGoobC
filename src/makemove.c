@@ -232,6 +232,7 @@ int makeMove(S_BOARD *pos,int move){
     pos->history[pos->hisPly].move=move;
     pos->history[pos->hisPly].enPas=pos->enPas;
     pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
+    pos->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
     pos->history[pos->hisPly].castleRights=pos->castleRights;
     pos->castleRights &= castlePerm[from];
     pos->castleRights &= castlePerm[to];
@@ -267,6 +268,7 @@ int makeMove(S_BOARD *pos,int move){
         AddPiece(to,pos,promotedPiece);
     }
 
+    pos->pliesFromNull++;
     pos->hisPly++;
     pos->ply++;
     pos->side ^=1;
@@ -295,9 +297,10 @@ void takeMove(S_BOARD *pos){
     }
     HASH_CA;
 
-    pos->castleRights=pos->history[pos->hisPly].castleRights;
-    pos->fiftyMove=pos->history[pos->hisPly].fiftyMove;
-    pos->enPas=pos->history[pos->hisPly].enPas;
+    pos->castleRights      = pos->history[pos->hisPly].castleRights;
+    pos->fiftyMove         = pos->history[pos->hisPly].fiftyMove;
+    pos->enPas             = pos->history[pos->hisPly].enPas;
+    pos->pliesFromNull     = pos->history[pos->hisPly].pliesFromNull;
 
     if(pos->enPas != NO_SQ){
         HASH_EP;
@@ -349,7 +352,10 @@ void makeNullMove(S_BOARD *pos){
     pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
     pos->history[pos->hisPly].enPas=pos->enPas;
     pos->history[pos->hisPly].castleRights=pos->castleRights;
+    pos->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
+
     pos->enPas=NO_SQ;
+    pos->pliesFromNull=0;
 
 
     pos->side^=1;
@@ -363,9 +369,12 @@ void takeNullMove(S_BOARD *pos){
     pos->ply--;
 
     if(pos->enPas != NO_SQ) HASH_EP;
-    pos->castleRights=pos->history[pos->hisPly].castleRights;
-    pos->fiftyMove=pos->history[pos->hisPly].fiftyMove;
-    pos->enPas=pos->history[pos->hisPly].enPas;
+
+    pos->castleRights  = pos->history[pos->hisPly].castleRights;
+    pos->fiftyMove     = pos->history[pos->hisPly].fiftyMove;
+    pos->enPas         = pos->history[pos->hisPly].enPas;
+    pos->pliesFromNull = pos->history[pos->hisPly].pliesFromNull;
+
     if(pos->enPas != NO_SQ) HASH_EP;
 
     pos->side^=1;

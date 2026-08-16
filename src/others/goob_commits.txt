@@ -1675,6 +1675,12 @@
 
     //CE_STAGED
 
+    ->added DoubleExtension in Singular function return
+    ->added nullFromPlies in board, makemove, S_UNDO
+    ->added isShuffling in search and Singular condition
+
+    //CE_SINGULAR
+
     ->
     ->
 

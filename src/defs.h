@@ -147,6 +147,7 @@ typedef struct {
     int castleRights;
     int enPas;
     int fiftyMove;
+    int pliesFromNull;
     U64 posKey;
 } S_UNDO;
 

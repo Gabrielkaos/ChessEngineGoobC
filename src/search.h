@@ -64,6 +64,9 @@ static const int WindowDepth = 5;
 
 #define NMPVerifyDepth 16   // Stockfish's threshold
 
+#define DoubleExtMargin 15 * 8
+#define TripleExtMargin 90
+
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);

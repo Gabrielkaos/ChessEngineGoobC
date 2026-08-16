@@ -95,6 +95,18 @@ INLINE int isExcludedRootMove(const S_BOARD *pos,int move){
     return FALSE;
 }
 
+static int isShuffling(S_BOARD *pos, int move){
+    if(moveIsTactical(pos,move) || pos->fiftyMove < 10) return FALSE;
+    if(pos->pliesFromNull < 6 || pos->ply < 20) return FALSE;
+    if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
+
+    int m2 = pos->moveStack[pos->ply-2];
+    int m4 = pos->moveStack[pos->ply-4];
+    if(m2==NOMOVE || m2==NULLMOVE || m4==NOMOVE || m4==NULLMOVE) return FALSE;
+
+    return FROMSQ(move)==TOSQ(m2) && FROMSQ(m2)==TOSQ(m4);
+}
+
 
 //Quiescence search function to check if there are captures that can change the game
 
@@ -497,13 +509,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      &&  depth >= 8
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
-                     && (ttBound == HFBETA);
+                     && (ttBound == HFBETA)
+                     && !isShuffling(pos, moveInLoop);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
             extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut)
                         :inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit);
 
-            newDepth = MIN(MAXDEPTH - 2,depth + (extension && !rootNode));
+            newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
 
             //MultiCut, super aggressive pruning
             //engine thinks that the move is too strong
@@ -670,6 +683,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
                 updateKillers(pos,moveInLoop);
         }
         *multiCut=TRUE;
+        
     }
 
     //reapply
@@ -677,7 +691,15 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         ASSERT(FALSE);
     }
 
-    return value <= rBeta;
+    if(*multiCut==TRUE)return 1;
+
+    if(value <= rBeta){
+        int extension = 1;
+        if(value < rBeta - DoubleExtMargin) extension=2;
+        // if(value < rBeta - TripleExtMargin) extension++;
+        return extension;
+    }
+    return 0;
 }
 
 //SEE function

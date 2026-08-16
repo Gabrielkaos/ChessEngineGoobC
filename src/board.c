@@ -276,6 +276,7 @@ void ResetBoard(S_BOARD *pos){
     pos->side=BOTH;
     pos->enPas=NO_SQ;
     pos->fiftyMove=0;
+    pos->pliesFromNull=0;
 
     pos->castleRights=0;
     pos->ply=0;

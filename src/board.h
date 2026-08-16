@@ -74,6 +74,7 @@ typedef struct {
     int rootPvMove;
 
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
+    int pliesFromNull;
 
 } S_BOARD;
 
