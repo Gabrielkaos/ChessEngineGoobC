@@ -3,7 +3,7 @@
 #include "string.h"
 
 int correctionValue(const S_BOARD *pos){
-    int index = pos->pkHash % CORR_HIST_SIZE;
+    int index = pos->pkHash & (CORR_HIST_SIZE - 1);
     return pos->pawnCorrHist[pos->side][index];
 }
 
@@ -21,7 +21,7 @@ int correctedStaticEval(const S_BOARD *pos, int rawEval){
 }
 
 void updateCorrectionHistory(S_BOARD *pos, int depth, int diff){
-    int index = pos->pkHash % CORR_HIST_SIZE;
+    int index = pos->pkHash & (CORR_HIST_SIZE - 1);
     int16_t *entry = &pos->pawnCorrHist[pos->side][index];
 
     int bonus = diff * depth / 8;
@@ -51,7 +51,7 @@ static inline int nonPawnMaterialIndex(const S_BOARD *pos, int side){
           + 3*COUNTBIT(pos->bitboards[side==WHITE?wB:bB])
           + 9*COUNTBIT(pos->bitboards[side==WHITE?wR:bR])
           + 27*COUNTBIT(pos->bitboards[side==WHITE?wQ:bQ]);
-    return n % CORR_HIST_SIZE;
+    return n & (CORR_HIST_SIZE - 1);
 }
 
 int nonPawnCorrectionValue(const S_BOARD *pos){

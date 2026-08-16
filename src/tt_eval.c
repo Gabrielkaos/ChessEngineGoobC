@@ -2,6 +2,7 @@
 #include "defs.h"
 #include "stdio.h"
 #include "tt_eval.h"
+#include "some_maths.h"
 
 //for EVAL HASH
 void clearEvalTable(EVAL_TABLE *eTable){
@@ -17,8 +18,7 @@ void clearEvalTable(EVAL_TABLE *eTable){
 void InitEvalTable(EVAL_TABLE *table,const int mb,int noisy){
 
     int PvSize = 0x100000 * mb;
-    table->numEntries=PvSize/sizeof(EVAL_ENTRY);
-    table->numEntries-=2;
+    table->numEntries=floorPowerOf2(PvSize/sizeof(EVAL_ENTRY));
     if(table->evalTable != NULL) free(table->evalTable);
 
 
@@ -41,7 +41,7 @@ void InitEvalTable(EVAL_TABLE *table,const int mb,int noisy){
 
 void StoreTTEval(S_BOARD *pos,int Eval){
 
-    int index=pos->posKey % pos->eTable->numEntries;
+    int index=pos->posKey & (pos->eTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->eTable->numEntries-1);
 
 	pos->eTable->evalTable[index].EvalScore=Eval;
@@ -50,7 +50,7 @@ void StoreTTEval(S_BOARD *pos,int Eval){
 
 int ProbeTTEval(const S_BOARD *pos){
 
-    int index=pos->posKey % pos->eTable->numEntries;
+    int index=pos->posKey & (pos->eTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->eTable->numEntries-1);
 
     if(pos->eTable->evalTable[index].posKey==pos->posKey){
@@ -82,8 +82,7 @@ void clearPawnKingTable(PAWNKING_TABLE *eTable){
 void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy){
 
     int PvSize = 0x100000 * mb;
-    table->numEntries=PvSize/sizeof(PAWNKING_ENTRY);
-    table->numEntries-=2;
+    table->numEntries=floorPowerOf2(PvSize/sizeof(PAWNKING_ENTRY));
     if(table->paTable != NULL) free(table->paTable);
 
 
@@ -106,7 +105,7 @@ void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy){
 
 void StorePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
-    int index=pos->pkHash % pos->pawnKingTable->numEntries;
+    int index=pos->pkHash & (pos->pawnKingTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
 	pos->pawnKingTable->paTable[index].whiteScore=eval_info->pawnEval[WHITE];
@@ -118,7 +117,7 @@ void StorePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
 int ProbePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
-    int index=pos->pkHash % pos->pawnKingTable->numEntries;
+    int index=pos->pkHash & (pos->pawnKingTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
     if(pos->pawnKingTable->paTable[index].pawnPosKey==pos->pkHash){

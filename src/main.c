@@ -68,6 +68,9 @@ int main(int argc, char *argv[])
 		}else if (!strncmp(line, "bb",2)){
             TestHASH(QUEENG3);
             continue;
+        }else if(!strncmp(line, "test",4)){
+            runTTReplacementTests();
+            continue;
         }else if(!strncmp(line, "quit",4)){
 			break;
 		}

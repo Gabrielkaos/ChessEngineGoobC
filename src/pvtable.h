@@ -17,5 +17,6 @@ extern void clearPvTable(S_PVTABLE *table);
 extern int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table);
 extern int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *ttDepth,int *ttBound,int *ttEval);
 extern void TestHASH(char *fen);
+extern int runTTReplacementTests(void);
 
 #endif //PVTABLE_H

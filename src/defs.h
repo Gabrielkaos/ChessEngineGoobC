@@ -45,6 +45,8 @@ typedef int CounterMoveTable[2][6][64];
 #define NOMOVE 0
 #define NULLMOVE 507904
 
+#define TT_BUCKET_SIZE 3
+
 enum{p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king};
 enum{PAWN=1,KNIGHT,BISHOP,ROOK,QUEEN,KING};
 enum {  MAXDEPTH=128,
@@ -128,9 +130,13 @@ typedef struct{
 
 } S_PVENTRY;
 
+typedef struct{
+    S_PVENTRY entries[TT_BUCKET_SIZE];
+} S_PVBUCKET;
+
 //PV tables
 typedef struct{
-    S_PVENTRY *pTable;
+    S_PVBUCKET *pTable;
     int numEntries;
     int generation;
 } S_PVTABLE;

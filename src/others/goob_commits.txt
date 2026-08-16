@@ -1687,7 +1687,14 @@
 
     //CE_TTHISTORY
 
+    ->added buckets TT
+    ->made power of 2 tables in pvtable.c and & masking
+    ->made power of 2 tables in tt_eval.c and corrections.c
     ->
     ->
+
+    //CE_BUCKET
+
+    
 
 	*/
