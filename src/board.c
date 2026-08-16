@@ -24,6 +24,7 @@ void initStacks(S_BOARD *pos){
         pos->pieceStack[index]=0;
         pos->reduction_stack[index]=0;
     }
+    pos->ttMoveHistory = 0;
 }
 
 int getGamePhase(const S_BOARD *pos){

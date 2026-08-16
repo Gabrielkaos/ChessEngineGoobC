@@ -16,7 +16,7 @@ SRCS := $(wildcard *.c)
 OBJDIR := obj
 BINDIR := bin
 OBJS := $(patsubst %.c, $(OBJDIR)/%.o, $(SRCS))
-NAMES := $(BINDIR)/CE_SINGULAR
+NAMES := $(BINDIR)/CE_TTHISTORY
 CFLAGS := -O3 -pthread $(PLATFORM_FLAGS)
 LDFLAGS := -lm
 

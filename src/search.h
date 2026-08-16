@@ -65,7 +65,11 @@ static const int WindowDepth = 5;
 #define NMPVerifyDepth 16   // Stockfish's threshold
 
 #define DoubleExtMargin 15 * 8
-#define TripleExtMargin 90
+#define TripleExtMargin 90 //unused for now
+
+
+#define TTMoveHistoryMax 8192   // tunable
+#define TTMoveHistoryScale 40   // tunable
 
 //FUNCTIONS
 extern void initLMRTable();

@@ -611,7 +611,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(bestScore>=beta)
         updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
 
-    //correction history update — only meaningful when staticEval was
+    //ttMoveHistory: track how often the TT move actually turns out best,
+    //as a trust signal for singular-extension margin scaling
+    if(!pvNode){
+        int bonus = (bestMove == ttMove) ? 918 : -747;
+        int entry = pos->ttMoveHistory;
+        entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
+        pos->ttMoveHistory = entry;
+    }
+
+    //correction history update, only meaningful when staticEval was
     //actually used (not in check), and when the best move wasn't a
     //capture (captures move material, they don't tell you your eval
     //of the position's structure was wrong)
@@ -695,7 +704,10 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
 
     if(value <= rBeta){
         int extension = 1;
-        if(value < rBeta - DoubleExtMargin) extension=2;
+
+        int adjustedDoubleMargin = DoubleExtMargin - pos->ttMoveHistory / TTMoveHistoryScale;
+
+        if(value < rBeta - adjustedDoubleMargin) extension++;
         // if(value < rBeta - TripleExtMargin) extension++;
         return extension;
     }

@@ -76,6 +76,8 @@ typedef struct {
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
     int pliesFromNull;
 
+    int ttMoveHistory;
+
 } S_BOARD;
 
 #include "correction.h"

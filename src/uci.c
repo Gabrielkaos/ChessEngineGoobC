@@ -164,6 +164,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         clearEvalTable(pos->eTable);
         clearPawnKingTable(pos->pawnKingTable);
         clearCorrectionHistory(pos);
+        pos->ttMoveHistory = 0;
     }
 
     else if (!strncmp(line, "setoption name EvalHash value ", 30)) {

@@ -1681,6 +1681,12 @@
 
     //CE_SINGULAR
 
+    ->added ttmovehistory to board
+    ->added ttmovehistory adjustment in Singular
+    ->added ttmove init in uci
+
+    //CE_TTHISTORY
+
     ->
     ->
 
