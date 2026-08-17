@@ -4,7 +4,7 @@
 
 int correctionValue(const S_BOARD *pos){
     int index = pos->pkHash & (CORR_HIST_SIZE - 1);
-    return pos->pawnCorrHist[pos->side][index];
+    return pos->shared->pawnCorrHist[pos->side][index];
 }
 
 int correctedStaticEval(const S_BOARD *pos, int rawEval){
@@ -22,7 +22,7 @@ int correctedStaticEval(const S_BOARD *pos, int rawEval){
 
 void updateCorrectionHistory(S_BOARD *pos, int depth, int diff){
     int index = pos->pkHash & (CORR_HIST_SIZE - 1);
-    int16_t *entry = &pos->pawnCorrHist[pos->side][index];
+    int16_t *entry = &pos->shared->pawnCorrHist[pos->side][index];
 
     int bonus = diff * depth / 8;
     if(bonus >  CORR_HIST_MAX/4) bonus =  CORR_HIST_MAX/4;
@@ -37,8 +37,8 @@ void updateCorrectionHistory(S_BOARD *pos, int depth, int diff){
 }
 
 void clearCorrectionHistory(S_BOARD *pos){
-    memset(pos->pawnCorrHist, 0, sizeof(pos->pawnCorrHist));
-    memset(pos->nonPawnCorrHist, 0, sizeof(pos->nonPawnCorrHist));
+    memset(pos->shared->pawnCorrHist, 0, sizeof(pos->shared->pawnCorrHist));
+    memset(pos->shared->nonPawnCorrHist, 0, sizeof(pos->shared->nonPawnCorrHist));
 }
 
 static inline int nonPawnMaterialIndex(const S_BOARD *pos, int side){
@@ -56,12 +56,12 @@ static inline int nonPawnMaterialIndex(const S_BOARD *pos, int side){
 
 int nonPawnCorrectionValue(const S_BOARD *pos){
     int index = nonPawnMaterialIndex(pos, pos->side);
-    return pos->nonPawnCorrHist[pos->side][index];
+    return pos->shared->nonPawnCorrHist[pos->side][index];
 }
 
 void updateNonPawnCorrectionHistory(S_BOARD *pos, int depth, int diff){
     int index = nonPawnMaterialIndex(pos, pos->side);
-    int16_t *entry = &pos->nonPawnCorrHist[pos->side][index];
+    int16_t *entry = &pos->shared->nonPawnCorrHist[pos->side][index];
 
     int bonus = diff * depth / 8;
     if(bonus >  CORR_HIST_MAX/4) bonus =  CORR_HIST_MAX/4;

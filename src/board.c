@@ -10,10 +10,10 @@
 #include "nnue_loader.h"
 
 void resetContinuationTable(S_BOARD *pos){
-    memset(pos->continuation,0,sizeof(ContinuationTable));
-    memset(pos->chist,0,sizeof(CaptureHistoryTable));
-    memset(pos->histtable,0,sizeof(HistoryTable));
-    memset(pos->cmtable,0,sizeof(CounterMoveTable));
+    memset(pos->shared->continuation,0,sizeof(ContinuationTable));
+    memset(pos->shared->chist,0,sizeof(CaptureHistoryTable));
+    memset(pos->shared->histtable,0,sizeof(HistoryTable));
+    memset(pos->shared->cmtable,0,sizeof(CounterMoveTable));
 }
 
 void initStacks(S_BOARD *pos){
@@ -24,7 +24,7 @@ void initStacks(S_BOARD *pos){
         pos->pieceStack[index]=0;
         pos->reduction_stack[index]=0;
     }
-    pos->ttMoveHistory = 0;
+    pos->shared->ttMoveHistory = 0;
 }
 
 int getGamePhase(const S_BOARD *pos){

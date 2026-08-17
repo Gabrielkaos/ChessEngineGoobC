@@ -12,7 +12,7 @@ int getCaptureHistory(S_BOARD *pos,int move){
     if (move & MVFLAGEP   ) captured = p_pawn;
     if (move & MVFLAGPROM   ) captured = p_pawn;
 
-    return pos->chist[piece][to][captured]
+    return pos->shared->chist[piece][to][captured]
          + 64000 * (pieceType[PROMOTED(move)] == p_queen);
 }
 
@@ -38,9 +38,9 @@ void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth)
         ASSERT(piece >= p_pawn && piece <= p_king);
         ASSERT(captured >= p_pawn && captured < p_king);
 
-        entry = pos->chist[piece][to][captured];
+        entry = pos->shared->chist[piece][to][captured];
         entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-        pos->chist[piece][to][captured] = entry;
+        pos->shared->chist[piece][to][captured] = entry;
 
     }
 
@@ -72,12 +72,12 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     int fmTo    = TOSQ(fmMove);
 
     if(cmMove==NOMOVE || cmMove==NULLMOVE)*cmhist = 0;
-    else *cmhist = pos->continuation[0][cmPiece][cmTo][piece][to];
+    else *cmhist = pos->shared->continuation[0][cmPiece][cmTo][piece][to];
 
     if(fmMove==NOMOVE || fmMove==NULLMOVE)*fmhist = 0;
-    else *fmhist = pos->continuation[1][fmPiece][fmTo][piece][to];
+    else *fmhist = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
 
-    return *fmhist + *cmhist + pos->histtable[pos->side][from][to];
+    return *fmhist + *cmhist + pos->shared->histtable[pos->side][from][to];
 
 }
 
@@ -91,7 +91,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     int cmTo    = TOSQ(cmMove);
 
     if (cmMove != NOMOVE && cmMove != NULLMOVE){
-        pos->cmtable[!pos->side][cmPiece][cmTo] = bestMove;
+        pos->shared->cmtable[!pos->side][cmPiece][cmTo] = bestMove;
     }
 
     if(!(length==1 && depth <= 3)){
@@ -113,20 +113,20 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             from  = FROMSQ(move);
             to    = TOSQ(move);
 
-            entry = pos->histtable[pos->side][from][to];
+            entry = pos->shared->histtable[pos->side][from][to];
             entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-            pos->histtable[pos->side][from][to] = entry;
+            pos->shared->histtable[pos->side][from][to] = entry;
 
             if(cmMove != NOMOVE && cmMove != NULLMOVE){
-                entry = pos->continuation[0][cmPiece][cmTo][piece][to];
+                entry = pos->shared->continuation[0][cmPiece][cmTo][piece][to];
                 entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-                pos->continuation[0][cmPiece][cmTo][piece][to] = entry;
+                pos->shared->continuation[0][cmPiece][cmTo][piece][to] = entry;
             }
 
             if(fmMove != NOMOVE && fmMove != NULLMOVE){
-                entry = pos->continuation[1][fmPiece][fmTo][piece][to];
+                entry = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
                 entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-                pos->continuation[1][fmPiece][fmTo][piece][to] = entry;
+                pos->shared->continuation[1][fmPiece][fmTo][piece][to] = entry;
             }
         }
 

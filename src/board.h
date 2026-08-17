@@ -11,6 +11,17 @@
    (see nnue_loader.h). */
 #define NNUE_ACC_SIZE 1024
 
+
+typedef struct {
+    ALIGN64 ContinuationTable    continuation;
+    ALIGN64 CaptureHistoryTable  chist;
+    ALIGN64 HistoryTable         histtable;
+    ALIGN64 CounterMoveTable     cmtable;
+    ALIGN64 PawnCorrectionTable  pawnCorrHist;
+    ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
+    int ttMoveHistory;
+} S_SHARED_TABLES;
+
 //Board structure
 typedef struct {
     //important board things
@@ -49,13 +60,6 @@ typedef struct {
     int pieceStack[MAXDEPTH];
 
 
-    ALIGN64 ContinuationTable continuation;
-    ALIGN64 CaptureHistoryTable chist;
-    ALIGN64 HistoryTable histtable;
-    ALIGN64 CounterMoveTable cmtable;
-    ALIGN64 PawnCorrectionTable pawnCorrHist;
-    ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
-
     int useNNUE;   // flag: use NNUE evaluation
     int usePKNet;
 
@@ -76,7 +80,8 @@ typedef struct {
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
     int pliesFromNull;
 
-    int ttMoveHistory;
+
+    S_SHARED_TABLES *shared;
 
 } S_BOARD;
 

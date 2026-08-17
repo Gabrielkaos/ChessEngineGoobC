@@ -615,9 +615,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //as a trust signal for singular-extension margin scaling
     if(!pvNode){
         int bonus = (bestMove == ttMove) ? 918 : -747;
-        int entry = pos->ttMoveHistory;
+        int entry = pos->shared->ttMoveHistory;
         entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
-        pos->ttMoveHistory = entry;
+        pos->shared->ttMoveHistory = entry;
     }
 
     //correction history update, only meaningful when staticEval was
@@ -705,7 +705,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
     if(value <= rBeta){
         int extension = 1;
 
-        int adjustedDoubleMargin = DoubleExtMargin - pos->ttMoveHistory / TTMoveHistoryScale;
+        int adjustedDoubleMargin = DoubleExtMargin - pos->shared->ttMoveHistory / TTMoveHistoryScale;
 
         if(value < rBeta - adjustedDoubleMargin) extension++;
         // if(value < rBeta - TripleExtMargin) extension++;

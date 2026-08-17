@@ -33,6 +33,12 @@ int main(int argc, char *argv[])
 	pos->pawnKingTable->paTable=NULL;
 	InitPawnKingTable(pos->pawnKingTable,pawnHashMB,0);
 
+    pos->shared = (S_SHARED_TABLES*) malloc(sizeof(S_SHARED_TABLES));
+    if(pos->shared == NULL){
+        printf("info string FATAL: shared table allocation failed\n");
+        return 1;
+    }
+
 
     //init some stacks and minor tables
 	initStacks(pos);
@@ -79,6 +85,7 @@ int main(int argc, char *argv[])
 	free(pvTable->pTable);
 	free(pos->eTable->evalTable);
 	free(pos->pawnKingTable->paTable);
+    free(pos->shared);
 	TBFree();
 
 	/*

@@ -33,7 +33,7 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->killer1 = pos->searchKillers[0][pos->ply];
     mp->killer2 = pos->searchKillers[1][pos->ply];
     mp->counter = (counter != NOMOVE && counter != NULLMOVE)
-                ? pos->cmtable[!pos->side][cmPiece][cmTo] : NOMOVE;
+                ? pos->shared->cmtable[!pos->side][cmPiece][cmTo] : NOMOVE;
 }
 
 void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
