@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
 	free(pvTable->pTable);
 	free(pos->eTable->evalTable);
 	free(pos->pawnKingTable->paTable);
+	FreeAllThreadTables();
     free(pos->shared);
 	TBFree();
 

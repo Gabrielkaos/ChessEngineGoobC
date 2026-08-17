@@ -163,6 +163,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         clearPvTable(pvTable);
         clearEvalTable(pos->eTable);
         clearPawnKingTable(pos->pawnKingTable);
+        ClearThreadTables(info->threadNum);
         clearCorrectionHistory(pos);
         pos->shared->ttMoveHistory = 0;
     }
@@ -173,6 +174,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         if(EvalMb < 4) EvalMb = 4;
         if(EvalMb > maxHash) EvalMb = maxHash;
         InitEvalTable(pos->eTable, EvalMb,1);
+        ReallocThreadTables(currentPawnHashMB, EvalMb);
     }
 
     else if (!strncmp(line, "setoption name PawnHash value ", 30)) {
@@ -181,6 +183,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         if(pawnMb < 4) pawnMb = 4;
         if(pawnMb > maxHash) pawnMb = maxHash;
         InitPawnKingTable(pos->pawnKingTable, pawnMb,1);
+        ReallocThreadTables(pawnMb, currentEvalHashMB);
     }
 
     else if (!strncmp(line, "setoption name Ponder value ", 28)) {
@@ -534,6 +537,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             clearPvTable(pvTable);
             clearEvalTable(pos->eTable);
             clearPawnKingTable(pos->pawnKingTable);
+            ClearThreadTables(info->threadNum);
             resetContinuationTable(pos);
             clearCorrectionHistory(pos);
         }

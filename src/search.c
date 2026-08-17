@@ -789,16 +789,13 @@ int SearchPositionThread(void *data){
     S_BOARD *pos = malloc(sizeof(S_BOARD));
     memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
 
-    pos->eTable->evalTable = NULL;
-    InitEvalTable(pos->eTable, evalHashMB, 0);
+    pos->eTable->evalTable = threadEvalTable[0].evalTable;
+    pos->eTable->numEntries = threadEvalTable[0].numEntries;
 
-    pos->pawnKingTable->paTable = NULL;
-    InitPawnKingTable(pos->pawnKingTable, pawnHashMB, 0);
+    pos->pawnKingTable->paTable = threadPawnTable[0].paTable;
+    pos->pawnKingTable->numEntries = threadPawnTable[0].numEntries;
 
     SearchPosition(pos, thread_data->info, thread_data->ttable);
-
-    free(pos->eTable->evalTable);
-    free(pos->pawnKingTable->paTable);
 
     free(pos);
     free(thread_data);
@@ -1037,8 +1034,6 @@ int startWorkerThreads(void *data){
         }
         fflush(stdout);
     }
-    free(thread_data->originalPos->eTable->evalTable);
-    free(thread_data->originalPos->pawnKingTable->paTable);
     free(thread_data->originalPos);
     free(thread_data);
 
@@ -1055,11 +1050,11 @@ void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINF
     pThread->originalPos = malloc(sizeof(S_BOARD));
     memcpy(pThread->originalPos, pos, sizeof(S_BOARD));
 
-    pThread->originalPos->eTable->evalTable = NULL;
-    InitEvalTable(pThread->originalPos->eTable, evalHashMB, 0);
+    pThread->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
+    pThread->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;
 
-    pThread->originalPos->pawnKingTable->paTable = NULL;
-    InitPawnKingTable(pThread->originalPos->pawnKingTable, pawnHashMB, 0);
+    pThread->originalPos->pawnKingTable->paTable = threadPawnTable[threadNum].paTable;
+    pThread->originalPos->pawnKingTable->numEntries = threadPawnTable[threadNum].numEntries;
 
     pThread->info         = info;
     pThread->ttable       = table;
@@ -1083,6 +1078,9 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     //Syzygy root probe
     TBProbeRoot(pos);
+
+    //ensure persistent per-thread tables are allocated
+    EnsureThreadTables(info->threadNum);
 
     //setup the workers
     //create worker threads

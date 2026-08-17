@@ -131,6 +131,58 @@ int ProbePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
     return 0;
 }
 
+// Persistent per-thread pawn/eval hash tables (allocated once, reused across searches)
+PAWNKING_TABLE threadPawnTable[MAXTHREADS];
+EVAL_TABLE threadEvalTable[MAXTHREADS];
+static int numAllocatedThreadTables = 0;
+int currentPawnHashMB = pawnHashMB;
+int currentEvalHashMB = evalHashMB;
 
+// Ensure persistent tables exist for threads 0..numThreads-1
+void EnsureThreadTables(int numThreads){
+    if(numThreads <= numAllocatedThreadTables) return;
+    for(int i = numAllocatedThreadTables; i < numThreads; i++){
+        threadPawnTable[i].paTable = NULL;
+        InitPawnKingTable(&threadPawnTable[i], currentPawnHashMB, 0);
+        threadEvalTable[i].evalTable = NULL;
+        InitEvalTable(&threadEvalTable[i], currentEvalHashMB, 0);
+    }
+    numAllocatedThreadTables = numThreads;
+}
 
+// Clear all allocated thread tables (ucinewgame / Clear Hash)
+void ClearThreadTables(int numThreads){
+    int limit = numThreads < numAllocatedThreadTables ? numThreads : numAllocatedThreadTables;
+    for(int i = 0; i < limit; i++){
+        if(threadPawnTable[i].paTable != NULL)
+            clearPawnKingTable(&threadPawnTable[i]);
+        if(threadEvalTable[i].evalTable != NULL)
+            clearEvalTable(&threadEvalTable[i]);
+    }
+}
+
+// Re-allocate all thread tables with new sizes (setoption PawnHash/EvalHash)
+void ReallocThreadTables(int newPawnMB, int newEvalMB){
+    currentPawnHashMB = newPawnMB;
+    currentEvalHashMB = newEvalMB;
+    for(int i = 0; i < numAllocatedThreadTables; i++){
+        InitPawnKingTable(&threadPawnTable[i], newPawnMB, 0);
+        InitEvalTable(&threadEvalTable[i], newEvalMB, 0);
+    }
+}
+
+// Free all thread tables at engine exit
+void FreeAllThreadTables(void){
+    for(int i = 0; i < numAllocatedThreadTables; i++){
+        if(threadPawnTable[i].paTable != NULL){
+            free(threadPawnTable[i].paTable);
+            threadPawnTable[i].paTable = NULL;
+        }
+        if(threadEvalTable[i].evalTable != NULL){
+            free(threadEvalTable[i].evalTable);
+            threadEvalTable[i].evalTable = NULL;
+        }
+    }
+    numAllocatedThreadTables = 0;
+}
 
