@@ -1,13 +1,10 @@
 # ChessEngineGoobC
 UCI playing Chess Engine written in C
 
-## Update - July 24 2026
-I have lots of free time now I might add a serious nnue implementation or just small depending on what i can understand. Only on year till i graduate finally.
-I don't know if its bad to use ai for improving engines but i make sure that updates are not ai slop, i read the code and test them myself if it has elo gains :).
-Also if i am able to make nnue work, i don't think i'll be able to test if its actually making my engine stronger cause i dont have the heardware to train a network and its too expensive to rent some machines. hopefully everything works fine. this is all for the update :)
-
-## GOOBGUI
-Just something I made in python for fun, based on Vice code
+## Update - Aug 18 2026 - Gabriel Montes
+I've made the engine far stronger than GOOB v1.8.9, I have implemented lots of technique off of Ethereal 12.75 and Stockfish latest they've been a great source.
+Also my NNUE in the latest release 2.1 is currently experimental, I think it works but I just need a trained network which i dont have hardware right now enough to train at least 500M-1B
+positions. You can check the latest release GOOB-2.1, thank you guys for your time.
 
 ## How to Use
 Compile the code in the src directory using the makefile.
@@ -23,6 +20,7 @@ Check src/others/goob_commits.txt
 ## Humble beginnings
 After watching Bluefever's tutorial on how to make a chess engine in C. I got curious to how other engines manage to get very strong and fast. I asked on reddit, stackoverflow about how to implement things that can make a chess engine fast. I got interested in the idea of bitboards, representing 64 squares using the 64 bit long integer data type, That's when I discovered BBC a chess engine that uses this kind of board representation.
 I watched CodeMonkeyKings's tutorial on BBC, after implementing the bitboards, I searched on chessprogrammingwiki about techniques and other things. After 2 months of tinkering, I was finally satisfied.
+Just trying to see how far I can make GOOB stronger by watching, reading, and researching how other open source engines work :)
 
 
 ## Credits
