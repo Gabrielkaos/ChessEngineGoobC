@@ -17,6 +17,7 @@
 /*General*/
 int PSQTMATTABLE[13][64];
 int DistanceBetween[64][64];
+int tuneMode = 0;
 int distanceBetween(int sq1,int sq2){
     return DistanceBetween[sq1][sq2];
 }
@@ -71,10 +72,10 @@ void initDistancesForEval(){
 /*Variables*/
 
 //Piece Values
-const int PiecesVal[7]={S(0,0),S(82,144),S(426,475),S(441,510),S(627,803),S(1292,1623),S(0,0)};
+int PiecesVal[7]={S(0,0),S(82,144),S(426,475),S(441,510),S(627,803),S(1292,1623),S(0,0)};
 
 //PSQTs
-const int QueenTabless[64]={
+int QueenTabless[64]={
     S(  20, -34), S(   4, -26), S(   9, -34), S(  17, -16),
     S(  18, -18), S(  14, -46), S(   9, -28), S(  22, -44),
     S(   6, -15), S(  15, -22), S(  22, -42), S(  13,   2),
@@ -92,7 +93,7 @@ const int QueenTabless[64]={
     S(   8,  43), S(  19,  47), S(   0,  79), S(   3,  78),
     S(  -3,  89), S(  13,  65), S(  18,  79), S(  21,  56),
 };
-const int PawnTabless[64]={
+int PawnTabless[64]={
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S( -13,   7), S(  -4,   0), S(   1,   4), S(   6,   1),
@@ -110,7 +111,7 @@ const int PawnTabless[64]={
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
 };
-const int KingTabless[64]={
+int KingTabless[64]={
     S(  87, -77), S(  67, -49), S(   4,  -7), S(  -9, -26),
     S( -10, -27), S(  -8,  -1), S(  57, -50), S(  79, -82),
     S(  35,   3), S( -27,  -3), S( -41,  16), S( -89,  29),
@@ -128,7 +129,7 @@ const int KingTabless[64]={
     S( -16,-153), S(  49, -94), S( -21, -73), S( -19, -32),
     S( -51, -55), S( -42, -62), S(  53, -93), S( -58,-133),
 };
-const int KnightTabless[64]={
+int KnightTabless[64]={
     S( -31, -38), S(  -6, -24), S( -20, -22), S( -16,  -1),
     S( -11,  -1), S( -22, -19), S(  -8, -20), S( -41, -30),
     S(   1,  -5), S( -11,   3), S(  -6, -19), S(  -1,  -2),
@@ -146,7 +147,7 @@ const int KnightTabless[64]={
     S(-167,  -5), S( -91,  12), S(-117,  41), S( -38,  17),
     S( -18,  19), S(-105,  48), S(-119,  24), S(-165, -17),
 };
-const int BishopTabless[64]={
+int BishopTabless[64]={
     S(   5, -21), S(   1,   1), S(  -1,   5), S(   1,   5),
     S(   2,   8), S(  -6,  -2), S(   0,   1), S(   4, -25),
     S(  26, -17), S(   2, -31), S(  15,  -2), S(   8,   8),
@@ -164,7 +165,7 @@ const int BishopTabless[64]={
     S( -66,  18), S( -65,  36), S(-123,  48), S(-107,  56),
     S(-112,  53), S( -97,  43), S( -33,  22), S( -74,  15),
 };
-const int RookTabless[64]={
+int RookTabless[64]={
     S( -26,  -1), S( -21,   3), S( -14,   4), S(  -6,  -4),
     S(  -5,  -4), S( -10,   3), S( -13,  -2), S( -22, -14),
     S( -70,   5), S( -25, -10), S( -18,  -7), S( -11, -11),
@@ -185,7 +186,7 @@ const int RookTabless[64]={
 
 
 //Passed Pawn Eval Things
-const int PassedPawn[2][2][8] = {
+int PassedPawn[2][2][8] = {
   {{S(   0,   0), S( -39,  -4), S( -43,  25), S( -62,  28),
     S(   8,  19), S(  97,  -4), S( 162,  46), S(   0,   0)},
    {S(   0,   0), S( -28,  13), S( -40,  42), S( -56,  44),
@@ -195,37 +196,37 @@ const int PassedPawn[2][2][8] = {
    {S(   0,   0), S( -28,  23), S( -40,  35), S( -55,  60),
     S(   8,  89), S(  95, 166), S( 124, 293), S(   0,   0)}},
 };
-const int PassedFriendlyDistance[8] = {
+int PassedFriendlyDistance[8] = {
     S(   0,   0), S(  -3,   1), S(   0,  -4), S(   5, -13),
     S(   6, -19), S(  -9, -19), S(  -9,  -7), S(   0,   0),
 };
-const int PassedEnemyDistance[8] = {
+int PassedEnemyDistance[8] = {
     S(   0,   0), S(   5,  -1), S(   7,   0), S(   9,  11),
     S(   0,  25), S(   1,  37), S(  16,  37), S(   0,   0),
 };
-const int PassedSafePromotionPath = S( -49,  57);
-const int PassedProtectedByRook = S( 10,  20);
+int PassedSafePromotionPath = S( -49,  57);
+int PassedProtectedByRook = S( 10,  20);
 
 //Safety Eval Things
-const int SafetyKnightWeight    = S(  48,  41);
-const int SafetyBishopWeight    = S(  24,  35);
-const int SafetyRookWeight      = S(  36,   8);
-const int SafetyQueenWeight     = S(  30,   6);
-const int SafetyAttackValue     = S(  45,  34);
-const int SafetyWeakSquares     = S(  42,  41);
-const int SafetyNoEnemyQueens   = S(-237,-259);
-const int SafetySafeQueenCheck  = S(  93,  83);
-const int SafetySafeRookCheck   = S(  90,  98);
-const int SafetySafeBishopCheck = S(  59,  59);
-const int SafetySafeKnightCheck = S( 112, 117);
-const int SafetyAdjustment      = S( -74, -26);
-const int SafetyStorm[2][8] = {
+int SafetyKnightWeight    = S(  48,  41);
+int SafetyBishopWeight    = S(  24,  35);
+int SafetyRookWeight      = S(  36,   8);
+int SafetyQueenWeight     = S(  30,   6);
+int SafetyAttackValue     = S(  45,  34);
+int SafetyWeakSquares     = S(  42,  41);
+int SafetyNoEnemyQueens   = S(-237,-259);
+int SafetySafeQueenCheck  = S(  93,  83);
+int SafetySafeRookCheck   = S(  90,  98);
+int SafetySafeBishopCheck = S(  59,  59);
+int SafetySafeKnightCheck = S( 112, 117);
+int SafetyAdjustment      = S( -74, -26);
+int SafetyStorm[2][8] = {
    {S(  -4,  -1), S(  -8,   3), S(   0,   5), S(   1,  -1),
     S(   3,   6), S(  -2,  20), S(  -2,  18), S(   2, -12)},
    {S(   0,   0), S(   1,   0), S(  -1,   4), S(   0,   0),
     S(   0,   5), S(  -1,   1), S(   1,   0), S(   1,   0)},
 };
-const int SafetyShelter[2][8] = {
+int SafetyShelter[2][8] = {
    {S(  -2,   7), S(  -1,  13), S(   0,   8), S(   4,   7),
     S(   6,   2), S(  -1,   0), S(   2,   0), S(   0, -13)},
    {S(   0,   0), S(  -2,  13), S(  -2,   9), S(   4,   5),
@@ -233,7 +234,7 @@ const int SafetyShelter[2][8] = {
 };
 
 //King Eval Things
-const int KingStorm[2][8/2][8] = {
+int KingStorm[2][8/2][8] = {
   {{S(  -6,  36), S( 144,  -4), S( -13,  26), S(  -7,   1),
     S( -12,  -3), S(  -8,  -7), S( -19,   8), S( -28,  -2)},
    {S( -17,  60), S(  64,  17), S(  -9,  21), S(   8,  12),
@@ -251,12 +252,12 @@ const int KingStorm[2][8/2][8] = {
    {S(   0,   0), S(  -1, -26), S( -27, -19), S( -21,   4),
     S( -10,  -6), S(   7, -35), S(  66, -29), S(  11,  25)}},
 };
-const int KingDefenders[12] = {
+int KingDefenders[12] = {
     S( -37,  -3), S( -17,   2), S(   0,   6), S(  11,   8),
     S(  21,   8), S(  32,   0), S(  38, -14), S(  10,  -5),
     S(  12,   6), S(  12,   6), S(  12,   6), S(  12,   6),
 };
-const int KingShelter[2][8][8] = {
+int KingShelter[2][8][8] = {
   {{S(  -5,  -5), S(  17, -31), S(  26,  -3), S(  24,   8),
     S(   4,   1), S( -12,   4), S( -16, -33), S( -59,  24)},
    {S(  11,  -6), S(   3, -15), S(  -5,  -2), S(   5,  -4),
@@ -290,14 +291,14 @@ const int KingShelter[2][8][8] = {
    {S(   0,   0), S(  16, -57), S(  17, -32), S( -18,  -7),
     S( -31,  24), S( -11,  24), S(-225, -49), S( -30,   5)}},
 };
-const int KingPawnFileProximity[8] = {
+int KingPawnFileProximity[8] = {
     S(  36,  46), S(  22,  31), S(  13,  15), S(  -8, -22),
     S(  -5, -62), S(  -3, -75), S( -15, -81), S( -12, -75),
 };
 
 //Queen Eval Things
-const int QueenRelativePin = S( -22, -13);
-const int QueenMobility[28] = {
+int QueenRelativePin = S( -22, -13);
+int QueenMobility[28] = {
     S(-111,-273), S(-253,-401), S(-127,-228), S( -46,-236),
     S( -20,-173), S(  -9, -86), S(  -1, -35), S(   2,  -1),
     S(   8,   8), S(  10,  31), S(  15,  37), S(  17,  55),
@@ -308,9 +309,9 @@ const int QueenMobility[28] = {
 };
 
 //Rook Eval Things
-const int RookFile[2]   = { S(  10,   9), S(  34,   8) };
-const int RookOnSeventh = S(  -1,  42);
-const int RookMobility[15] = {
+int RookFile[2]   = { S(  10,   9), S(  34,   8) };
+int RookOnSeventh = S(  -1,  42);
+int RookMobility[15] = {
     S(-127,-148), S( -56,-127), S( -25, -85), S( -12, -28),
     S( -10,   2), S( -12,  27), S( -11,  42), S(  -4,  46),
     S(   4,  52), S(   9,  55), S(  11,  64), S(  19,  68),
@@ -318,60 +319,60 @@ const int RookMobility[15] = {
 };
 
 //Knight Eval Things
-const int KnightBehindPawn = S(   3,  28);
-const int KnightOutpost[2][2] = {
+int KnightBehindPawn = S(   3,  28);
+int KnightOutpost[2][2] = {
    {S(  12, -32), S(  40,   0)},
    {S(   7, -24), S(  21,  -3)},
 };
-const int KnightMobility[9] = {
+int KnightMobility[9] = {
     S(-104,-139), S( -45,-114), S( -22, -37), S(  -8,   3),
     S(   6,  15), S(  11,  34), S(  19,  38), S(  30,  37),
     S(  43,  17),
 };
-const int KnightInSiberia[4] = {
+int KnightInSiberia[4] = {
     S(  -9,  -6), S( -12, -20), S( -27, -20), S( -47, -19),
 };
 
 //Bishop Eval Things
-const int BishopMobility[14] = {
+int BishopMobility[14] = {
     S( -99,-186), S( -46,-124), S( -16, -54), S(  -4, -14),
     S(   6,   1), S(  14,  20), S(  17,  35), S(  19,  39),
     S(  19,  49), S(  27,  48), S(  26,  48), S(  52,  32),
     S(  55,  47), S(  83,   2),
 };
-const int BishopRammedPawns = S(  -8, -17);
-const int bishopPair = S(22,88);
-const int BishopLongDiagonal = S(  26,  20);
-const int BishopBehindPawn = S(   4,  24);
-const int BishopOutpost[2][2] = {
+int BishopRammedPawns = S(  -8, -17);
+int bishopPair = S(22,88);
+int BishopLongDiagonal = S(  26,  20);
+int BishopBehindPawn = S(   4,  24);
+int BishopOutpost[2][2] = {
    {S(  16, -16), S(  50,  -3)},
    {S(   9,  -9), S(  -4,  -4)},
 };
 
 //Pawn Eval Things
-const int PawnCandidatePasser[2][8] = {
+int PawnCandidatePasser[2][8] = {
    {S(   0,   0), S( -11, -18), S( -16,  18), S( -18,  29),
     S( -22,  61), S(  21,  59), S(   0,   0), S(   0,   0)},
    {S(   0,   0), S( -12,  21), S(  -7,  27), S(   2,  53),
     S(  22, 116), S(  49,  78), S(   0,   0), S(   0,   0)},
 };
-const int PawnIsolated[8] = {
+int PawnIsolated[8] = {
     S( -13, -12), S(  -1, -16), S(   1, -16), S(   3, -18),
     S(   7, -19), S(   3, -15), S(  -4, -14), S(  -4, -17),
 };
-const int PawnStacked[2][8] = {
+int PawnStacked[2][8] = {
    {S(  10, -29), S(  -2, -26), S(   0, -23), S(   0, -20),
     S(   3, -20), S(   5, -26), S(   4, -30), S(   8, -31)},
    {S(   3, -14), S(   0, -15), S(  -6,  -9), S(  -7, -10),
     S(  -4,  -9), S(  -2, -10), S(   0, -13), S(   0, -17)},
 };
-const int PawnBackwards[2][8] = {
+int PawnBackwards[2][8] = {
    {S(   0,   0), S(   0,  -7), S(   7,  -7), S(   6, -18),
     S(  -4, -29), S(   0,   0), S(   0,   0), S(   0,   0)},
    {S(   0,   0), S(  -9, -32), S(  -5, -30), S(   3, -31),
     S(  29, -41), S(   0,   0), S(   0,   0), S(   0,   0)},
 };
-const int PawnConnected32[32] = {
+int PawnConnected32[32] = {
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(  -1, -11), S(  12,  -4), S(   0,  -2), S(   6,   8),
     S(  14,   0), S(  20,  -6), S(  19,   3), S(  17,   8),
@@ -383,11 +384,11 @@ const int PawnConnected32[32] = {
 };
 
 //Chess960 specific Eval Things
-const int BishopTrapped[2] = {S(-10,-15),S(-14,-20)};
-const int RookTrapped      = S(-5,-22);
+int BishopTrapped[2] = {S(-10,-15),S(-14,-20)};
+int RookTrapped      = S(-5,-22);
 
 //tempo
-const int tempo = 20;
+int tempo = 20;
 
 
 /*Functions*/
@@ -1287,9 +1288,11 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
         eval_info->pawnEval[WHITE] +=  S(pk,pk);
         eval_info->pawnEval[BLACK] +=  0;  // already baked into WHITE score
     }else {
-        if (!ProbePawnKingEval(pos, eval_info)){
+        if (!tuneMode && ProbePawnKingEval(pos, eval_info)){
+            // pawn eval was served from cache
+        }else {
             EvalPawn(pos, eval_info);
-            StorePawnKingEval(pos, eval_info);
+            if (!tuneMode) StorePawnKingEval(pos, eval_info);
         }
     }
     
@@ -1316,13 +1319,15 @@ int EvalPosition(S_BOARD *pos){
     }
 
     //probing cached eval
-    int hashedEval=ProbeTTEval(pos);
-    if(hashedEval != VALUE_NONE){
-        score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
-        return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100:score;
+    if (!tuneMode){
+        int hashedEval=ProbeTTEval(pos);
+        if(hashedEval != VALUE_NONE){
+            score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
+            return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100:score;
+        }
     }
 
-    if (pos->useNNUE && nnue_loaded) {
+    if (!tuneMode && pos->useNNUE && nnue_loaded) {
         int nn_score = nnue_eval(pos);
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
@@ -1349,7 +1354,7 @@ int EvalPosition(S_BOARD *pos){
             +  ScoreEG(eval) * pos->gamePhase * factor / SCALE_NORMAL) / 256;
 
     //store score
-    StoreTTEval(pos,score);
+    if (!tuneMode) StoreTTEval(pos,score);
 
     ASSERT((pos->side==WHITE ? score : -score)+tempo < AB_BOUND);
     score = (pos->side==WHITE ? score : -score)+tempo;

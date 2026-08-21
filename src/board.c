@@ -151,7 +151,7 @@ void updateListMaterial(S_BOARD *pos){
     //update occupancy for both
     pos->occupancy[BOTH] = (pos->occupancy[WHITE] | pos->occupancy[BLACK]);
 
-    nnue_refresh_accumulator(pos);
+    if (!tuneMode) nnue_refresh_accumulator(pos);
 }
 
 int ParseFEN(char *fen ,S_BOARD *pos){

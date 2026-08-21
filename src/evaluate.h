@@ -55,9 +55,31 @@ enum {
 #define PHASE_MIDDLE 43
 #define PHASE_ENDING 171
 #define PHASE_PAWN_ENDING 256
-extern const int tempo;
+extern int tempo;
 extern int DistanceBetween[64][64];
 extern int PSQTMATTABLE[13][64];
+extern int tuneMode;
+
+// tunable evaluation weights (see evaluate.c)
+extern int PiecesVal[7];
+extern int QueenTabless[64], PawnTabless[64], KingTabless[64];
+extern int KnightTabless[64], BishopTabless[64], RookTabless[64];
+extern int PassedPawn[2][2][8];
+extern int PassedFriendlyDistance[8], PassedEnemyDistance[8];
+extern int PassedSafePromotionPath, PassedProtectedByRook;
+extern int SafetyKnightWeight, SafetyBishopWeight, SafetyRookWeight, SafetyQueenWeight;
+extern int SafetyAttackValue, SafetyWeakSquares, SafetyNoEnemyQueens;
+extern int SafetySafeQueenCheck, SafetySafeRookCheck, SafetySafeBishopCheck, SafetySafeKnightCheck;
+extern int SafetyAdjustment, SafetyStorm[2][8], SafetyShelter[2][8];
+extern int KingStorm[2][4][8], KingDefenders[12], KingShelter[2][8][8];
+extern int KingPawnFileProximity[8];
+extern int QueenRelativePin, QueenMobility[28];
+extern int RookFile[2], RookOnSeventh, RookMobility[15];
+extern int KnightBehindPawn, KnightOutpost[2][2], KnightMobility[9], KnightInSiberia[4];
+extern int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDiagonal, BishopBehindPawn, BishopOutpost[2][2];
+extern int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
+extern int PawnBackwards[2][8], PawnConnected32[32];
+extern int BishopTrapped[2], RookTrapped;
 
 //FUNCTIONS
 extern void initPQSTMAT();
