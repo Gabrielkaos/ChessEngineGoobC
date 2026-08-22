@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-ENGINE = "~/Desktop/ChessEngineGoobC/bin/GOOB-2.1-linux-x64"
+ENGINE = "/home/gabriel/Desktop/ChessEngineGoobC/bin/GOOB-2.1-linux-x64"
 DEPTH = int(sys.argv[1]) if len(sys.argv) > 1 else 6
 GAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
 THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 12
