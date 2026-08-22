@@ -11,3 +11,4 @@ tools/.venv
 src/weights_*
 src/tuner_best.bin
 src/tuner_checkpoint.bin
+src/*.bak
