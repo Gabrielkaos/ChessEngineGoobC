@@ -45,13 +45,20 @@ ifeq ($(OS), Windows_NT)
 	-del $(NAMES)
 	-rmdir /S /Q $(OBJDIR) $(BINDIR)
 else
-	$(RM) $(OBJS) $(NAMES)
+	$(RM) $(OBJS) $(NAMES) $(BINDIR)/tuner
 	$(RM) -rf $(OBJDIR)
 	$(RM) -rf $(BINDIR)
 endif
 
 # Rebuilding project
 rebuild: clean all
+
+# Texel tuner (lives in ../tools, uses the engine evaluation)
+TUNER_SRC := $(filter-out main.c, $(SRCS))
+TUNER_OBJ := $(patsubst %.c, $(OBJDIR)/%.o, $(TUNER_SRC))
+$(BINDIR)/tuner: $(TUNER_OBJ) ../tools/tuner.c | $(BINDIR)
+	$(CC) $(CFLAGS) -fopenmp -I. $(TUNER_OBJ) ../tools/tuner.c -o $@ $(LDFLAGS)
+tuner: $(BINDIR)/tuner
 
 # Dependency management
 depend: $(SRCS)

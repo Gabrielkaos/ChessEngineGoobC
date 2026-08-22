@@ -27,7 +27,7 @@
 
 #define MAX_POS 600000
 #define KAPPA   0.001667
-#define LAMBDA  300.0
+#define LAMBDA  0.0
 
 typedef struct {
     char pieces[64];
@@ -43,7 +43,6 @@ static int npos = 0;
 static double *base_evals;
 static double *probs;
 
-static int nweights = 0;
 static int *w0_init;
 static int *w0_mg;
 static int *w0_eg;
@@ -299,7 +298,7 @@ static void weight_grad(int k, double *g_mg, double *g_eg) {
         for (int i = 0; i < npos; i++) {
             setup_pos(pos, &posdata[i]);
             double ev = (double)EvalPosition(pos);
-            gm += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]);
+            gm += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
         }
     }
     regs[r].base[idx] -= 1;
@@ -314,7 +313,7 @@ static void weight_grad(int k, double *g_mg, double *g_eg) {
         for (int i = 0; i < npos; i++) {
             setup_pos(pos, &posdata[i]);
             double ev = (double)EvalPosition(pos);
-            ge += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]);
+            ge += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
         }
     }
     regs[r].base[idx] -= 65536;
@@ -370,7 +369,7 @@ int main(int argc, char **argv) {
     const char *dataset = argc > 1 ? argv[1] : "dataset.epd";
     int iterations = argc > 2 ? atoi(argv[2]) : 200;
     int nthreads = argc > 3 ? atoi(argv[3]) : omp_get_max_threads();
-    double lr = argc > 4 ? atof(argv[4]) : 0.5;
+    double lr = argc > 4 ? atof(argv[4]) : 2000.0;
 
     if (load_dataset(dataset) < 0)
         return 1;
@@ -409,8 +408,6 @@ int main(int argc, char **argv) {
     double t0 = omp_get_wtime();
     double *grad_mg = malloc(sizeof(double) * nweights);
     double *grad_eg = malloc(sizeof(double) * nweights);
-    double *acc_mg = calloc(nweights, sizeof(double));
-    double *acc_eg = calloc(nweights, sizeof(double));
     w0_init = malloc(sizeof(int) * nweights);
     w0_mg = malloc(sizeof(int) * nweights);
     w0_eg = malloc(sizeof(int) * nweights);
@@ -431,21 +428,22 @@ int main(int argc, char **argv) {
             gsum += a;
             if (a > 1e-9) gnon++;
         }
-        printf("  grad: max %.3f mean %.3f nonzero %d/%d\n",
+        printf("  grad: max %.5f mean %.6f nonzero %d/%d\n",
                gmax, gsum / nweights, (int)gnon, nweights);
         for (int k = 0; k < nweights; k++) {
             int idx, r = reg_of(k, &idx);
             int w = regs[r].base[idx];
             if (strcmp(regs[r].name, "tempo") == 0) {
-                acc_mg[k] += grad_mg[k] * grad_mg[k];
-                int neww = (int)llround(w - lr * grad_mg[k] / (sqrt(acc_mg[k]) + 1e-5));
+                int neww = (int)llround(w - lr * grad_mg[k]);
+                if (neww < 0) neww = 0;
+                if (neww > 32767) neww = 32767;
                 regs[r].base[idx] = neww;
             } else {
                 int mg = ScoreMG(w), eg = ScoreEG(w);
-                acc_mg[k] += grad_mg[k] * grad_mg[k];
-                acc_eg[k] += grad_eg[k] * grad_eg[k];
-                int nmg = (int)llround(mg - lr * grad_mg[k] / (sqrt(acc_mg[k]) + 1e-5));
-                int neg = (int)llround(eg - lr * grad_eg[k] / (sqrt(acc_eg[k]) + 1e-5));
+                int nmg = (int)llround(mg - lr * grad_mg[k]);
+                int neg = (int)llround(eg - lr * grad_eg[k]);
+                if (nmg < -32767) nmg = -32767; if (nmg > 32767) nmg = 32767;
+                if (neg < -32767) neg = -32767; if (neg > 32767) neg = 32767;
                 regs[r].base[idx] = S(nmg, neg);
             }
         }
