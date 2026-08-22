@@ -71,11 +71,19 @@ void initDistancesForEval(){
 
 /*Variables*/
 
+// Tunables are const (compiler-optimizable) in normal builds, and mutable
+// when compiled with -DTUNE so tools/tuner.c can adjust them.
+#ifdef TUNE
+    #define TUNABLE
+#else
+    #define TUNABLE const
+#endif
+
 //Piece Values
-int PiecesVal[7]={S(0,0),S(82,144),S(426,475),S(441,510),S(627,803),S(1292,1623),S(0,0)};
+TUNABLE int PiecesVal[7]={S(0,0),S(82,144),S(426,475),S(441,510),S(627,803),S(1292,1623),S(0,0)};
 
 //PSQTs
-int QueenTabless[64]={
+TUNABLE int QueenTabless[64]={
     S(  20, -34), S(   4, -26), S(   9, -34), S(  17, -16),
     S(  18, -18), S(  14, -46), S(   9, -28), S(  22, -44),
     S(   6, -15), S(  15, -22), S(  22, -42), S(  13,   2),
@@ -93,7 +101,7 @@ int QueenTabless[64]={
     S(   8,  43), S(  19,  47), S(   0,  79), S(   3,  78),
     S(  -3,  89), S(  13,  65), S(  18,  79), S(  21,  56),
 };
-int PawnTabless[64]={
+TUNABLE int PawnTabless[64]={
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S( -13,   7), S(  -4,   0), S(   1,   4), S(   6,   1),
@@ -111,7 +119,7 @@ int PawnTabless[64]={
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
 };
-int KingTabless[64]={
+TUNABLE int KingTabless[64]={
     S(  87, -77), S(  67, -49), S(   4,  -7), S(  -9, -26),
     S( -10, -27), S(  -8,  -1), S(  57, -50), S(  79, -82),
     S(  35,   3), S( -27,  -3), S( -41,  16), S( -89,  29),
@@ -129,7 +137,7 @@ int KingTabless[64]={
     S( -16,-153), S(  49, -94), S( -21, -73), S( -19, -32),
     S( -51, -55), S( -42, -62), S(  53, -93), S( -58,-133),
 };
-int KnightTabless[64]={
+TUNABLE int KnightTabless[64]={
     S( -31, -38), S(  -6, -24), S( -20, -22), S( -16,  -1),
     S( -11,  -1), S( -22, -19), S(  -8, -20), S( -41, -30),
     S(   1,  -5), S( -11,   3), S(  -6, -19), S(  -1,  -2),
@@ -147,7 +155,7 @@ int KnightTabless[64]={
     S(-167,  -5), S( -91,  12), S(-117,  41), S( -38,  17),
     S( -18,  19), S(-105,  48), S(-119,  24), S(-165, -17),
 };
-int BishopTabless[64]={
+TUNABLE int BishopTabless[64]={
     S(   5, -21), S(   1,   1), S(  -1,   5), S(   1,   5),
     S(   2,   8), S(  -6,  -2), S(   0,   1), S(   4, -25),
     S(  26, -17), S(   2, -31), S(  15,  -2), S(   8,   8),
@@ -165,7 +173,7 @@ int BishopTabless[64]={
     S( -66,  18), S( -65,  36), S(-123,  48), S(-107,  56),
     S(-112,  53), S( -97,  43), S( -33,  22), S( -74,  15),
 };
-int RookTabless[64]={
+TUNABLE int RookTabless[64]={
     S( -26,  -1), S( -21,   3), S( -14,   4), S(  -6,  -4),
     S(  -5,  -4), S( -10,   3), S( -13,  -2), S( -22, -14),
     S( -70,   5), S( -25, -10), S( -18,  -7), S( -11, -11),
@@ -186,7 +194,7 @@ int RookTabless[64]={
 
 
 //Passed Pawn Eval Things
-int PassedPawn[2][2][8] = {
+TUNABLE int PassedPawn[2][2][8] = {
   {{S(   0,   0), S( -39,  -4), S( -43,  25), S( -62,  28),
     S(   8,  19), S(  97,  -4), S( 162,  46), S(   0,   0)},
    {S(   0,   0), S( -28,  13), S( -40,  42), S( -56,  44),
@@ -196,37 +204,37 @@ int PassedPawn[2][2][8] = {
    {S(   0,   0), S( -28,  23), S( -40,  35), S( -55,  60),
     S(   8,  89), S(  95, 166), S( 124, 293), S(   0,   0)}},
 };
-int PassedFriendlyDistance[8] = {
+TUNABLE int PassedFriendlyDistance[8] = {
     S(   0,   0), S(  -3,   1), S(   0,  -4), S(   5, -13),
     S(   6, -19), S(  -9, -19), S(  -9,  -7), S(   0,   0),
 };
-int PassedEnemyDistance[8] = {
+TUNABLE int PassedEnemyDistance[8] = {
     S(   0,   0), S(   5,  -1), S(   7,   0), S(   9,  11),
     S(   0,  25), S(   1,  37), S(  16,  37), S(   0,   0),
 };
-int PassedSafePromotionPath = S( -49,  57);
-int PassedProtectedByRook = S( 10,  20);
+TUNABLE int PassedSafePromotionPath = S( -49,  57);
+TUNABLE int PassedProtectedByRook = S( 10,  20);
 
 //Safety Eval Things
-int SafetyKnightWeight    = S(  48,  41);
-int SafetyBishopWeight    = S(  24,  35);
-int SafetyRookWeight      = S(  36,   8);
-int SafetyQueenWeight     = S(  30,   6);
-int SafetyAttackValue     = S(  45,  34);
-int SafetyWeakSquares     = S(  42,  41);
-int SafetyNoEnemyQueens   = S(-237,-259);
-int SafetySafeQueenCheck  = S(  93,  83);
-int SafetySafeRookCheck   = S(  90,  98);
-int SafetySafeBishopCheck = S(  59,  59);
-int SafetySafeKnightCheck = S( 112, 117);
-int SafetyAdjustment      = S( -74, -26);
-int SafetyStorm[2][8] = {
+TUNABLE int SafetyKnightWeight    = S(  48,  41);
+TUNABLE int SafetyBishopWeight    = S(  24,  35);
+TUNABLE int SafetyRookWeight      = S(  36,   8);
+TUNABLE int SafetyQueenWeight     = S(  30,   6);
+TUNABLE int SafetyAttackValue     = S(  45,  34);
+TUNABLE int SafetyWeakSquares     = S(  42,  41);
+TUNABLE int SafetyNoEnemyQueens   = S(-237,-259);
+TUNABLE int SafetySafeQueenCheck  = S(  93,  83);
+TUNABLE int SafetySafeRookCheck   = S(  90,  98);
+TUNABLE int SafetySafeBishopCheck = S(  59,  59);
+TUNABLE int SafetySafeKnightCheck = S( 112, 117);
+TUNABLE int SafetyAdjustment      = S( -74, -26);
+TUNABLE int SafetyStorm[2][8] = {
    {S(  -4,  -1), S(  -8,   3), S(   0,   5), S(   1,  -1),
     S(   3,   6), S(  -2,  20), S(  -2,  18), S(   2, -12)},
    {S(   0,   0), S(   1,   0), S(  -1,   4), S(   0,   0),
     S(   0,   5), S(  -1,   1), S(   1,   0), S(   1,   0)},
 };
-int SafetyShelter[2][8] = {
+TUNABLE int SafetyShelter[2][8] = {
    {S(  -2,   7), S(  -1,  13), S(   0,   8), S(   4,   7),
     S(   6,   2), S(  -1,   0), S(   2,   0), S(   0, -13)},
    {S(   0,   0), S(  -2,  13), S(  -2,   9), S(   4,   5),
@@ -234,7 +242,7 @@ int SafetyShelter[2][8] = {
 };
 
 //King Eval Things
-int KingStorm[2][8/2][8] = {
+TUNABLE int KingStorm[2][8/2][8] = {
   {{S(  -6,  36), S( 144,  -4), S( -13,  26), S(  -7,   1),
     S( -12,  -3), S(  -8,  -7), S( -19,   8), S( -28,  -2)},
    {S( -17,  60), S(  64,  17), S(  -9,  21), S(   8,  12),
@@ -252,12 +260,12 @@ int KingStorm[2][8/2][8] = {
    {S(   0,   0), S(  -1, -26), S( -27, -19), S( -21,   4),
     S( -10,  -6), S(   7, -35), S(  66, -29), S(  11,  25)}},
 };
-int KingDefenders[12] = {
+TUNABLE int KingDefenders[12] = {
     S( -37,  -3), S( -17,   2), S(   0,   6), S(  11,   8),
     S(  21,   8), S(  32,   0), S(  38, -14), S(  10,  -5),
     S(  12,   6), S(  12,   6), S(  12,   6), S(  12,   6),
 };
-int KingShelter[2][8][8] = {
+TUNABLE int KingShelter[2][8][8] = {
   {{S(  -5,  -5), S(  17, -31), S(  26,  -3), S(  24,   8),
     S(   4,   1), S( -12,   4), S( -16, -33), S( -59,  24)},
    {S(  11,  -6), S(   3, -15), S(  -5,  -2), S(   5,  -4),
@@ -291,14 +299,14 @@ int KingShelter[2][8][8] = {
    {S(   0,   0), S(  16, -57), S(  17, -32), S( -18,  -7),
     S( -31,  24), S( -11,  24), S(-225, -49), S( -30,   5)}},
 };
-int KingPawnFileProximity[8] = {
+TUNABLE int KingPawnFileProximity[8] = {
     S(  36,  46), S(  22,  31), S(  13,  15), S(  -8, -22),
     S(  -5, -62), S(  -3, -75), S( -15, -81), S( -12, -75),
 };
 
 //Queen Eval Things
-int QueenRelativePin = S( -22, -13);
-int QueenMobility[28] = {
+TUNABLE int QueenRelativePin = S( -22, -13);
+TUNABLE int QueenMobility[28] = {
     S(-111,-273), S(-253,-401), S(-127,-228), S( -46,-236),
     S( -20,-173), S(  -9, -86), S(  -1, -35), S(   2,  -1),
     S(   8,   8), S(  10,  31), S(  15,  37), S(  17,  55),
@@ -309,9 +317,9 @@ int QueenMobility[28] = {
 };
 
 //Rook Eval Things
-int RookFile[2]   = { S(  10,   9), S(  34,   8) };
-int RookOnSeventh = S(  -1,  42);
-int RookMobility[15] = {
+TUNABLE int RookFile[2]   = { S(  10,   9), S(  34,   8) };
+TUNABLE int RookOnSeventh = S(  -1,  42);
+TUNABLE int RookMobility[15] = {
     S(-127,-148), S( -56,-127), S( -25, -85), S( -12, -28),
     S( -10,   2), S( -12,  27), S( -11,  42), S(  -4,  46),
     S(   4,  52), S(   9,  55), S(  11,  64), S(  19,  68),
@@ -319,60 +327,60 @@ int RookMobility[15] = {
 };
 
 //Knight Eval Things
-int KnightBehindPawn = S(   3,  28);
-int KnightOutpost[2][2] = {
+TUNABLE int KnightBehindPawn = S(   3,  28);
+TUNABLE int KnightOutpost[2][2] = {
    {S(  12, -32), S(  40,   0)},
    {S(   7, -24), S(  21,  -3)},
 };
-int KnightMobility[9] = {
+TUNABLE int KnightMobility[9] = {
     S(-104,-139), S( -45,-114), S( -22, -37), S(  -8,   3),
     S(   6,  15), S(  11,  34), S(  19,  38), S(  30,  37),
     S(  43,  17),
 };
-int KnightInSiberia[4] = {
+TUNABLE int KnightInSiberia[4] = {
     S(  -9,  -6), S( -12, -20), S( -27, -20), S( -47, -19),
 };
 
 //Bishop Eval Things
-int BishopMobility[14] = {
+TUNABLE int BishopMobility[14] = {
     S( -99,-186), S( -46,-124), S( -16, -54), S(  -4, -14),
     S(   6,   1), S(  14,  20), S(  17,  35), S(  19,  39),
     S(  19,  49), S(  27,  48), S(  26,  48), S(  52,  32),
     S(  55,  47), S(  83,   2),
 };
-int BishopRammedPawns = S(  -8, -17);
-int bishopPair = S(22,88);
-int BishopLongDiagonal = S(  26,  20);
-int BishopBehindPawn = S(   4,  24);
-int BishopOutpost[2][2] = {
+TUNABLE int BishopRammedPawns = S(  -8, -17);
+TUNABLE int bishopPair = S(22,88);
+TUNABLE int BishopLongDiagonal = S(  26,  20);
+TUNABLE int BishopBehindPawn = S(   4,  24);
+TUNABLE int BishopOutpost[2][2] = {
    {S(  16, -16), S(  50,  -3)},
    {S(   9,  -9), S(  -4,  -4)},
 };
 
 //Pawn Eval Things
-int PawnCandidatePasser[2][8] = {
+TUNABLE int PawnCandidatePasser[2][8] = {
    {S(   0,   0), S( -11, -18), S( -16,  18), S( -18,  29),
     S( -22,  61), S(  21,  59), S(   0,   0), S(   0,   0)},
    {S(   0,   0), S( -12,  21), S(  -7,  27), S(   2,  53),
     S(  22, 116), S(  49,  78), S(   0,   0), S(   0,   0)},
 };
-int PawnIsolated[8] = {
+TUNABLE int PawnIsolated[8] = {
     S( -13, -12), S(  -1, -16), S(   1, -16), S(   3, -18),
     S(   7, -19), S(   3, -15), S(  -4, -14), S(  -4, -17),
 };
-int PawnStacked[2][8] = {
+TUNABLE int PawnStacked[2][8] = {
    {S(  10, -29), S(  -2, -26), S(   0, -23), S(   0, -20),
     S(   3, -20), S(   5, -26), S(   4, -30), S(   8, -31)},
    {S(   3, -14), S(   0, -15), S(  -6,  -9), S(  -7, -10),
     S(  -4,  -9), S(  -2, -10), S(   0, -13), S(   0, -17)},
 };
-int PawnBackwards[2][8] = {
+TUNABLE int PawnBackwards[2][8] = {
    {S(   0,   0), S(   0,  -7), S(   7,  -7), S(   6, -18),
     S(  -4, -29), S(   0,   0), S(   0,   0), S(   0,   0)},
    {S(   0,   0), S(  -9, -32), S(  -5, -30), S(   3, -31),
     S(  29, -41), S(   0,   0), S(   0,   0), S(   0,   0)},
 };
-int PawnConnected32[32] = {
+TUNABLE int PawnConnected32[32] = {
     S(   0,   0), S(   0,   0), S(   0,   0), S(   0,   0),
     S(  -1, -11), S(  12,  -4), S(   0,  -2), S(   6,   8),
     S(  14,   0), S(  20,  -6), S(  19,   3), S(  17,   8),
@@ -384,11 +392,11 @@ int PawnConnected32[32] = {
 };
 
 //Chess960 specific Eval Things
-int BishopTrapped[2] = {S(-10,-15),S(-14,-20)};
-int RookTrapped      = S(-5,-22);
+TUNABLE int BishopTrapped[2] = {S(-10,-15),S(-14,-20)};
+TUNABLE int RookTrapped      = S(-5,-22);
 
 //tempo
-int tempo = 20;
+TUNABLE int tempo = 20;
 
 
 /*Functions*/

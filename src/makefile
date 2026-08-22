@@ -46,7 +46,7 @@ ifeq ($(OS), Windows_NT)
 	-rmdir /S /Q $(OBJDIR) $(BINDIR)
 else
 	$(RM) $(OBJS) $(NAMES) $(BINDIR)/tuner
-	$(RM) -rf $(OBJDIR)
+	$(RM) -rf $(OBJDIR) $(TUNEOBJDIR)
 	$(RM) -rf $(BINDIR)
 endif
 
@@ -54,10 +54,22 @@ endif
 rebuild: clean all
 
 # Texel tuner (lives in ../tools, uses the engine evaluation)
-TUNER_SRC := $(filter-out main.c, $(SRCS))
-TUNER_OBJ := $(patsubst %.c, $(OBJDIR)/%.o, $(TUNER_SRC))
-$(BINDIR)/tuner: $(TUNER_OBJ) ../tools/tuner.c | $(BINDIR)
-	$(CC) $(CFLAGS) -fopenmp -I. $(TUNER_OBJ) ../tools/tuner.c -o $@ $(LDFLAGS)
+# Built from a separate object directory compiled with -DTUNE so the
+# evaluation tunables are mutable there, while engine objects stay const.
+TUNEOBJDIR := obj-tune
+TUNER_SRCS := $(filter-out main.c, $(SRCS))
+TUNER_OBJS := $(patsubst %.c, $(TUNEOBJDIR)/%.o, $(TUNER_SRCS))
+TUNE_CFLAGS := $(CFLAGS) -fopenmp -DTUNE
+
+$(BINDIR)/tuner: $(TUNER_OBJS) ../tools/tuner.c | $(BINDIR)
+	$(CC) $(TUNE_CFLAGS) -I. $(TUNER_OBJS) ../tools/tuner.c -o $@ $(LDFLAGS)
+
+$(TUNEOBJDIR)/%.o: %.c | $(TUNEOBJDIR)
+	$(CC) $(TUNE_CFLAGS) -c $< -o $@
+
+$(TUNEOBJDIR):
+	$(MKDIR) $(TUNEOBJDIR)
+
 tuner: $(BINDIR)/tuner
 
 # Dependency management
