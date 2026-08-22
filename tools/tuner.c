@@ -159,13 +159,13 @@ static void parse_pieces(CPOS *cp, const char *placement) {
     /* FEN lists rank 8 first; the engine's A1..H8 indexing puts rank 8
        at squares 56-63, so mirror the row into the correct engine rank. */
     for (r = 0; r < 8; r++) {
-        // int rank = 7 - r;
+        int rank = 7 - r;
         for (f = 0; f < 8;) {
             char c = *p++;
             if (c >= '1' && c <= '8') {
                 f += c - '0';
             } else {
-                cp->pieces[r * 8 + f] = piece_code(c);
+                cp->pieces[rank * 8 + f] = piece_code(c);
                 f++;
             }
         }
@@ -256,6 +256,11 @@ static inline double sigmoid(double x) {
     return 1.0 / (1.0 + exp(-x));
 }
 
+static inline double white_eval(S_BOARD *pos) {
+    double e = (double)EvalPosition(pos);
+    return pos->side == WHITE ? e : -e;
+}
+
 /* ------------------------------------------------------------------ */
 /* sweeps                                                              */
 /* ------------------------------------------------------------------ */
@@ -266,7 +271,7 @@ static void compute_base_evals(void) {
         #pragma omp for
         for (int i = 0; i < npos; i++) {
             setup_pos(pos, &posdata[i]);
-            base_evals[i] = (double)EvalPosition(pos);
+            base_evals[i] = white_eval(pos);
             probs[i] = sigmoid(KAPPA * base_evals[i]);
         }
     }
@@ -301,7 +306,7 @@ static void weight_grad(int k, double *g_mg, double *g_eg) {
         #pragma omp for reduction(+ : gm)
         for (int i = 0; i < npos; i++) {
             setup_pos(pos, &posdata[i]);
-            double ev = (double)EvalPosition(pos);
+            double ev = white_eval(pos);
             gm += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
         }
     }
@@ -320,7 +325,7 @@ static void weight_grad(int k, double *g_mg, double *g_eg) {
             #pragma omp for reduction(+ : ge)
             for (int i = 0; i < npos; i++) {
                 setup_pos(pos, &posdata[i]);
-                double ev = (double)EvalPosition(pos);
+                double ev = white_eval(pos);
                 ge += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
             }
         }
@@ -393,7 +398,7 @@ int main(int argc, char **argv) {
     for (int t = 0; t < maxthr; t++) {
         boardbuf[t].useNNUE = 0;
         boardbuf[t].usePKNet = 0;
-        boardbuf[t].useFiftyMoveRule = 1;
+        boardbuf[t].useFiftyMoveRule = 0;
         boardbuf[t].contempt = 0;
         boardbuf[t].contemptDrawPenalty = 0;
         boardbuf[t].contemptComplexity = 0;

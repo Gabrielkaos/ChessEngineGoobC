@@ -21,6 +21,11 @@ char * PrSq(const int sq){
 char * PrMove(const int move){
     static char moveStr[6];
 
+    if(move==NOMOVE){
+        strcpy(moveStr,"0000");
+        return moveStr;
+    }
+
     int fromFile=filesBoard[FROMSQ(move)];
     int fromRank=ranksBoard[FROMSQ(move)];
 

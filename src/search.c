@@ -45,12 +45,15 @@ void initLMRTable(){
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
-        if(!info->depthOneComplete) return; //ensure at least one depth finishes
-        if((!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
-           (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
-           (info->nodeSet==TRUE && info->nodes>=info->nodeLimit)){
-                info->stopped=TRUE;
-           }
+        int hitLimit = (!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
+                       (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
+                       (info->nodeSet==TRUE && info->nodes>=info->nodeLimit);
+        if(!hitLimit)return;
+        //normally we wait until one depth has finished so a move always exists,
+        //but never let that guard keep us running past the hard stop time
+        if(!info->depthOneComplete &&
+           !(info->timeSet==TRUE && getTimeMs()>info->stoptime+DepthOneGraceMs))return;
+        info->stopped=TRUE;
     }
 
 }
@@ -855,14 +858,21 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     int rootLegalMoves = (threadNum==0) ? countLegalRootMoves(pos) : 1;
     int multiPV         = (threadNum==0) ? MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves)) : 1;
 
+    //game over (checkmate/stalemate): no legal moves, nothing to search
+    if(rootLegalMoves==0){
+        workerthread->bestMove   = NOMOVE;
+        workerthread->ponderMove = NOMOVE;
+        return;
+    }
+
     //per-PV-line aspiration window state (and last score), carried
     //across depths exactly like the single alpha/beta pair used to be.
     int pvAlpha[MAXPOSMOVES];
     int pvBeta[MAXPOSMOVES];
     int pvScore[MAXPOSMOVES];
     for(pvNum=0;pvNum<multiPV;++pvNum){
-        pvAlpha[pvNum]=-AB_BOUND;
-        pvBeta[pvNum]= AB_BOUND;
+        pvAlpha[pvNum]=-INFINITE_BOUND;
+        pvBeta[pvNum]= INFINITE_BOUND;
         pvScore[pvNum]=0;
     }
 
@@ -883,14 +893,14 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             pos->currentPvNum = pvNum;
 
             delta       = ScoreWindow;
-            alpha       = -AB_BOUND;
-            beta        =  AB_BOUND;
+            alpha       = -INFINITE_BOUND;
+            beta        =  INFINITE_BOUND;
             searchDepth = currentDepth;
 
             
             if(currentDepth >= WindowDepth && !info->bruteForceMode){
-                alpha = MAX(-AB_BOUND, pvScore[0]-delta);
-                beta  = MIN( AB_BOUND, pvScore[0]+delta);
+                alpha = MAX(-INFINITE_BOUND, pvScore[0]-delta);
+                beta  = MIN( INFINITE_BOUND, pvScore[0]+delta);
             }
 
             while(TRUE){
@@ -935,13 +945,18 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 //fail low: widen downward, reset depth to full requested depth
                 if(bestScore<=alpha){
+                    //window already fully open: the score is a valid lower
+                    //bound and can never be re-windowed — accept it
+                    if(alpha<=-INFINITE_BOUND)break;
                     beta        = (alpha+beta)/2;
-                    alpha       = MAX(-AB_BOUND, alpha-delta);
+                    alpha       = MAX(-INFINITE_BOUND, alpha-delta);
                     searchDepth = currentDepth;
                 }
                 //fail high: widen upward, allow a shallow depth trim
                 else if(bestScore>=beta){
-                    beta         = MIN(AB_BOUND, beta+delta);
+                    //window already fully open: accept the upper bound
+                    if(beta>=INFINITE_BOUND)break;
+                    beta         = MIN(INFINITE_BOUND, beta+delta);
                     searchDepth -= (abs(bestScore) <= AB_BOUND/2);
                 }
                 //inside window: done aspirating for this PV line at this depth
@@ -950,6 +965,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
 
                 delta += delta/2;
+                if(delta > INFINITE_BOUND) delta = INFINITE_BOUND;
             }
 
             if(currentDepth==1 && pvNum==0 && threadNum==0){

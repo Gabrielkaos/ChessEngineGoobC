@@ -42,6 +42,7 @@ static const int LateMovePruningCounts[2][9] = {
 };
 static const int UciCurrMoveTime = 2500;
 static const int BoundReportTime = 2500;
+static const int DepthOneGraceMs = 300;
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
 static const int BetaPruningDepth = 8;

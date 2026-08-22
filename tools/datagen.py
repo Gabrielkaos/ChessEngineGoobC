@@ -98,14 +98,14 @@ def in_check(board, occ, color):
                 return True
     for dx, dy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
         x, y = kx + dx, ky + dy
-        while (x, y) not in occ:
+        while (x, y) not in occ and 0 <= x <= 7 and 0 <= y <= 7:
             x += dx
             y += dy
         if (x, y) in board and board[(x, y)] in enemy and board[(x, y)].lower() in ("b", "q"):
             return True
     for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
         x, y = kx + dx, ky + dy
-        while (x, y) not in occ:
+        while (x, y) not in occ and 0 <= x <= 7 and 0 <= y <= 7:
             x += dx
             y += dy
         if (x, y) in board and board[(x, y)] in enemy and board[(x, y)].lower() in ("r", "q"):
