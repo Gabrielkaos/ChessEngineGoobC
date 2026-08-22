@@ -5,9 +5,10 @@
  * with p = sigmoid(kappa * eval) over a dataset of positions/results.
  *
  * Gradient:  dL/dw_k = kappa * sum_i (p_i - y_i) * (eval_i(w+e_k) - eval_i(w))
- * computed by a unit finite difference of each weight (exact for the linear
- * eval terms; the king-safety quadratic term is handled exactly too because a
- * forward difference of a quadratic is exact).
+ * computed by a unit forward finite difference of each weight (exact for the
+ * linear eval terms; for the king-safety quadratic term it is a discrete
+ * secant slope over [w, w+1], not the true derivative, but an adequate
+ * surrogate given the unit step size relative to the weight magnitudes).
  *
  * Usage: tuner <dataset.epd> [iterations] [threads] [learning_rate]
  */
@@ -155,13 +156,16 @@ static int piece_code(char c) {
 static void parse_pieces(CPOS *cp, const char *placement) {
     const char *p = placement;
     int r, f;
+    /* FEN lists rank 8 first; the engine's A1..H8 indexing puts rank 8
+       at squares 56-63, so mirror the row into the correct engine rank. */
     for (r = 0; r < 8; r++) {
+        int rank = 7 - r;
         for (f = 0; f < 8;) {
             char c = *p++;
             if (c >= '1' && c <= '8') {
                 f += c - '0';
             } else {
-                cp->pieces[r * 8 + f] = piece_code(c);
+                cp->pieces[rank * 8 + f] = piece_code(c);
                 f++;
             }
         }
@@ -303,22 +307,27 @@ static void weight_grad(int k, double *g_mg, double *g_eg) {
     }
     regs[r].base[idx] -= 1;
 
-    regs[r].base[idx] += 65536;
-    if (affects_psqt(k))
-        initPQSTMAT();
-    #pragma omp parallel
-    {
-        S_BOARD *pos = &boardbuf[omp_get_thread_num()];
-        #pragma omp for reduction(+ : ge)
-        for (int i = 0; i < npos; i++) {
-            setup_pos(pos, &posdata[i]);
-            double ev = (double)EvalPosition(pos);
-            ge += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
+    int is_tempo = (strcmp(regs[r].name, "tempo") == 0);
+    /* Scalar weights (tempo) only use the MG half, so skip the costly
+       EG perturbation + full eval sweep entirely. */
+    if (!is_tempo) {
+        regs[r].base[idx] += 65536;
+        if (affects_psqt(k))
+            initPQSTMAT();
+        #pragma omp parallel
+        {
+            S_BOARD *pos = &boardbuf[omp_get_thread_num()];
+            #pragma omp for reduction(+ : ge)
+            for (int i = 0; i < npos; i++) {
+                setup_pos(pos, &posdata[i]);
+                double ev = (double)EvalPosition(pos);
+                ge += (probs[i] - posdata[i].result) * KAPPA * (ev - base_evals[i]) / npos;
+            }
         }
+        regs[r].base[idx] -= 65536;
+        if (affects_psqt(k))
+            initPQSTMAT();
     }
-    regs[r].base[idx] -= 65536;
-    if (affects_psqt(k))
-        initPQSTMAT();
 
     /* L2 regularization toward the initial weight values */
     int w0 = regs[r].base[idx];
