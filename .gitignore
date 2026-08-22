@@ -4,3 +4,4 @@
 /src/models/*
 tools/__pycache__/datagen.cpython-312.pyc
 tools/*.pyc
+tools/*.epd

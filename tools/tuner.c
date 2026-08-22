@@ -26,7 +26,7 @@
 #include "hashkeys.h"
 #include "attacks.h"
 
-#define MAX_POS 600000
+#define MAX_POS 1200000
 #define KAPPA   0.001667
 #define LAMBDA  0.0
 
@@ -159,13 +159,13 @@ static void parse_pieces(CPOS *cp, const char *placement) {
     /* FEN lists rank 8 first; the engine's A1..H8 indexing puts rank 8
        at squares 56-63, so mirror the row into the correct engine rank. */
     for (r = 0; r < 8; r++) {
-        int rank = 7 - r;
+        // int rank = 7 - r;
         for (f = 0; f < 8;) {
             char c = *p++;
             if (c >= '1' && c <= '8') {
                 f += c - '0';
             } else {
-                cp->pieces[rank * 8 + f] = piece_code(c);
+                cp->pieces[r * 8 + f] = piece_code(c);
                 f++;
             }
         }
