@@ -3,7 +3,7 @@
 #include "makemove.h"
 #include "history.h"
 
-static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600};
+static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600, 19200};
 
 static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
     int best = lo;

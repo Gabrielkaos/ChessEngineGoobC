@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-ENGINE = "/home/gabriel/Desktop/ChessEngineGoobC/bin/GOOB-2.1-linux-x64"
+ENGINE = "/home/gabriel/Desktop/ChessEngineGoobC/src/bin/GOOB-2.1"
 DEPTH = int(sys.argv[1]) if len(sys.argv) > 1 else 6
 GAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
 THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 12
@@ -256,7 +256,7 @@ def play_game(eng):
         if moves:
             cmd += " moves " + " ".join(moves)
         pvs, bm = eng.search(cmd, DEPTH)
-        if bm == "(none)":
+        if bm in ("(none)", "0000"):
             board, occ = parse_board(fen)
             side = fen.split()[1]
             if in_check(board, occ, side):

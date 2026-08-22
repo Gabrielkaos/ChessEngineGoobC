@@ -215,7 +215,7 @@ static int load_dataset(const char *path) {
             }
         }
         sp++;
-        cp->ep = -1;
+        cp->ep = NO_SQ;
         if (*sp != '-') {
             cp->ep = (sp[0] - 'a') + (sp[1] - '1') * 8;
             sp += 2;
