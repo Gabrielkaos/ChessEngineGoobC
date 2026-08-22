@@ -10,11 +10,12 @@
  * secant slope over [w, w+1], not the true derivative, but an adequate
  * surrogate given the unit step size relative to the weight magnitudes).
  *
- * Usage: tuner <dataset.epd> [iterations] [threads] [learning_rate]
+ * Usage: tuner <dataset.epd> [iterations] [threads] [learning_rate] [resume]
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <math.h>
 #include <omp.h>
 
@@ -29,6 +30,12 @@
 #define MAX_POS 1200000
 #define KAPPA   0.001667
 #define LAMBDA  0.0
+
+#define CKPT_FILE     "tuner_checkpoint.bin"
+#define CKPT_BEST     "tuner_best.bin"
+#define CKPT_MAGIC    0x474F4F42u /* "GOOB" */
+#define CKPT_VERSION  1u
+#define CKPT_EVERY    5
 
 typedef struct {
     char pieces[64];
@@ -377,6 +384,91 @@ static void dump_weights(const char *path) {
 }
 
 /* ------------------------------------------------------------------ */
+/* checkpointing                                                       */
+/* ------------------------------------------------------------------ */
+static void write_checkpoint(const char *path, int iter, double loss, double lr) {
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        fprintf(stderr, "cannot write checkpoint %s\n", path);
+        return;
+    }
+    uint32_t magic = CKPT_MAGIC, version = CKPT_VERSION;
+    int ok = fwrite(&magic, sizeof(magic), 1, fp) == 1 &&
+             fwrite(&version, sizeof(version), 1, fp) == 1 &&
+             fwrite(&iter, sizeof(iter), 1, fp) == 1 &&
+             fwrite(&npos, sizeof(npos), 1, fp) == 1 &&
+             fwrite(&nweights, sizeof(nweights), 1, fp) == 1 &&
+             fwrite(&loss, sizeof(loss), 1, fp) == 1 &&
+             fwrite(&lr, sizeof(lr), 1, fp) == 1;
+    for (int k = 0; ok && k < nweights; k++) {
+        int idx, r = reg_of(k, &idx);
+        int w = regs[r].base[idx];
+        ok = fwrite(&w, sizeof(w), 1, fp) == 1;
+    }
+    if (ok)
+        ok = fwrite(w0_init, sizeof(int), nweights, fp) == (size_t)nweights &&
+             fwrite(w0_mg, sizeof(int), nweights, fp) == (size_t)nweights &&
+             fwrite(w0_eg, sizeof(int), nweights, fp) == (size_t)nweights;
+    if (fclose(fp) != 0)
+        ok = 0;
+    if (!ok) {
+        fprintf(stderr, "checkpoint write failed: %s\n", path);
+        remove(path);
+        return;
+    }
+    printf("saved checkpoint %s (iter %d, loss %.6f)\n", path, iter, loss);
+}
+
+/* Returns the iteration number to resume from, or -1 on failure.
+   Restores weights and L2 anchor arrays into the registries. */
+static int load_checkpoint(const char *path, double *loss, double *lr) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        fprintf(stderr, "cannot open checkpoint %s\n", path);
+        return -1;
+    }
+    uint32_t magic = 0, version = 0;
+    int iter, ckpt_npos, ckpt_nweights;
+    if (fread(&magic, sizeof(magic), 1, fp) != 1 || magic != CKPT_MAGIC ||
+        fread(&version, sizeof(version), 1, fp) != 1 || version != CKPT_VERSION ||
+        fread(&iter, sizeof(iter), 1, fp) != 1 ||
+        fread(&ckpt_npos, sizeof(ckpt_npos), 1, fp) != 1 ||
+        fread(&ckpt_nweights, sizeof(ckpt_nweights), 1, fp) != 1 ||
+        fread(loss, sizeof(*loss), 1, fp) != 1 ||
+        fread(lr, sizeof(*lr), 1, fp) != 1) {
+        fprintf(stderr, "bad checkpoint header: %s\n", path);
+        fclose(fp);
+        return -1;
+    }
+    if (ckpt_nweights != nweights || ckpt_npos != npos) {
+        fprintf(stderr, "checkpoint mismatch: %d weights/%d positions, "
+                        "tuning %d weights over %d positions\n",
+                ckpt_nweights, ckpt_npos, nweights, npos);
+        fclose(fp);
+        return -1;
+    }
+    int *wbuf = malloc(sizeof(int) * nweights);
+    if (!wbuf || fread(wbuf, sizeof(int), nweights, fp) != (size_t)nweights ||
+        fread(w0_init, sizeof(int), nweights, fp) != (size_t)nweights ||
+        fread(w0_mg, sizeof(int), nweights, fp) != (size_t)nweights ||
+        fread(w0_eg, sizeof(int), nweights, fp) != (size_t)nweights) {
+        fprintf(stderr, "bad checkpoint body: %s\n", path);
+        free(wbuf);
+        fclose(fp);
+        return -1;
+    }
+    fclose(fp);
+
+    for (int k = 0; k < nweights; k++) {
+        int idx, r = reg_of(k, &idx);
+        regs[r].base[idx] = wbuf[k];
+    }
+    free(wbuf);
+    initPQSTMAT();
+    return iter;
+}
+
+/* ------------------------------------------------------------------ */
 /* main                                                                */
 /* ------------------------------------------------------------------ */
 int main(int argc, char **argv) {
@@ -384,6 +476,7 @@ int main(int argc, char **argv) {
     int iterations = argc > 2 ? atoi(argv[2]) : 200;
     int nthreads = argc > 3 ? atoi(argv[3]) : omp_get_max_threads();
     double lr = argc > 4 ? atof(argv[4]) : 2000.0;
+    int resume = (argc > 5 && strcmp(argv[5], "resume") == 0);
 
     if (load_dataset(dataset) < 0)
         return 1;
@@ -415,23 +508,39 @@ int main(int argc, char **argv) {
     base_evals = malloc(sizeof(double) * npos);
     probs = malloc(sizeof(double) * npos);
 
-    compute_base_evals();
-    printf("initial loss: %.6f\n", compute_loss());
-    fflush(stdout);
-
-    double t0 = omp_get_wtime();
     double *grad_mg = malloc(sizeof(double) * nweights);
     double *grad_eg = malloc(sizeof(double) * nweights);
     w0_init = malloc(sizeof(int) * nweights);
     w0_mg = malloc(sizeof(int) * nweights);
     w0_eg = malloc(sizeof(int) * nweights);
-    for (int k = 0; k < nweights; k++) {
-        int idx, r = reg_of(k, &idx);
-        w0_init[k] = regs[r].base[idx];
-        w0_mg[k] = ScoreMG(regs[r].base[idx]);
-        w0_eg[k] = ScoreEG(regs[r].base[idx]);
+
+    int start_iter = 1;
+    double best_loss = 1e30;
+    if (resume) {
+        int it = load_checkpoint(CKPT_FILE, &best_loss, &lr);
+        if (it < 0) {
+            fprintf(stderr, "resume failed, starting fresh\n");
+            best_loss = 1e30;
+        } else {
+            start_iter = it + 1;
+            printf("resuming from iteration %d (loss %.6f, lr %.2f)\n",
+                   it, best_loss, lr);
+        }
     }
-    for (int iter = 1; iter <= iterations; iter++) {
+    if (start_iter == 1)
+        for (int k = 0; k < nweights; k++) {
+            int idx, r = reg_of(k, &idx);
+            w0_init[k] = regs[r].base[idx];
+            w0_mg[k] = ScoreMG(regs[r].base[idx]);
+            w0_eg[k] = ScoreEG(regs[r].base[idx]);
+        }
+
+    compute_base_evals();
+    printf("initial loss: %.6f\n", compute_loss());
+    fflush(stdout);
+
+    double t0 = omp_get_wtime();
+    for (int iter = start_iter; iter <= iterations; iter++) {
         double it0 = omp_get_wtime();
         for (int k = 0; k < nweights; k++)
             weight_grad(k, &grad_mg[k], &grad_eg[k]);
@@ -469,6 +578,13 @@ int main(int argc, char **argv) {
         double dt = omp_get_wtime() - it0;
         printf("iter %4d loss %.6f  %.1fs\n", iter, loss, dt);
         fflush(stdout);
+        if (iter % CKPT_EVERY == 0 || iter == iterations)
+            write_checkpoint(CKPT_FILE, iter, loss, lr);
+        if (loss < best_loss) {
+            best_loss = loss;
+            write_checkpoint(CKPT_BEST, iter, loss, lr);
+            dump_weights("weights_best.c");
+        }
         if (iter % 20 == 0 || iter == iterations) {
             char fname[128];
             snprintf(fname, sizeof(fname), "weights_%04d.c", iter);
