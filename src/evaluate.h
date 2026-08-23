@@ -37,6 +37,7 @@ typedef struct{
 
 enum {
     SCALE_DRAW             =   0,
+    SCALE_WRONG_BISHOP     =  24,
     SCALE_OCB_BISHOPS_ONLY =  64,
     SCALE_OCB_ONE_KNIGHT   = 106,
     SCALE_OCB_ONE_ROOK     =  96,
@@ -85,6 +86,9 @@ TUNABLE_DECL int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDi
 TUNABLE_DECL int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
 TUNABLE_DECL int PawnBackwards[2][8], PawnConnected32[32];
 TUNABLE_DECL int BishopTrapped[2], RookTrapped;
+TUNABLE_DECL int PinKnight, PinBishop, PinRook, PinQueen;
+TUNABLE_DECL int RookTrappedClassical, QueenRestrictsPasser;
+TUNABLE_DECL int BishopBadPawn;
 TUNABLE_DECL int tempo;
 
 //FUNCTIONS

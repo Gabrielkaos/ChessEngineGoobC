@@ -14,6 +14,14 @@
 #include "nnue_loader.h"
 #include "pknet_loader.h"
 
+// Tunables are const (compiler-optimizable) in normal builds, and mutable
+// when compiled with -DTUNE so tools/tuner.c can adjust them.
+#ifdef TUNE
+    #define TUNABLE
+#else
+    #define TUNABLE const
+#endif
+
 /*General*/
 int PSQTMATTABLE[13][64];
 int DistanceBetween[64][64];
@@ -43,41 +51,7 @@ void initDistancesForEval(){
 //     S( -34, -12),
 // };
 
-// // Complexity Evaluation Terms
-
-// const int ComplexityTotalPawns  = S(   0,   8);
-// const int ComplexityPawnFlanks  = S(   0,  82);
-// const int ComplexityPawnEndgame = S(   0,  76);
-// const int ComplexityAdjustment  = S(   0,-157);
-
-// //Threat
-
-// const int ThreatWeakPawn             = S( -11, -38);
-// const int ThreatMinorAttackedByPawn  = S( -55, -83);
-// const int ThreatMinorAttackedByMinor = S( -25, -45);
-// const int ThreatMinorAttackedByMajor = S( -30, -55);
-// const int ThreatRookAttackedByLesser = S( -48, -28);
-// const int ThreatMinorAttackedByKing  = S( -43, -21);
-// const int ThreatRookAttackedByKing   = S( -33, -18);
-// const int ThreatQueenAttackedByOne   = S( -50,  -7);
-// const int ThreatOverloadedPieces     = S(  -7, -16);
-// const int ThreatByPawnPush           = S(  15,  32);
-
-// // Space
-
-// const int SpaceRestrictPiece = S(  -4,  -1);
-// const int SpaceRestrictEmpty = S(  -4,  -2);
-// const int SpaceCenterControl = S(   3,   0);
-
 /*Variables*/
-
-// Tunables are const (compiler-optimizable) in normal builds, and mutable
-// when compiled with -DTUNE so tools/tuner.c can adjust them.
-#ifdef TUNE
-    #define TUNABLE
-#else
-    #define TUNABLE const
-#endif
 
 //Piece Values
 TUNABLE int PiecesVal[7]={S(0,0),S(82,144),S(426,475),S(441,510),S(627,803),S(1292,1623),S(0,0)};
@@ -349,6 +323,7 @@ TUNABLE int BishopMobility[14] = {
     S(  55,  47), S(  83,   2),
 };
 TUNABLE int BishopRammedPawns = S(  -8, -17);
+TUNABLE int BishopBadPawn     = S(  -3, -6);
 TUNABLE int bishopPair = S(22,88);
 TUNABLE int BishopLongDiagonal = S(  26,  20);
 TUNABLE int BishopBehindPawn = S(   4,  24);
@@ -395,34 +370,23 @@ TUNABLE int PawnConnected32[32] = {
 TUNABLE int BishopTrapped[2] = {S(-10,-15),S(-14,-20)};
 TUNABLE int RookTrapped      = S(-5,-22);
 
+//Pinned piece penalties (absolute pins against the king)
+TUNABLE int PinKnight = S(-10,-15);
+TUNABLE int PinBishop = S(-14,-16);
+TUNABLE int PinRook   = S(-19,-25);
+TUNABLE int PinQueen  = S(-40,-40);
+
+//Classical trapped rook (own pawn in front, only escapes next to own king)
+TUNABLE int RookTrappedClassical = S(-10,-5);
+
+//Enemy queen restricting a passer by proximity
+TUNABLE int QueenRestrictsPasser = S(0,-8);
+
 //tempo
 TUNABLE int tempo = 20;
 
 
 /*Functions*/
-// INLINE int evaluateComplexity(S_BOARD *pos, EVAL_INFO *eval_info, int eval) {
-
-//     //penalty for drawish positions.
-
-//     int complexity;
-//     int eg = ScoreEG(eval);
-//     int sign = (eg > 0) - (eg < 0);
-
-//     int pawnsOnBothFlanks = (eval_info->pawnsBB & (FileBBMask[FILE_A] | FileBBMask[FILE_B] | FileBBMask[FILE_C] | FileBBMask[FILE_D]))
-//                          && (eval_info->pawnsBB & (FileBBMask[FILE_E] | FileBBMask[FILE_F] | FileBBMask[FILE_G] | FileBBMask[FILE_H]));
-
-//     // Compute the initiative bonus or malus for the attacking side
-//     complexity =  ComplexityTotalPawns  * COUNTBIT(eval_info->pawnsBB)
-//                +  ComplexityPawnFlanks  * pawnsOnBothFlanks
-//                +  ComplexityPawnEndgame * !(eval_info->knightsBB | eval_info->bishopsBB | eval_info->rooksBB | eval_info->queensBB)
-//                +  ComplexityAdjustment;
-
-//     // Avoid changing which side has the advantage
-//     int v = sign * MAX(ScoreEG(complexity), -abs(eg));
-
-//     return MakeScore(0, v);
-// }
-
 
 // INLINE int evaluateClosedness(S_BOARD *pos, EVAL_INFO *eval_info) {
 
@@ -449,104 +413,6 @@ TUNABLE int tempo = 20;
 // }
 
 
-// INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int color){
-
-//     const int US = color, THEM = !color;
-
-//     int count, eval = 0;
-
-//     U64 friendly = pos->occupancy[  US];
-//     U64 enemy    = pos->occupancy[THEM];
-
-//     // Squares we attack with more enemy attackers and no friendly pawn attacks
-//     U64 uncontrolled =   eval_info->attackedBy2[THEM] & eval_info->attacked[US]
-//                            & ~eval_info->attackedBy2[US  ] & ~eval_info->attacks_array_pawns[US];
-
-//     // Penalty for restricted piece moves
-//     count = COUNTBIT(uncontrolled & (friendly | enemy));
-//     eval += count * SpaceRestrictPiece;
-
-//     count = COUNTBIT(uncontrolled & ~friendly & ~enemy);
-//     eval += count * SpaceRestrictEmpty;
-
-//     // Bonus for uncontested central squares, only when enough material remains
-//     if (      COUNTBIT(eval_info->knightsBB | eval_info->bishopsBB)
-//         + 2 * COUNTBIT(eval_info->rooksBB | eval_info->queensBB) > 12) {
-//         count = COUNTBIT(~eval_info->attacked[THEM] & (eval_info->attacked[US] | friendly) & CENTER_BIG);
-//         eval += count * SpaceCenterControl;
-//     }
-
-//     return eval;
-// }
-
-
-// INLINE int evaluateThreats(S_BOARD *pos, EVAL_INFO *eval_info, int color){
-
-//     const int US = color, THEM = !color;
-//     const int Rank3Rel = color==WHITE ? RANK_3:RANK_6;
-
-//     U64 enemy    = pos->occupancy[THEM];
-//     U64 occupied = pos->occupancy[BOTH];
-
-//     U64 KNIGHTS = eval_info->knightsBB;
-//     U64 ROOKS   = eval_info->rooksBB;
-//     U64 BISHOPS = eval_info->bishopsBB;
-//     U64 QUEENS  = eval_info->queensBB;
-//     U64 PAWNS   = eval_info->pawnsBB;
-
-//     U64 attacksByPawn   = eval_info->attacks_array_pawns[THEM];
-//     U64 attacksByMinors = eval_info->attacks_array_minors[THEM];
-//     U64 attacksByMajors = eval_info->attacks_array_queens[THEM] | eval_info->attacks_array_rooks[THEM];
-
-//     // Squares with more attackers, few defenders, and no pawn support
-//     U64 poorlyDefended = (eval_info->attacked[THEM] & ~eval_info->attacked[US])
-//                             | (eval_info->attackedBy2[THEM] & ~eval_info->attackedBy2[US] & ~eval_info->attacks_array_pawns[US]);
-
-//     U64 weakMinors = (KNIGHTS | BISHOPS) & poorlyDefended;
-
-//     // A friendly minor or major is overloaded if attacked and defended by exactly one
-//     U64 overloaded = (KNIGHTS | BISHOPS | ROOKS | QUEENS)
-//                         & eval_info->attacked[  US] & ~eval_info->attackedBy2[  US]
-//                         & eval_info->attacked[THEM] & ~eval_info->attackedBy2[THEM];
-
-//     U64 pushThreat  = pawnAdvance(PAWNS, occupied, US);
-//     pushThreat |= pawnAdvance(pushThreat & ~attacksByPawn & Rank3Rel, occupied, US);
-//     pushThreat &= ~attacksByPawn & (eval_info->attacked[US] | ~eval_info->attacked[THEM]);
-//     pushThreat  = pawnAttackSpan(pushThreat, enemy & ~eval_info->attacks_array_pawns[US], US);
-
-//     int eval = 0;
-//     int count = COUNTBIT(PAWNS & ~attacksByPawn & poorlyDefended);
-//     eval += count * ThreatWeakPawn;
-
-//     count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByPawn);
-//     eval += count * ThreatMinorAttackedByPawn;
-
-//     count = COUNTBIT((KNIGHTS | BISHOPS) & attacksByMinors);
-//     eval += count * ThreatMinorAttackedByMinor;
-
-//     count = COUNTBIT(weakMinors & attacksByMajors);
-//     eval += count * ThreatMinorAttackedByMajor;
-
-//     count = COUNTBIT(ROOKS & (attacksByPawn | attacksByMinors));
-//     eval += count * ThreatRookAttackedByLesser;
-
-//     count = COUNTBIT(weakMinors & king_attacks[eval_info->kingSq[THEM]]);
-//     eval += count * ThreatMinorAttackedByKing;
-
-//     count = COUNTBIT(ROOKS & poorlyDefended & king_attacks[eval_info->kingSq[THEM]]);
-//     eval += count * ThreatRookAttackedByKing;
-
-//     count = COUNTBIT(QUEENS & eval_info->attacked[THEM]);
-//     eval += count * ThreatQueenAttackedByOne;
-
-//     count = COUNTBIT(overloaded);
-//     eval += count * ThreatOverloadedPieces;
-
-//     count = COUNTBIT(pushThreat);
-//     eval += count * ThreatByPawnPush;
-
-//     return eval;
-// }
 
 
 INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
@@ -844,6 +710,7 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int count,sq;
     int defended,outside;
     int pce=color==WHITE ? wB:bB;
+    U64 myPawns=color==WHITE ? pos->bitboards[wP]:pos->bitboards[bP];
     U64 attacks,bitboard;
     U64 enemyPawns=color==WHITE ? pos->bitboards[bP]:pos->bitboards[wP];
     bitboard=pos->bitboards[pce];
@@ -859,6 +726,10 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
         //rammed pawns of same color
         count=COUNTBIT(eval_info->rammedPawns[color] & squaresOfMatchingColour(sq));
         eval+=count*BishopRammedPawns;
+
+        //bad bishop: own pawns stuck on the bishop's colour complexes
+        count=COUNTBIT(myPawns & squaresOfMatchingColour(sq));
+        eval+=count*BishopBadPawn;
 
         // Long diagonal and center square control
         if (testBit(LONG_DIAGONALS & ~CENTER_SQUARES, sq)
@@ -897,6 +768,47 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
         }
 
         POPBIT(bitboard,sq);
+    }
+
+    return eval;
+}
+
+
+//finds own pieces absolutely pinned against our king by enemy sliders
+INLINE int evaluatePins(S_BOARD *pos, EVAL_INFO *eval_info, int colour){
+
+    const int US = colour, THEM = !colour;
+
+    int ksq = eval_info->kingSq[US];
+    U64 occ  = pos->occupancy[BOTH];
+    U64 ours = pos->occupancy[US];
+
+    U64 rq = pos->bitboards[wR] | pos->bitboards[bR] | pos->bitboards[wQ] | pos->bitboards[bQ];
+    U64 bq = pos->bitboards[wB] | pos->bitboards[bB] | pos->bitboards[wQ] | pos->bitboards[bQ];
+
+    //sliders aligned with the king, ignoring all blockers
+    U64 snipers = (get_rook_attacks(ksq, 0ULL) & rq)
+                | (get_bishop_attacks(ksq, 0ULL) & bq);
+    snipers &= pos->occupancy[THEM];
+
+    int eval=0;
+    while(snipers){
+
+        int s=LSBINDEX(snipers);
+        POPBIT(snipers,s);
+
+        //squares strictly between king and sniper that are occupied
+        U64 between = get_rook_attacks(ksq, 1ull<<s) & get_rook_attacks(s, 1ull<<ksq) & occ;
+
+        if(onlyOne(between) && (between & ours)){
+
+            switch(pieceType[pos->pieces[LSBINDEX(between)]]){
+                case p_knight: eval += PinKnight; break;
+                case p_bishop: eval += PinBishop; break;
+                case p_rook:   eval += PinRook;   break;
+                case p_queen:  eval += PinQueen;  break;
+            }
+        }
     }
 
     return eval;
@@ -1037,6 +949,14 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
         }
 
         attacks = get_rook_attacks(sq, eval_info->occupiedMinusRooks[side]);
+
+        //classical trapped rook: own pawn directly in front and every escape
+        //square is next to our own king (stuck shuffling around the monarch)
+        if (!pos->chess960 && (pawnAdvance(1ull<<sq, 0ULL, color) & myPawns)
+            && attacks && !COUNTBIT(attacks & ~king_attacks[eval_info->kingSq[side]])){
+            eval += RookTrappedClassical;
+        }
+
         eval_info->attacks_array_rooks[side] |= attacks;
         eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
         eval_info->attacked[side] |= attacks;
@@ -1100,6 +1020,31 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
     if ((strong & minors) && COUNTBIT(strong) == 2)
         return SCALE_DRAW;
 
+    // Rook pawns + wrong coloured bishop can never promote
+    if (onlyOne(strong & eval_info->bishopsBB)
+        && !(strong & (eval_info->knightsBB | eval_info->rooksBB | eval_info->queensBB))
+        && !(weak & (minors | eval_info->rooksBB | eval_info->queensBB))){
+
+        U64 strongPawns = strong & eval_info->pawnsBB;
+        U64 bishopBB    = strong & eval_info->bishopsBB;
+
+        if (strongPawns && !(strongPawns & ~(FileBBMask[FILE_A] | FileBBMask[FILE_H]))){
+
+            int wrongColour = 1;
+            U64 sp = strongPawns;
+            while (sp){
+                int psq = LSBINDEX(sp);
+                POPBIT(sp,psq);
+                //promotion square for this pawn
+                int promoSq = filesBoard[psq] + ((weak == black) ? 56 : 0);
+                if (squaresOfMatchingColour(promoSq) & bishopBB)
+                    wrongColour = 0;
+            }
+            if (wrongColour)
+                return SCALE_WRONG_BISHOP;
+        }
+    }
+
     // Scale up lone pieces with massive pawn advantages
     if (   !eval_info->queensBB
         && !several(pieces & white)
@@ -1120,6 +1065,7 @@ INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
 
     U64 bitboard;
     U64 ourRooks = colour==WHITE ? pos->bitboards[wR]:pos->bitboards[bR];
+    U64 theirQueens = colour==WHITE ? pos->bitboards[bQ]:pos->bitboards[wQ];
     U64 myPassers = colour==WHITE ? eval_info->passers[WHITE]:eval_info->passers[BLACK];
     U64 occupied  = pos->occupancy[BOTH];
     U64 tempPawns = myPassers;
@@ -1142,6 +1088,18 @@ INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
 
         dist = distanceBetween(sq, eval_info->kingSq[THEM]);
         eval += dist * PassedEnemyDistance[rank];
+
+        //enemy queen sitting close to a passer restricts its advance
+        if (theirQueens){
+            int qdist = 7;
+            U64 tq = theirQueens;
+            while (tq){
+                int qs = LSBINDEX(tq);
+                POPBIT(tq,qs);
+                qdist = MIN(qdist, distanceBetween(sq,qs));
+            }
+            eval += QueenRestrictsPasser * MAX(0, 4 - qdist);
+        }
 
         //Apply a bonus if a rook is beneath this passed pawn
         if(ForwardFileMasks[THEM][sq] & ourRooks)eval+=PassedProtectedByRook;
@@ -1266,10 +1224,8 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evalRooks(pos,eval_info,WHITE)  - evalRooks(pos,eval_info,BLACK);
     eval+= evalQueens(pos,eval_info,WHITE) - evalQueens(pos,eval_info,BLACK);
     eval+= evalKing(pos,eval_info,WHITE) - evalKing(pos,eval_info,BLACK);
+    eval+= evaluatePins(pos,eval_info,WHITE) - evaluatePins(pos,eval_info,BLACK);
     eval+= evaluatePassed(pos,eval_info,WHITE) - evaluatePassed(pos,eval_info,BLACK);
-        
-    // eval+= evaluateSpace(pos,eval_info,WHITE)-evaluateSpace(pos,eval_info,BLACK);
-    // eval+= evaluateThreats(pos,eval_info,WHITE)-evaluateThreats(pos,eval_info,BLACK);
 
     if (!pos->usePKNet || !pknet_loaded) {
         eval+= evaluateKingsPawns(pos,eval_info,WHITE) - evaluateKingsPawns(pos,eval_info,BLACK);
@@ -1349,7 +1305,6 @@ int EvalPosition(S_BOARD *pos){
     //get classical eval
     int eval =  getClassicalEval(pos, eval_info);
     // eval     += evaluateClosedness(pos, eval_info);
-    // eval     += evaluateComplexity(pos, eval_info, eval);
 
     //scale factor
     int factor=ScaleFactor(pos, ScoreEG(eval), eval_info);

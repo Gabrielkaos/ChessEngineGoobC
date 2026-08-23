@@ -121,6 +121,13 @@ static REG regs[] = {
     R(PawnConnected32, "[32]"),
     R(BishopTrapped, "[2]"),
     { &RookTrapped, 1, "RookTrapped", "" },
+    { &BishopBadPawn, 1, "BishopBadPawn", "" },
+    { &PinKnight, 1, "PinKnight", "" },
+    { &PinBishop, 1, "PinBishop", "" },
+    { &PinRook, 1, "PinRook", "" },
+    { &PinQueen, 1, "PinQueen", "" },
+    { &RookTrappedClassical, 1, "RookTrappedClassical", "" },
+    { &QueenRestrictsPasser, 1, "QueenRestrictsPasser", "" },
     { &tempo, 1, "tempo", "" },
 };
 

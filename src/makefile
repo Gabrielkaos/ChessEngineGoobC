@@ -16,7 +16,7 @@ SRCS := $(wildcard *.c)
 OBJDIR := obj
 BINDIR := bin
 OBJS := $(patsubst %.c, $(OBJDIR)/%.o, $(SRCS))
-NAMES := $(BINDIR)/GOOB-2.1
+NAMES := $(BINDIR)/GOOB-2.2-BETA
 CFLAGS := -O3 -pthread $(PLATFORM_FLAGS)
 LDFLAGS := -lm
 

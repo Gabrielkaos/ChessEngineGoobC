@@ -295,6 +295,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string UsePKNet set to %s\n", pos->usePKNet?"true":"false");
         clearEvalTable(pos->eTable);
      }
+
      else if (!strncmp(line, "setoption name PKNetFile value ", 31)) {
         char path[512]={0};
         sscanf(line, "%*s %*s %*s %*s %511s", path);
