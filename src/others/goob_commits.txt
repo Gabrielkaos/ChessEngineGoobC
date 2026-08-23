@@ -1696,6 +1696,11 @@
 
     //CE_BUCKET - V2.1
 
+    ->added tuner / dataget at /tools
+    ->fixed fen parsing to refuse bad fen 
+    ->now movegen not generating captures that capture king
+    ->added positions in perfttest
+
     
 
 	*/
