@@ -71,12 +71,15 @@ void initDistancesForEval(){
 
 /*Variables*/
 
-// Tunables are const (compiler-optimizable) in normal builds, and mutable
-// when compiled with -DTUNE so tools/tuner.c can adjust them.
+// Tunables are non-global `static const` in normal builds so the compiler can
+// keep them in registers / constant pool and fully optimize the evaluation.
+// When compiled with -DTUNE they become mutable extern globals (defined with
+// their initial values here) so tools/tuner.c can adjust them; the `extern`
+// declarations live in evaluate.h under #ifdef TUNE.
 #ifdef TUNE
     #define TUNABLE
 #else
-    #define TUNABLE const
+    #define TUNABLE static const
 #endif
 
 //Piece Values

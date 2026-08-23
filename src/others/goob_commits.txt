@@ -1700,6 +1700,7 @@
     ->fixed fen parsing to refuse bad fen 
     ->now movegen not generating captures that capture king
     ->added positions in perfttest
+    ->cleaned how variables where treated in different compile
 
     
 

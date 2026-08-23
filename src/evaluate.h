@@ -60,32 +60,36 @@ extern int PSQTMATTABLE[13][64];
 extern int tuneMode;
 
 // tunable evaluation weights (defined in evaluate.c)
-// const in normal builds, mutable when compiled with -DTUNE (see tools/tuner.c)
+//
+// In a normal build they are `static const` inside evaluate.c (non-global, so
+// the compiler can fully optimize the evaluation). They are therefore not
+// declared here at all in that case.
+//
+// When compiled with -DTUNE they become mutable extern globals (see the
+// TUNABLE macro in evaluate.c) so tools/tuner.c can adjust them; declare them
+// extern here for the tuner's weight registry.
 #ifdef TUNE
-    #define TUNABLE_DECL extern
-#else
-    #define TUNABLE_DECL extern const
+extern int PiecesVal[7];
+extern int QueenTabless[64], PawnTabless[64], KingTabless[64];
+extern int KnightTabless[64], BishopTabless[64], RookTabless[64];
+extern int PassedPawn[2][2][8];
+extern int PassedFriendlyDistance[8], PassedEnemyDistance[8];
+extern int PassedSafePromotionPath, PassedProtectedByRook;
+extern int SafetyKnightWeight, SafetyBishopWeight, SafetyRookWeight, SafetyQueenWeight;
+extern int SafetyAttackValue, SafetyWeakSquares, SafetyNoEnemyQueens;
+extern int SafetySafeQueenCheck, SafetySafeRookCheck, SafetySafeBishopCheck, SafetySafeKnightCheck;
+extern int SafetyAdjustment, SafetyStorm[2][8], SafetyShelter[2][8];
+extern int KingStorm[2][4][8], KingDefenders[12], KingShelter[2][8][8];
+extern int KingPawnFileProximity[8];
+extern int QueenRelativePin, QueenMobility[28];
+extern int RookFile[2], RookOnSeventh, RookMobility[15];
+extern int KnightBehindPawn, KnightOutpost[2][2], KnightMobility[9], KnightInSiberia[4];
+extern int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDiagonal, BishopBehindPawn, BishopOutpost[2][2];
+extern int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
+extern int PawnBackwards[2][8], PawnConnected32[32];
+extern int BishopTrapped[2], RookTrapped;
+extern int tempo;
 #endif
-TUNABLE_DECL int PiecesVal[7];
-TUNABLE_DECL int QueenTabless[64], PawnTabless[64], KingTabless[64];
-TUNABLE_DECL int KnightTabless[64], BishopTabless[64], RookTabless[64];
-TUNABLE_DECL int PassedPawn[2][2][8];
-TUNABLE_DECL int PassedFriendlyDistance[8], PassedEnemyDistance[8];
-TUNABLE_DECL int PassedSafePromotionPath, PassedProtectedByRook;
-TUNABLE_DECL int SafetyKnightWeight, SafetyBishopWeight, SafetyRookWeight, SafetyQueenWeight;
-TUNABLE_DECL int SafetyAttackValue, SafetyWeakSquares, SafetyNoEnemyQueens;
-TUNABLE_DECL int SafetySafeQueenCheck, SafetySafeRookCheck, SafetySafeBishopCheck, SafetySafeKnightCheck;
-TUNABLE_DECL int SafetyAdjustment, SafetyStorm[2][8], SafetyShelter[2][8];
-TUNABLE_DECL int KingStorm[2][4][8], KingDefenders[12], KingShelter[2][8][8];
-TUNABLE_DECL int KingPawnFileProximity[8];
-TUNABLE_DECL int QueenRelativePin, QueenMobility[28];
-TUNABLE_DECL int RookFile[2], RookOnSeventh, RookMobility[15];
-TUNABLE_DECL int KnightBehindPawn, KnightOutpost[2][2], KnightMobility[9], KnightInSiberia[4];
-TUNABLE_DECL int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDiagonal, BishopBehindPawn, BishopOutpost[2][2];
-TUNABLE_DECL int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
-TUNABLE_DECL int PawnBackwards[2][8], PawnConnected32[32];
-TUNABLE_DECL int BishopTrapped[2], RookTrapped;
-TUNABLE_DECL int tempo;
 
 //FUNCTIONS
 extern void initPQSTMAT();
