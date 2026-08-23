@@ -196,6 +196,14 @@ int makeMove(S_BOARD *pos,int move){
     int to=TOSQ(move);
     int side=pos->side;
 
+    //a king can never be captured - once the enemy king bitboard is cleared,
+    //the post-move legality check below loses its reference point and a bogus
+    //"legal" move would send the search into a kingless position (empty king
+    //bb -> ctzll(0) -> out-of-bounds table access). reject before mutating.
+    if(pos->pieces[to]==wK || pos->pieces[to]==bK){
+        return FALSE;
+    }
+
     pos->moveStack[pos->ply] = move;
     pos->pieceStack[pos->ply] = pieceType[pos->pieces[from]];
 

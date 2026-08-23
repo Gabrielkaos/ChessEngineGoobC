@@ -450,8 +450,14 @@ void parsePosition(char* lineIn,S_BOARD *pos){
         if(ptrChar==NULL){
             ParseFEN(START_FEN,pos);
         }else{
-            ptrChar+=4;
-            ParseFEN(ptrChar,pos);
+            ptrChar+=3;
+            while(*ptrChar==' ') ptrChar++;
+            if(ParseFEN(ptrChar,pos)!=0){
+                //never search from a half-parsed position - reset to startpos
+                printf("info string invalid FEN, using startpos instead\n");
+                fflush(stdout);
+                ParseFEN(START_FEN,pos);
+            }
         }
     }
     ptrChar=strstr(lineIn,"moves");

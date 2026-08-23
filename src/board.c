@@ -159,15 +159,24 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     int rank=RANK_8;
     int file=FILE_A;
     int piece=0;
-    int count=0;
     int i=0;
-    int sq64=0;
 
     ResetBoard(pos);
 
-    while ((rank >=RANK_1) && *fen){
-        count=1;
+    //-------- board field: exactly 8 '/'-separated ranks, each summing to 8 files --------
+    //the loop stops at the field terminator so a malformed board section can
+    //never bleed into the side/castling/ep fields (that used to place pieces
+    //on rank 1 and compute a wild out-of-range enPas square -> corrupt search)
+    while(*fen && *fen != ' '){
         switch(*fen){
+            case '/':
+                if(file != 8){ printf("FEN Not Valid \n"); return -1; }
+                rank--;
+                file=FILE_A;
+                if(rank < RANK_1){ printf("FEN Not Valid \n"); return -1; }
+                fen++;
+                continue;
+
             case 'p':piece=bP;break;
             case 'r':piece=bR;break;
             case 'n':piece=bN;break;
@@ -190,68 +199,89 @@ int ParseFEN(char *fen ,S_BOARD *pos){
             case '7':
             case '8':
                 piece=EMPTY;
-                count=*fen-'0';
+                file+=*fen-'0';
                 break;
-            case '/':
-            case ' ':
-                rank--;
-                file=FILE_A;
-                fen++;
-                continue;
 
             default:
                 printf("FEN Not Valid \n");
                 return -1;
         }
 
-        for(i=0;i<count;i++){
-            sq64=rank*8+file;
-            if(piece != EMPTY){
-                pos->pieces[sq64]=piece;
-            }
+        if(*fen >= '1' && *fen <= '8'){
+            //digit: file already advanced by the skip count
+        }else{
+            if(file > FILE_H){ printf("FEN Not Valid \n"); return -1; }
+            pos->pieces[rank*8+file]=piece;
             file++;
         }
+        if(file > 8){ printf("FEN Not Valid \n"); return -1; }
         fen++;
-
     }
 
-    pos->side=(*fen=='w') ? WHITE:BLACK;
-    fen+=2;
+    if(rank != RANK_1 || file != 8){ printf("FEN Not Valid \n"); return -1; }
 
-    for(i=0;i<4;i++){
-        if(*fen==' '){
-            break;
-        }
+    //-------- side to move --------
+    while(*fen==' ') fen++;
+    if(*fen=='w')       pos->side=WHITE;
+    else if(*fen=='b')  pos->side=BLACK;
+    else{ printf("FEN Not Valid \n"); return -1; }
+    fen++;
+
+    //-------- castling rights (lenient: unknown chars ignored) --------
+    while(*fen==' ') fen++;
+    while(*fen && *fen != ' '){
         switch(*fen){
             case 'K':pos->castleRights |= WKCA;break;
             case 'Q':pos->castleRights |= WQCA;break;
             case 'k':pos->castleRights |= BKCA;break;
             case 'q':pos->castleRights |= BQCA;break;
-
             default:
                 break;
         }
         fen++;
     }
-    fen++;
 
-    if(*fen != '-'){
-        file=fen[0]-'a';
-        rank=fen[1]-'1';
-
-
-        pos->enPas=FRtoSQ(file,rank);
+    //-------- en passant square (must be '-' or a real rank-3/rank-6 square) --------
+    while(*fen==' ') fen++;
+    if(*fen!='-' && *fen!='\0'){
+        int epFile=fen[0]-'a';
+        int epRank=fen[1]-'1';
+        if(epFile<FILE_A || epFile>FILE_H || epRank<RANK_1 || epRank>RANK_8 ||
+           (ranksBoard[FRtoSQ(epFile,epRank)]!=RANK_3 && ranksBoard[FRtoSQ(epFile,epRank)]!=RANK_6)){
+            printf("FEN Not Valid \n");
+            return -1;
+        }
+        pos->enPas=FRtoSQ(epFile,epRank);
+        fen+=2;
+    }else{
+        pos->enPas=NO_SQ;
+        if(*fen=='-') fen++;
     }
 
-    //fifty move rule
-    while (*fen && *fen != ' ') fen++;
-    int n=0;
-    sscanf(fen, " %d %d", &pos->fiftyMove, &n);
+    //-------- fifty move counter / fullmove number --------
+    pos->fiftyMove=0;
+    int fullmove=0;
+    sscanf(fen, " %d %d", &pos->fiftyMove, &fullmove);
+    if(pos->fiftyMove < 0) pos->fiftyMove=0;
+
+    updateListMaterial(pos);
+
+    //-------- material sanity: one king per side, no pawns on back ranks --------
+    int kings[2]={0,0};
+    for(i=0;i<64;i++){
+        int pce=pos->pieces[i];
+        if(pce==EMPTY) continue;
+        if(pieceKing[pce]) kings[pieceCol[pce]]++;
+        if(piecePawn[pce] && (ranksBoard[i]==RANK_1 || ranksBoard[i]==RANK_8)){
+            printf("FEN Not Valid \n");
+            return -1;
+        }
+    }
+    if(kings[WHITE]!=1 || kings[BLACK]!=1){ printf("FEN Not Valid \n"); return -1; }
 
     pos->pkHash=GeneratePKHash(pos);
     pos->posKey=GeneratePosKey(pos);
 
-    updateListMaterial(pos);
     return 0;
 }
 

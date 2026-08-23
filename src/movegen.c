@@ -87,6 +87,10 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
     int source_square, target_square;
     U64 bitboard, attacks;
 
+    //kings are never capturable - capturing one would clear the enemy king
+    //bitboard and blind makeMove's legality check
+    const U64 capturable = pos->occupancy[!side] & ~(pos->bitboards[wK]|pos->bitboards[bK]);
+
     //fix #2: only the 6 piece types belonging to the side to move are ever
     //relevant here (wP..wK = 1..6, bP..bK = 7..12 in the enum), so walk only
     //those instead of looping over all 12 and branching on side every time
@@ -114,7 +118,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                             AddMovee(pos,MOVE(source_square,(target_square+8),0,0,MVFLAGPS),list);
                     }
 
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[BLACK];
+                    attacks = pawn_attacks[side][source_square] & capturable;
 
                     while (attacks)
                     {
@@ -183,7 +187,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                             AddMovee(pos,MOVE(source_square,(target_square-8),0,0,MVFLAGPS),list);
                     }
 
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[WHITE];
+                    attacks = pawn_attacks[side][source_square] & capturable;
 
                     while (attacks)
                     {
@@ -243,7 +247,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                 //two branch-free loops instead of testing GETBIT per move
                 U64 pseudo = knight_attacks[source_square] & ~pos->occupancy[side];
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & capturable;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -272,7 +276,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
                 U64 pseudo = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & capturable;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -301,7 +305,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
                 U64 pseudo = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & capturable;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -330,7 +334,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
                 U64 pseudo = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & capturable;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -359,7 +363,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
                 U64 pseudo = king_attacks[source_square] & ~pos->occupancy[side];
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & capturable;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -391,6 +395,10 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
 
     U64 bitboard, attacks;
 
+    //kings are never capturable - capturing one would clear the enemy king
+    //bitboard and blind makeMove's legality check
+    const U64 capturable = pos->occupancy[!side] & ~(pos->bitboards[wK]|pos->bitboards[bK]);
+
     int base = (side == WHITE) ? wP : bP;
 
     for (int piece = base; piece <= base + 5; piece++)
@@ -405,7 +413,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
                 {
                     source_square = LSBINDEX(bitboard);
                     target_square = source_square + 8;
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[BLACK];
+                    attacks = pawn_attacks[side][source_square] & capturable;
 
                     if ((!GETBIT(pos->occupancy[BOTH], target_square)))
                     {
@@ -446,7 +454,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
                     source_square = LSBINDEX(bitboard);
                     target_square = source_square - 8;
 
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[WHITE];
+                    attacks = pawn_attacks[side][source_square] & capturable;
 
                     if ((!GETBIT(pos->occupancy[BOTH], target_square)))
                     {
@@ -486,7 +494,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = knight_attacks[source_square] & pos->occupancy[!side];
+                attacks = knight_attacks[source_square] & capturable;
 
                 while (attacks)
                 {
@@ -505,7 +513,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & pos->occupancy[!side];
+                attacks = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & capturable;
 
                 while (attacks)
                 {
@@ -523,7 +531,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
-                attacks = get_rook_attacks(source_square, pos->occupancy[BOTH]) & pos->occupancy[!side];
+                attacks = get_rook_attacks(source_square, pos->occupancy[BOTH]) & capturable;
 
                 while (attacks)
                 {
@@ -541,7 +549,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
-                attacks = get_queen_attacks(source_square, pos->occupancy[BOTH]) & pos->occupancy[!side];
+                attacks = get_queen_attacks(source_square, pos->occupancy[BOTH]) & capturable;
 
                 while (attacks)
                 {
@@ -560,7 +568,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = king_attacks[source_square] & pos->occupancy[!side];
+                attacks = king_attacks[source_square] & capturable;
 
                 while (attacks)
                 {
@@ -593,6 +601,9 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
     int cap  = CAPTURED(move);
     int prom = PROMOTED(move);
     int targetPce = pos->pieces[to];
+
+    //kings are never capturable - guards TT/PV junk moves from corrupting state
+    if(targetPce==wK || targetPce==bK) return FALSE;
 
     //-------- castling --------
     if(move & MVFLAGCA){

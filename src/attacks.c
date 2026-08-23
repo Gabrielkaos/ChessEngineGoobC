@@ -516,7 +516,14 @@ U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
 U64 attackersToKingSq(const S_BOARD *pos,int side){
     ASSERT(SideValid(side));
 
-    int ksq=side==WHITE ? LSBINDEX(pos->bitboards[wK]):LSBINDEX(pos->bitboards[bK]);
+    U64 kbb=side==WHITE ? pos->bitboards[wK]:pos->bitboards[bK];
+
+    //unreachable through make/unmake (king captures are rejected) - degrade
+    //gracefully instead of ctzll(0) on a corrupt board
+    ASSERT(kbb);
+    if(!kbb) return 0ULL;
+
+    int ksq=LSBINDEX(kbb);
     U64 occ=pos->occupancy[BOTH];
 
     //only ever needs the opponent's pieces, so go straight at them instead of
