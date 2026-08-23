@@ -6,7 +6,7 @@ Usage:
 
     nodes        search nodes per move          (default 5000)
     games        total games across all threads (default 10000)
-    threads      number of engine processes     (default: cpu count)
+    threads      number of engine processes     (default 5)
     out          output file, FEN;result lines  (default dataset.epd, appended)
     book         opening book EPD/FEN file      (default book.epd)
     pos_cap      max quiet positions kept per game; 0 = keep all (default)
@@ -230,8 +230,8 @@ def play_game(eng, out_fh, lock, stats):
     eng.newgame()
 
     while True:
-        # 1. Rule-based draw checks (fifty-move/threefold claims + insufficient material)
-        if board.is_insufficient_material() or board.can_claim_draw():
+        # 1. Rule-based draw checks (actual threefold / fifty-move / insufficient material)
+        if board.is_insufficient_material() or board.is_repetition(3) or board.halfmove_clock >= 100:
             result = 0.5
             break
 
@@ -326,6 +326,8 @@ def worker(worker_id, out_fh, lock, stats, stop_event):
             if done % 25 == 0:
                 print(f"Worker {worker_id}: {done} games", flush=True)
         except Exception as e:
+            if stop_event.is_set():
+                break
             print(f"Worker {worker_id}: error ({e}), restarting engine", flush=True)
             if eng is not None:
                 eng.close()
@@ -349,6 +351,15 @@ def main():
     mode = "a" if os.path.exists(OUT) else "w"
     existing = os.path.getsize(OUT) // 72 if mode == "a" else 0
     out_fh = open(OUT, mode)
+    if mode == "a" and os.path.getsize(OUT) > 0:
+        with open(OUT, "rb") as chk:
+            chk.seek(-1, os.SEEK_END)
+            if chk.read(1) != b"\n":
+                # Previous run was killed mid-write: terminate the partial line
+                # so appended games don't merge into it.
+                out_fh.write("\n")
+                out_fh.flush()
+                print("Repaired missing trailing newline in output file")
 
     print(
         f"Datagen: {GAMES} games | {THREADS} engines x 1 thread | {NODES} nodes/move\n"
