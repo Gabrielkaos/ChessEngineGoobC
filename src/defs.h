@@ -29,7 +29,7 @@ typedef int CounterMoveTable[2][6][64];
 
 #define NAME "GOOB"
 #define AUTHOR "Gabriel Montes"
-#define VER "2.1"
+#define VER "2.2-BETA"
 
 #define MATEIN5 "2kr4/p1p2pQ1/P1p2Np1/2P4p/7B/1P6/5PPP/R4K2 w - - 0 3"
 #define QUEENG3 "5rk1/pp4pp/4p3/2R3Q1/3n4/2q4r/P1P2PPP/5RK1 b - - 0 1"
