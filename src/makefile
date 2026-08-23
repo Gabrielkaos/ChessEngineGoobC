@@ -1,74 +1,149 @@
-# Detect OS (assume Linux if not Windows)
+# =============================================================================
+# GOOB Chess Engine – Multi-ISA Makefile
+# =============================================================================
+# Produces one binary per x86-64 ISA tier, named:
+#
+#   Linux  : bin/linux/GOOB-2.2-BETA-x86-64
+#             bin/linux/GOOB-2.2-BETA-x86-64-v2
+#             bin/linux/GOOB-2.2-BETA-x86-64-v3     (BMI2/PEXT)
+#             bin/linux/GOOB-2.2-BETA-native         (host-tuned, local dev)
+#
+#   Windows: bin/windows/GOOB-2.2-BETA-x86-64.exe
+#             bin/windows/GOOB-2.2-BETA-x86-64-v2.exe
+#             bin/windows/GOOB-2.2-BETA-x86-64-v3.exe
+#             bin/windows/GOOB-2.2-BETA-native.exe
+#
+# ISA tier summary
+# -----------------------------------------------------------------------------
+#  x86-64   : baseline SSE2 – widest compatibility, magic slider fallback.
+#  x86-64-v2: + SSE4.2 / POPCNT.  tbprobe gets HW popcount via __SSE4_2__.
+#  x86-64-v3: + AVX2 / BMI2.  attacks.c switches to PEXT (USE_PEXT+__BMI2__).
+#  native   : same ISA as v3 but tuned to the host CPU; for local benchmarking.
+#
+# Key design decisions
+# -----------------------------------------------------------------------------
+#  * Each tier gets its own obj subdirectory so parallel builds never clobber
+#    each other (obj/x86-64, obj/x86-64-v2, …).
+#  * USE_PEXT is passed for all tiers.  attacks.c gates actual PEXT use on
+#    __BMI2__ which is only set when -march implies BMI2 (v3 / native).
+#    On x86-64 / v2 it silently falls back to classic magics – no extra flag.
+#  * On Linux   we link with -pthread (tinycthread wraps pthreads).
+#    On Windows  we link without -pthread (tinycthread uses Win32 API directly).
+#  * tbprobe.c detects _WIN32 at compile time for its own platform paths.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Platform detection
+# ---------------------------------------------------------------------------
 ifeq ($(OS), Windows_NT)
-    CC := gcc
-    RM := del /Q
-    MKDIR := mkdir
+    CC             := gcc
+    RM             := del /Q
+    MKDIR          := mkdir
+    EXE            := .exe
+    THREAD_FLAGS   :=
     PLATFORM_FLAGS := -DPLATFORM_WINDOWS
+    OUTDIR         := bin/windows
 else
-    CC := cc
-    RM := rm -f
-    MKDIR := mkdir -p
+    CC             := cc
+    RM             := rm -f
+    MKDIR          := mkdir -p
+    EXE            :=
+    THREAD_FLAGS   := -pthread
     PLATFORM_FLAGS := -DPLATFORM_LINUX
+    OUTDIR         := bin/linux
 endif
 
-# Project settings
+# ---------------------------------------------------------------------------
+# Source / name settings
+# ---------------------------------------------------------------------------
+NAME := GOOB-2.2-BETA
 SRCS := $(wildcard *.c)
-OBJDIR := obj
-BINDIR := bin
-OBJS := $(patsubst %.c, $(OBJDIR)/%.o, $(SRCS))
-NAMES := $(BINDIR)/GOOB-2.2-BETA
-# -march=native: enables popcnt/BMI2 codegen for the host CPU.
-# USE_PEXT: magic slider attacks use the single-instruction pext index
-#   instead of mask/multiply/shift (guarded by __BMI2__ in attacks.c, so a
-#   build on a non-BMI2 host silently falls back to classic magics).
-# For a portable binary drop both: -march=x86-64-v3 also works on any
-# AVX2/BMI2-class CPU without native tuning.
-CFLAGS := -O3 -pthread -march=native -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
-LDFLAGS := -lm
 
-# Default target
-all: $(NAMES)
+# ---------------------------------------------------------------------------
+# Common compiler flags (ISA-neutral)
+# ---------------------------------------------------------------------------
+# -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
+#               path; the inner #ifdef __BMI2__ guard makes it a no-op on
+#               CPUs that do not have BMI2.
+BASE_CFLAGS := -O3 $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
+LDFLAGS     := -lm
 
-# Linking the executable
-$(NAMES): $(OBJS) | $(BINDIR)
-	$(CC) $(CFLAGS) $(OBJS) -o $(NAMES) $(LDFLAGS)
+# ---------------------------------------------------------------------------
+# Per-ISA march flags
+# ---------------------------------------------------------------------------
+MARCH_x86-64    := -march=x86-64
+MARCH_x86-64-v2 := -march=x86-64-v2
+MARCH_x86-64-v3 := -march=x86-64-v3
+MARCH_native    := -march=native
 
-# Ensure obj/ directory exists and compile source files into object files
-$(OBJDIR)/%.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# ---------------------------------------------------------------------------
+# Build rule generator macro
+# ---------------------------------------------------------------------------
+# For each ISA tier we synthesise:
+#   * A dedicated obj directory   obj/<arch>/
+#   * A pattern rule              obj/<arch>/%.o : %.c
+#   * A link rule                 $(OUTDIR)/NAME-<arch>[.exe]
+#   * A phony shorthand           make x86-64-v3   (etc.)
+#
+# Invoked as: $(call ISA_RULES,<arch>)
+# ---------------------------------------------------------------------------
+define ISA_RULES
+OBJS_$(1)   := $$(patsubst %.c, obj/$(1)/%.o, $(SRCS))
+BIN_$(1)    := $(OUTDIR)/$(NAME)-$(1)$(EXE)
+CFLAGS_$(1) := $(BASE_CFLAGS) $$(MARCH_$(1))
 
-# Create obj/ directory if it does not exist
-$(OBJDIR):
-	$(MKDIR) $(OBJDIR)
+ALL_BINS += $$(BIN_$(1))
 
-$(BINDIR):
-	$(MKDIR) $(BINDIR)
+$$(BIN_$(1)): $$(OBJS_$(1)) | $(OUTDIR)
+	$(CC) $$(CFLAGS_$(1)) $$(OBJS_$(1)) -o $$@ $(LDFLAGS)
+	@echo "  LD  $$@"
 
-# Cleaning build artifacts
-clean:
+obj/$(1)/%.o: %.c | obj/$(1)
+	$(CC) $$(CFLAGS_$(1)) -c $$< -o $$@
+
+obj/$(1):
+	$(MKDIR) obj/$(1)
+
+.PHONY: $(1)
+$(1): $$(BIN_$(1))
+
+endef
+
+# Expand rules for every architecture tier
+ARCHS := x86-64 x86-64-v2 x86-64-v3 native
+$(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
+
+# ---------------------------------------------------------------------------
+# Default target – build all ISA tiers
+# ---------------------------------------------------------------------------
+.PHONY: all
+.DEFAULT_GOAL := all
+all: $(ALL_BINS)
+
+# ---------------------------------------------------------------------------
+# Output directory
+# ---------------------------------------------------------------------------
+$(OUTDIR):
 ifeq ($(OS), Windows_NT)
-	-for %f in ($(OBJS)) do del "%f"
-	-del $(NAMES)
-	-rmdir /S /Q $(OBJDIR) $(BINDIR)
+	$(MKDIR) $(subst /,\,$(OUTDIR))
 else
-	$(RM) $(OBJS) $(NAMES) $(BINDIR)/tuner
-	$(RM) -rf $(OBJDIR) $(TUNEOBJDIR)
-	$(RM) -rf $(BINDIR)
+	$(MKDIR) $(OUTDIR)
 endif
 
-# Rebuilding project
-rebuild: clean all
+# ---------------------------------------------------------------------------
+# Texel tuner
+# Built from a separate object directory with -DTUNE so evaluation tunables
+# are mutable there while engine objects stay const.
+# Always compiled native for speed; -fopenmp enables parallel tuning.
+# ---------------------------------------------------------------------------
+TUNEOBJDIR  := obj/tune
+TUNER_SRCS  := $(filter-out main.c, $(SRCS))
+TUNER_OBJS  := $(patsubst %.c, $(TUNEOBJDIR)/%.o, $(TUNER_SRCS))
+TUNE_CFLAGS := $(BASE_CFLAGS) $(MARCH_native) -fopenmp -DTUNE
 
-# Texel tuner (lives in ../tools, uses the engine evaluation)
-# Built from a separate object directory compiled with -DTUNE so the
-# evaluation tunables are mutable there, while engine objects stay const.
-TUNEOBJDIR := obj-tune
-TUNER_SRCS := $(filter-out main.c, $(SRCS))
-TUNER_OBJS := $(patsubst %.c, $(TUNEOBJDIR)/%.o, $(TUNER_SRCS))
-TUNE_CFLAGS := $(CFLAGS) -fopenmp -DTUNE
-
-$(BINDIR)/tuner: $(TUNER_OBJS) ../tools/tuner.c | $(BINDIR)
+$(OUTDIR)/tuner$(EXE): $(TUNER_OBJS) ../tools/tuner.c | $(OUTDIR)
 	$(CC) $(TUNE_CFLAGS) -I. $(TUNER_OBJS) ../tools/tuner.c -o $@ $(LDFLAGS)
+	@echo "  LD  $@"
 
 $(TUNEOBJDIR)/%.o: %.c | $(TUNEOBJDIR)
 	$(CC) $(TUNE_CFLAGS) -c $< -o $@
@@ -76,15 +151,37 @@ $(TUNEOBJDIR)/%.o: %.c | $(TUNEOBJDIR)
 $(TUNEOBJDIR):
 	$(MKDIR) $(TUNEOBJDIR)
 
-tuner: $(BINDIR)/tuner
+.PHONY: tuner
+tuner: $(OUTDIR)/tuner$(EXE)
 
-# Dependency management
-depend: $(SRCS)
-	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|$(OBJDIR)/\1.o:|' > .depend
+# ---------------------------------------------------------------------------
+# Clean
+# ---------------------------------------------------------------------------
+.PHONY: clean
+clean:
+ifeq ($(OS), Windows_NT)
+	-rmdir /S /Q obj bin\windows bin\linux 2>NUL
+else
+	$(RM) -rf obj $(OUTDIR)
+endif
 
--include .depend
-# auto-generated header deps (-MMD -MP): rebuild dependents when a header changes
--include $(wildcard $(OBJDIR)/*.d)
+# ---------------------------------------------------------------------------
+# Rebuild
+# ---------------------------------------------------------------------------
+.PHONY: rebuild
+rebuild: clean all
+
+# ---------------------------------------------------------------------------
+# Auto-generated header dependency includes (-MMD -MP)
+# Rebuilds dependents whenever a header changes.
+# ---------------------------------------------------------------------------
+-include $(wildcard obj/*/*.d)
 -include $(wildcard $(TUNEOBJDIR)/*.d)
 
-.PHONY: all clean rebuild depend
+# ---------------------------------------------------------------------------
+# Legacy 'depend' target (kept for compatibility)
+# ---------------------------------------------------------------------------
+.PHONY: depend
+depend: $(SRCS)
+	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|obj/x86-64/\1.o:|' > .depend
+-include .depend
