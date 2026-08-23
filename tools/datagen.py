@@ -21,10 +21,6 @@ import subprocess
 import sys
 import threading
 import time
-
-_VENDOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
-if os.path.isdir(_VENDOR):
-    sys.path.insert(0, _VENDOR)
 import chess
 
 ENGINE = os.environ.get(
