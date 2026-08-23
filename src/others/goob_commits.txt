@@ -1696,13 +1696,6 @@
 
     //CE_BUCKET - V2.1
 
-    ->added new params in eval
-    ->added bad bishop
-    ->added pin penalties
-    ->added bishop scaling
-
-    //CE_NEW_EVAL
-
     
 
 	*/
