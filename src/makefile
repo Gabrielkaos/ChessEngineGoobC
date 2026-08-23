@@ -16,7 +16,7 @@ SRCS := $(wildcard *.c)
 OBJDIR := obj
 BINDIR := bin
 OBJS := $(patsubst %.c, $(OBJDIR)/%.o, $(SRCS))
-NAMES := $(BINDIR)/GOOB-2.1
+NAMES := $(BINDIR)/GOOB-2.2-BETA
 # -march=native: enables popcnt/BMI2 codegen for the host CPU.
 # USE_PEXT: magic slider attacks use the single-instruction pext index
 #   instead of mask/multiply/shift (guarded by __BMI2__ in attacks.c, so a
