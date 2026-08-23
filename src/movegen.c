@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "defs.h"
 #include "movegen.h"
+#include "bitboards.h"
 #include "attacks.h"
 #include "validate.h"
 
@@ -12,68 +13,17 @@ INLINE void AddMovee(const S_BOARD *pos, int move,S_MOVELIST *list){
     list->count++;
 }
 
-INLINE void AddWhitePawnCaptureMove(const S_BOARD *pos,const int from,const int to,const int cap,S_MOVELIST *list){
+//adds Q,R,B,N promotions (base is wP or bP so base+1..base+4 are N,B,R,Q)
+INLINE void AddPromotionMoves(const S_BOARD *pos,const int from,const int to,const int cap,const int base,S_MOVELIST *list){
 
     ASSERT(SqOnBoard(from));
     ASSERT(SqOnBoard(to));
     ASSERT(PieceValidEmpty(cap));
 
-    if(ranksBoard[from]==RANK_7){
-        AddMovee(pos,MOVE(from,to,cap,wQ,0),list);
-        AddMovee(pos,MOVE(from,to,cap,wR,0),list);
-        AddMovee(pos,MOVE(from,to,cap,wB,0),list);
-        AddMovee(pos,MOVE(from,to,cap,wN,0),list);
-    }
-    else{
-        AddMovee(pos,MOVE(from,to,cap,EMPTY,0),list);
-    }
-}
-INLINE void AddWhitePawnMove(const S_BOARD *pos,const int from,const int to,S_MOVELIST *list){
-
-    ASSERT(SqOnBoard(from));
-    ASSERT(SqOnBoard(to));
-
-    if(ranksBoard[from]==RANK_7){
-        AddMovee(pos,MOVE(from,to,EMPTY,wQ,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,wR,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,wB,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,wN,0),list);
-    }
-    else{
-        AddMovee(pos,MOVE(from,to,EMPTY,EMPTY,0),list);
-    }
-}
-
-INLINE void AddBlackPawnCaptureMove(const S_BOARD *pos,const int from,const int to,const int cap,S_MOVELIST *list){
-
-    ASSERT(SqOnBoard(from));
-    ASSERT(SqOnBoard(to));
-    ASSERT(PieceValidEmpty(cap));
-
-    if(ranksBoard[from]==RANK_2){
-        AddMovee(pos,MOVE(from,to,cap,bQ,0),list);
-        AddMovee(pos,MOVE(from,to,cap,bR,0),list);
-        AddMovee(pos,MOVE(from,to,cap,bB,0),list);
-        AddMovee(pos,MOVE(from,to,cap,bN,0),list);
-    }
-    else{
-        AddMovee(pos,MOVE(from,to,cap,EMPTY,0),list);
-    }
-}
-INLINE void AddBlackPawnMove(const S_BOARD *pos,const int from,const int to,S_MOVELIST *list){
-
-    ASSERT(SqOnBoard(from));
-    ASSERT(SqOnBoard(to));
-
-    if(ranksBoard[from]==RANK_2){
-        AddMovee(pos,MOVE(from,to,EMPTY,bQ,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,bR,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,bB,0),list);
-        AddMovee(pos,MOVE(from,to,EMPTY,bN,0),list);
-    }
-    else{
-        AddMovee(pos,MOVE(from,to,EMPTY,EMPTY,0),list);
-    }
+    AddMovee(pos,MOVE(from,to,cap,base+4,0),list);
+    AddMovee(pos,MOVE(from,to,cap,base+3,0),list);
+    AddMovee(pos,MOVE(from,to,cap,base+2,0),list);
+    AddMovee(pos,MOVE(from,to,cap,base+1,0),list);
 }
 
 //bitboard based move generator
@@ -85,7 +35,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
     list->count=0;
     int side=pos->side;
     int source_square, target_square;
-    U64 bitboard, attacks;
+    U64 bitboard;
 
     //kings are never capturable - capturing one would clear the enemy king
     //bitboard and blind makeMove's legality check
@@ -104,67 +54,117 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         {
             if (piece == wP)
             {
-                while (bitboard)
+                //bulk generation: whole pawn sets are shifted at once and
+                //promotions are split off by target rank, instead of walking
+                //pawn-by-pawn with per-pawn rank lookups
+                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 pawnsBB = bitboard;
+                const U64 rank8   = RankBBMask[RANK_8];
+                U64 t;
+
+                //single pushes, promotion pushes split off by landing rank
+                const U64 pushes = (pawnsBB << 8) & empty;
+
+                t = pushes & rank8;
+                while (t)
                 {
-                    source_square = LSBINDEX(bitboard);
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
 
-                    target_square = source_square + 8;
+                    AddPromotionMoves(pos,target_square-8,target_square,EMPTY,base,list);
+                }
 
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                t = pushes & ~rank8;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddMovee(pos,MOVE(target_square-8,target_square,EMPTY,EMPTY,0),list);
+                }
+
+                //double pushes: single-push targets still on rank 3 push again
+                t = ((pushes & RankBBMask[RANK_3]) << 8) & empty;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddMovee(pos,MOVE(target_square-16,target_square,EMPTY,EMPTY,MVFLAGPS),list);
+                }
+
+                //captures as bulk shifts (<<7 west, <<9 east), promotions split
+                U64 caps = (pawnsBB << 7) & NOT_H_FILE & capturable;
+
+                t = caps & rank8;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square-7,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank8;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square-7,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                caps = (pawnsBB << 9) & NOT_A_FILE & capturable;
+
+                t = caps & rank8;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square-9,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank8;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square-9,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                //en passant: computed once for the whole pawn set - a white
+                //pawn attacks the ep square iff it stands where a black pawn
+                //on the ep square would attack
+                if (pos->enPas != NO_SQ)
+                {
+                    t = pawn_attacks[BLACK][pos->enPas] & pawnsBB;
+
+                    while (t)
                     {
-                        AddWhitePawnMove(pos,source_square,target_square,list);
+                        source_square = LSBINDEX(t);
+                        t &= t - 1;
 
-                        if ((source_square >= A2 && source_square <= H2) && !GETBIT(pos->occupancy[BOTH], (target_square + 8)))
-                            AddMovee(pos,MOVE(source_square,(target_square+8),0,0,MVFLAGPS),list);
+                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
-
-                    attacks = pawn_attacks[side][source_square] & capturable;
-
-                    while (attacks)
-                    {
-                        target_square = LSBINDEX(attacks);
-
-                        AddWhitePawnCaptureMove(pos,source_square,target_square,pos->pieces[target_square],list);
-
-                        //fix #1: target_square is always a set bit of attacks here
-                        //(it just came from LSBINDEX(attacks)), so clear the lowest
-                        //set bit directly instead of re-testing then clearing
-                        attacks &= attacks - 1;
-                    }
-
-                    if (pos->enPas != NO_SQ)
-                    {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
-
-                        if (enpassant_attacks)
-                        {
-                            int target_enpassant = LSBINDEX(enpassant_attacks);
-                            AddMovee(pos,MOVE(source_square,target_enpassant,0,0,MVFLAGEP),list);
-                        }
-                    }
-
-                    bitboard &= bitboard - 1;
                 }
             }
 
             if (piece == wK)
             {
-                if (pos->castleRights & WKCA)
+                if (pos->castleRights & (WKCA|WQCA))
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], F1) && !GETBIT(pos->occupancy[BOTH], G1))
-                    {
-                        if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(F1, BLACK,pos))
-                            AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
-                    }
-                }
+                    //E1 safety is shared by both castling sides - check it once
+                    const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
-                if (pos->castleRights & WQCA)
-                {
-                    if (!GETBIT(pos->occupancy[BOTH], D1) && !GETBIT(pos->occupancy[BOTH], C1) && !GETBIT(pos->occupancy[BOTH], B1))
-                    {
-                        if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(D1, BLACK,pos))
-                            AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
-                    }
+                    if ((pos->castleRights & WKCA) && kingSqSafe &&
+                        !(pos->occupancy[BOTH] & ((1ULL << F1) | (1ULL << G1))) &&
+                        !is_square_attacked_BB(F1, BLACK, pos))
+                        AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
+
+                    if ((pos->castleRights & WQCA) && kingSqSafe &&
+                        !(pos->occupancy[BOTH] & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
+                        !is_square_attacked_BB(D1, BLACK, pos))
+                        AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
                 }
             }
         }
@@ -173,64 +173,112 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         {
             if (piece == bP)
             {
-                while (bitboard)
+                //bulk generation, black mirrors: shifts go down, promotions
+                //land on rank 1, doubles run through rank 6
+                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 pawnsBB = bitboard;
+                const U64 rank1   = RankBBMask[RANK_1];
+                U64 t;
+
+                const U64 pushes = (pawnsBB >> 8) & empty;
+
+                t = pushes & rank1;
+                while (t)
                 {
-                    source_square = LSBINDEX(bitboard);
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
 
-                    target_square = source_square - 8;
+                    AddPromotionMoves(pos,target_square+8,target_square,EMPTY,base,list);
+                }
 
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                t = pushes & ~rank1;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddMovee(pos,MOVE(target_square+8,target_square,EMPTY,EMPTY,0),list);
+                }
+
+                t = ((pushes & RankBBMask[RANK_6]) >> 8) & empty;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddMovee(pos,MOVE(target_square+16,target_square,EMPTY,EMPTY,MVFLAGPS),list);
+                }
+
+                //black capture shifts: >>9 west (NOT_H_FILE), >>7 east (NOT_A_FILE)
+                U64 caps = (pawnsBB >> 9) & NOT_H_FILE & capturable;
+
+                t = caps & rank1;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square+9,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank1;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square+9,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                caps = (pawnsBB >> 7) & NOT_A_FILE & capturable;
+
+                t = caps & rank1;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square+7,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank1;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square+7,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                //en passant: a black pawn attacks the ep square iff it stands
+                //where a white pawn on the ep square would attack
+                if (pos->enPas != NO_SQ)
+                {
+                    t = pawn_attacks[WHITE][pos->enPas] & pawnsBB;
+
+                    while (t)
                     {
-                        AddBlackPawnMove(pos,source_square,target_square,list);
+                        source_square = LSBINDEX(t);
+                        t &= t - 1;
 
-                        if ((source_square >= A7 && source_square <= H7) && !GETBIT(pos->occupancy[BOTH], (target_square - 8)))
-                            AddMovee(pos,MOVE(source_square,(target_square-8),0,0,MVFLAGPS),list);
+                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
-
-                    attacks = pawn_attacks[side][source_square] & capturable;
-
-                    while (attacks)
-                    {
-                        target_square = LSBINDEX(attacks);
-
-                        AddBlackPawnCaptureMove(pos,source_square,target_square,pos->pieces[target_square],list);
-
-                        attacks &= attacks - 1;
-                    }
-
-                    if (pos->enPas != NO_SQ)
-                    {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
-
-                        if (enpassant_attacks)
-                        {
-                            int target_enpassant = LSBINDEX(enpassant_attacks);
-                            AddMovee(pos,MOVE(source_square,target_enpassant,0,0,MVFLAGEP),list);
-                        }
-                    }
-
-                    bitboard &= bitboard - 1;
                 }
             }
 
             if (piece == bK)
             {
-                if (pos->castleRights & BKCA)
+                if (pos->castleRights & (BKCA|BQCA))
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], F8) && !GETBIT(pos->occupancy[BOTH], G8))
-                    {
-                        if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(F8, WHITE,pos))
-                            AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
-                    }
-                }
+                    const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
-                if (pos->castleRights & BQCA)
-                {
-                    if (!GETBIT(pos->occupancy[BOTH], D8) && !GETBIT(pos->occupancy[BOTH], C8) && !GETBIT(pos->occupancy[BOTH], B8))
-                    {
-                        if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(D8, WHITE,pos))
-                            AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
-                    }
+                    if ((pos->castleRights & BKCA) && kingSqSafe &&
+                        !(pos->occupancy[BOTH] & ((1ULL << F8) | (1ULL << G8))) &&
+                        !is_square_attacked_BB(F8, WHITE, pos))
+                        AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
+
+                    if ((pos->castleRights & BQCA) && kingSqSafe &&
+                        !(pos->occupancy[BOTH] & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
+                        !is_square_attacked_BB(D8, WHITE, pos))
+                        AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
                 }
             }
         }
@@ -409,38 +457,71 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
         {
             if (piece == wP)
             {
-                while (bitboard)
+                //noisy pawns in bulk: promotion pushes + all captures + EP
+                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 pawnsBB = bitboard;
+                const U64 rank8   = RankBBMask[RANK_8];
+                U64 t;
+
+                //promotion pushes only - quiet pushes are not noisy
+                t = (pawnsBB << 8) & empty & rank8;
+                while (t)
                 {
-                    source_square = LSBINDEX(bitboard);
-                    target_square = source_square + 8;
-                    attacks = pawn_attacks[side][source_square] & capturable;
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
 
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                    AddPromotionMoves(pos,target_square-8,target_square,EMPTY,base,list);
+                }
+
+                U64 caps = (pawnsBB << 7) & NOT_H_FILE & capturable;
+
+                t = caps & rank8;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square-7,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank8;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square-7,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                caps = (pawnsBB << 9) & NOT_A_FILE & capturable;
+
+                t = caps & rank8;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square-9,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank8;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square-9,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                if (pos->enPas != NO_SQ)
+                {
+                    t = pawn_attacks[BLACK][pos->enPas] & pawnsBB;
+
+                    while (t)
                     {
-                        if(ranksBoard[source_square]==RANK_7)AddWhitePawnMove(pos,source_square,target_square,list);
+                        source_square = LSBINDEX(t);
+                        t &= t - 1;
+
+                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
-
-                    while (attacks)
-                    {
-                        target_square = LSBINDEX(attacks);
-
-                        AddWhitePawnCaptureMove(pos,source_square,target_square,pos->pieces[target_square],list);
-
-                        attacks &= attacks - 1;
-                    }
-
-                    if (pos->enPas != NO_SQ)
-                    {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
-
-                        if (enpassant_attacks)
-                        {
-                            int target_enpassant = LSBINDEX(enpassant_attacks);
-                            AddMovee(pos,MOVE(source_square,target_enpassant,0,0,MVFLAGEP),list);
-                        }
-                    }
-
-                    bitboard &= bitboard - 1;
                 }
             }
         }
@@ -449,38 +530,70 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
         {
             if (piece == bP)
             {
-                while (bitboard)
+                //noisy pawns in bulk, black mirror (promotions land on rank 1)
+                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 pawnsBB = bitboard;
+                const U64 rank1   = RankBBMask[RANK_1];
+                U64 t;
+
+                t = (pawnsBB >> 8) & empty & rank1;
+                while (t)
                 {
-                    source_square = LSBINDEX(bitboard);
-                    target_square = source_square - 8;
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
 
-                    attacks = pawn_attacks[side][source_square] & capturable;
+                    AddPromotionMoves(pos,target_square+8,target_square,EMPTY,base,list);
+                }
 
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                U64 caps = (pawnsBB >> 9) & NOT_H_FILE & capturable;
+
+                t = caps & rank1;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square+9,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank1;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square+9,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                caps = (pawnsBB >> 7) & NOT_A_FILE & capturable;
+
+                t = caps & rank1;
+                while (t)
+                {
+                    target_square = LSBINDEX(t);
+                    t &= t - 1;
+
+                    AddPromotionMoves(pos,target_square+7,target_square,pos->pieces[target_square],base,list);
+                }
+                caps &= ~rank1;
+                while (caps)
+                {
+                    target_square = LSBINDEX(caps);
+                    caps &= caps - 1;
+
+                    AddMovee(pos,MOVE(target_square+7,target_square,pos->pieces[target_square],EMPTY,0),list);
+                }
+
+                if (pos->enPas != NO_SQ)
+                {
+                    t = pawn_attacks[WHITE][pos->enPas] & pawnsBB;
+
+                    while (t)
                     {
-                        if(ranksBoard[source_square]==RANK_2)AddBlackPawnMove(pos,source_square,target_square,list);
+                        source_square = LSBINDEX(t);
+                        t &= t - 1;
+
+                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
-
-                    while (attacks)
-                    {
-                        target_square = LSBINDEX(attacks);
-                        AddBlackPawnCaptureMove(pos,source_square,target_square,pos->pieces[target_square],list);
-
-                        attacks &= attacks - 1;
-                    }
-
-                    if (pos->enPas != NO_SQ)
-                    {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
-
-                        if (enpassant_attacks)
-                        {
-                            int target_enpassant = LSBINDEX(enpassant_attacks);
-                            AddMovee(pos,MOVE(source_square,target_enpassant,0,0,MVFLAGEP),list);
-                        }
-                    }
-
-                    bitboard &= bitboard - 1;
                 }
             }
         }
@@ -717,68 +830,90 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
 
         if (side == WHITE && piece == wP)
         {
-            while (bitboard)
+            //quiet pawns in bulk: non-promoting pushes + doubles only
+            //(promotion pushes are noisy and generated elsewhere)
+            const U64 empty   = ~pos->occupancy[BOTH];
+            const U64 pawnsBB = bitboard;
+            U64 t;
+
+            t = (pawnsBB << 8) & empty & ~RankBBMask[RANK_8];
+            while (t)
             {
-                source_square = LSBINDEX(bitboard);
-                target_square = source_square + 8;
+                target_square = LSBINDEX(t);
+                t &= t - 1;
 
-                //skip promotion-rank pushes entirely - those are noisy
-                if (ranksBoard[source_square] != RANK_7 &&
-                    !GETBIT(pos->occupancy[BOTH], target_square))
-                {
-                    AddMovee(pos,MOVE(source_square,target_square,EMPTY,EMPTY,0),list);
+                AddMovee(pos,MOVE(target_square-8,target_square,EMPTY,EMPTY,0),list);
+            }
 
-                    if (source_square >= A2 && source_square <= H2 &&
-                        !GETBIT(pos->occupancy[BOTH], (target_square + 8)))
-                        AddMovee(pos,MOVE(source_square,(target_square+8),0,0,MVFLAGPS),list);
-                }
-                bitboard &= bitboard - 1;
+            t = ((pawnsBB << 8) & empty & RankBBMask[RANK_3]) << 8 & empty;
+            while (t)
+            {
+                target_square = LSBINDEX(t);
+                t &= t - 1;
+
+                AddMovee(pos,MOVE(target_square-16,target_square,EMPTY,EMPTY,MVFLAGPS),list);
             }
         }
         else if (side == BLACK && piece == bP)
         {
-            while (bitboard)
+            const U64 empty   = ~pos->occupancy[BOTH];
+            const U64 pawnsBB = bitboard;
+            U64 t;
+
+            t = (pawnsBB >> 8) & empty & ~RankBBMask[RANK_1];
+            while (t)
             {
-                source_square = LSBINDEX(bitboard);
-                target_square = source_square - 8;
+                target_square = LSBINDEX(t);
+                t &= t - 1;
 
-                if (ranksBoard[source_square] != RANK_2 &&
-                    !GETBIT(pos->occupancy[BOTH], target_square))
-                {
-                    AddMovee(pos,MOVE(source_square,target_square,EMPTY,EMPTY,0),list);
+                AddMovee(pos,MOVE(target_square+8,target_square,EMPTY,EMPTY,0),list);
+            }
 
-                    if (source_square >= A7 && source_square <= H7 &&
-                        !GETBIT(pos->occupancy[BOTH], (target_square - 8)))
-                        AddMovee(pos,MOVE(source_square,(target_square-8),0,0,MVFLAGPS),list);
-                }
-                bitboard &= bitboard - 1;
+            t = ((pawnsBB >> 8) & empty & RankBBMask[RANK_6]) >> 8 & empty;
+            while (t)
+            {
+                target_square = LSBINDEX(t);
+                t &= t - 1;
+
+                AddMovee(pos,MOVE(target_square+16,target_square,EMPTY,EMPTY,MVFLAGPS),list);
             }
         }
 
         if (side == WHITE && piece == wK)
         {
-            if (pos->castleRights & WKCA)
-                if (!GETBIT(pos->occupancy[BOTH], F1) && !GETBIT(pos->occupancy[BOTH], G1))
-                    if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(F1, BLACK,pos))
-                        AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
+            if (pos->castleRights & (WKCA|WQCA))
+            {
+                //E1 safety is shared by both castling sides - check it once
+                const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
-            if (pos->castleRights & WQCA)
-                if (!GETBIT(pos->occupancy[BOTH], D1) && !GETBIT(pos->occupancy[BOTH], C1) && !GETBIT(pos->occupancy[BOTH], B1))
-                    if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(D1, BLACK,pos))
-                        AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
+                if ((pos->castleRights & WKCA) && kingSqSafe &&
+                    !(pos->occupancy[BOTH] & ((1ULL << F1) | (1ULL << G1))) &&
+                    !is_square_attacked_BB(F1, BLACK, pos))
+                    AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
+
+                if ((pos->castleRights & WQCA) && kingSqSafe &&
+                    !(pos->occupancy[BOTH] & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
+                    !is_square_attacked_BB(D1, BLACK, pos))
+                    AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
+            }
         }
 
         if (side == BLACK && piece == bK)
         {
-            if (pos->castleRights & BKCA)
-                if (!GETBIT(pos->occupancy[BOTH], F8) && !GETBIT(pos->occupancy[BOTH], G8))
-                    if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(F8, WHITE,pos))
-                        AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
+            if (pos->castleRights & (BKCA|BQCA))
+            {
+                const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
-            if (pos->castleRights & BQCA)
-                if (!GETBIT(pos->occupancy[BOTH], D8) && !GETBIT(pos->occupancy[BOTH], C8) && !GETBIT(pos->occupancy[BOTH], B8))
-                    if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(D8, WHITE,pos))
-                        AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
+                if ((pos->castleRights & BKCA) && kingSqSafe &&
+                    !(pos->occupancy[BOTH] & ((1ULL << F8) | (1ULL << G8))) &&
+                    !is_square_attacked_BB(F8, WHITE, pos))
+                    AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
+
+                if ((pos->castleRights & BQCA) && kingSqSafe &&
+                    !(pos->occupancy[BOTH] & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
+                    !is_square_attacked_BB(D8, WHITE, pos))
+                    AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
+            }
         }
 
         if (piece == base + 1){ //knights

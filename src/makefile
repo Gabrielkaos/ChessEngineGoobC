@@ -17,7 +17,13 @@ OBJDIR := obj
 BINDIR := bin
 OBJS := $(patsubst %.c, $(OBJDIR)/%.o, $(SRCS))
 NAMES := $(BINDIR)/GOOB-2.1
-CFLAGS := -O3 -pthread $(PLATFORM_FLAGS)
+# -march=native: enables popcnt/BMI2 codegen for the host CPU.
+# USE_PEXT: magic slider attacks use the single-instruction pext index
+#   instead of mask/multiply/shift (guarded by __BMI2__ in attacks.c, so a
+#   build on a non-BMI2 host silently falls back to classic magics).
+# For a portable binary drop both: -march=x86-64-v3 also works on any
+# AVX2/BMI2-class CPU without native tuning.
+CFLAGS := -O3 -pthread -march=native -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
 LDFLAGS := -lm
 
 # Default target
@@ -77,5 +83,8 @@ depend: $(SRCS)
 	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|$(OBJDIR)/\1.o:|' > .depend
 
 -include .depend
+# auto-generated header deps (-MMD -MP): rebuild dependents when a header changes
+-include $(wildcard $(OBJDIR)/*.d)
+-include $(wildcard $(TUNEOBJDIR)/*.d)
 
 .PHONY: all clean rebuild depend

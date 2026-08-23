@@ -1701,6 +1701,7 @@
     ->now movegen not generating captures that capture king
     ->added positions in perfttest
     ->cleaned how variables where treated in different compile
+    ->added optimizations bulk pawn movegen, pext attacks, moveStack as move history
 
     
 

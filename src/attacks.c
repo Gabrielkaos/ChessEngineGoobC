@@ -3,6 +3,17 @@
 #include "attacks.h"
 #include "validate.h"
 
+#ifdef USE_PEXT
+#include <immintrin.h>
+#endif
+
+//BMI2 pext index: identical table layout/sizes as the magic index, so the
+//same packed tables are filled at init and looked up with one instruction.
+//Guarded on __BMI2__ so -DUSE_PEXT without BMI2 codegen falls back safely.
+#if defined(USE_PEXT) && defined(__BMI2__)
+#define PEXT_ATTACKS 1
+#endif
+
 //CMK attacks.c
 
 const U64 rook_magic_numbers[BOARD_NUMS_SQ] = {
@@ -398,22 +409,29 @@ U64 get_queen_attacks(int square,U64 occupancy){
 ///////////////////////
 U64 get_bishop_attacks(int square,U64 occupancy){
     ASSERT(SqOnBoard(square));
+#ifdef PEXT_ATTACKS
+    return bishop_attacks_table[bishop_offset[square] + _pext_u64(occupancy,bishop_masks[square])];
+#else
     occupancy&=bishop_masks[square];
     occupancy*=bishop_magic_numbers[square];
     occupancy >>=64-bishop_relevant_bits[square];
 
     return bishop_attacks_table[bishop_offset[square] + occupancy];
+#endif
 }
 ///////////////////////
 //ROOK ATTACKS GET IT
 ///////////////////////
 U64 get_rook_attacks(int square,U64 occupancy){
     ASSERT(SqOnBoard(square));
+#ifdef PEXT_ATTACKS
+    return rook_attacks_table[rook_offset[square] + _pext_u64(occupancy,rook_masks[square])];
+#else
     occupancy&=rook_masks[square];
     occupancy*=rook_magic_numbers[square];
     occupancy>>=64-rook_relevant_bits[square];
     return rook_attacks_table[rook_offset[square] + occupancy];
-
+#endif
 }
 
 void initSliderPiecesAttacks(int bishop){
@@ -438,22 +456,24 @@ void initSliderPiecesAttacks(int bishop){
         else       rook_offset[sq]=offset;
 
         for(index=0;index<occupancy_index;index++){
+            U64 occupancy=set_occupancy(index,relevant_bits,attack_mask);
+
             //bishop
             if(bishop){
-                U64 occupancy=set_occupancy(index,relevant_bits,attack_mask);
-
-                //magic index
+#ifdef PEXT_ATTACKS
+                int magic_index=(int)_pext_u64(occupancy,attack_mask);
+#else
                 int magic_index=(occupancy*bishop_magic_numbers[sq]) >> (64-bishop_relevant_bits[sq]);
-
+#endif
                 bishop_attacks_table[offset+magic_index]=bishop_attack_on_fly(sq,occupancy);
             }
             //rook
             else{
-                U64 occupancy=set_occupancy(index,relevant_bits,attack_mask);
-
-                //magic index
+#ifdef PEXT_ATTACKS
+                int magic_index=(int)_pext_u64(occupancy,attack_mask);
+#else
                 int magic_index=(occupancy*rook_magic_numbers[sq]) >> (64-rook_relevant_bits[sq]);
-
+#endif
                 rook_attacks_table[offset+magic_index]=rook_attack_on_fly(sq,occupancy);
             }
         }
@@ -483,12 +503,27 @@ int is_square_attacked_BB(const int square,const int side,const S_BOARD *state){
     ASSERT(SideValid(side));
     ASSERT(checkBoard(state));
 
+    const U64 occ = state->occupancy[BOTH];
+
     if ((side == WHITE) && (pawn_attacks[BLACK][square] & state->bitboards[wP])) return 1;
     if ((side == BLACK) && (pawn_attacks[WHITE][square] & state->bitboards[bP])) return 1;
+
     if (knight_attacks[square] & ((side == WHITE) ? state->bitboards[wN] : state->bitboards[bN])) return 1;
-    if (get_bishop_attacks(square, state->occupancy[BOTH]) & ((side == WHITE) ? state->bitboards[wB] : state->bitboards[bB])) return 1;
-    if (get_rook_attacks(square, state->occupancy[BOTH]) & ((side == WHITE) ? state->bitboards[wR] : state->bitboards[bR])) return 1;
-    if (get_queen_attacks(square, state->occupancy[BOTH]) & ((side == WHITE) ? state->bitboards[wQ] : state->bitboards[bQ])) return 1;
+
+    //each slider attack set is computed once and tested against bishops AND
+    //queens / rooks AND queens OF THE ATTACKING SIDE (the old code called
+    //get_queen_attacks here, re-running both magic lookups). the emptiness
+    //guards skip the lookups entirely in slider-less positions.
+    const U64 diag = (side == WHITE)
+        ? (state->bitboards[wB] | state->bitboards[wQ])
+        : (state->bitboards[bB] | state->bitboards[bQ]);
+    if (diag && (get_bishop_attacks(square, occ) & diag)) return 1;
+
+    const U64 orth = (side == WHITE)
+        ? (state->bitboards[wR] | state->bitboards[wQ])
+        : (state->bitboards[bR] | state->bitboards[bQ]);
+    if (orth && (get_rook_attacks(square, occ) & orth)) return 1;
+
     if (king_attacks[square] & ((side == WHITE) ? state->bitboards[wK] : state->bitboards[bK])) return 1;
 
     return 0;

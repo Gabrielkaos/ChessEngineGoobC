@@ -237,7 +237,7 @@ int makeMove(S_BOARD *pos,int move){
     }
     HASH_CA;
 
-    pos->history[pos->hisPly].move=move;
+    //the move itself is stored in pos->moveStack[pos->ply], not in history
     pos->history[pos->hisPly].enPas=pos->enPas;
     pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
     pos->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
@@ -295,8 +295,8 @@ void takeMove(S_BOARD *pos){
     pos->hisPly--;
     pos->ply--;
 
-
-    int move=pos->history[pos->hisPly].move;
+    //the move was stored by makeMove at the pre-increment ply
+    int move=pos->moveStack[pos->ply];
     int from =FROMSQ(move);
     int to=TOSQ(move);
 
@@ -356,7 +356,7 @@ void makeNullMove(S_BOARD *pos){
 
     if(pos->enPas != NO_SQ) HASH_EP;
 
-    pos->history[pos->hisPly].move=NULLMOVE;
+    //the move itself lives in pos->moveStack[ply] (NULLMOVE already stored)
     pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
     pos->history[pos->hisPly].enPas=pos->enPas;
     pos->history[pos->hisPly].castleRights=pos->castleRights;

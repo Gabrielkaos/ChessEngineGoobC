@@ -147,14 +147,15 @@ typedef struct {
     S_MOVE moves[MAXPOSMOVES];
 }S_MOVELIST;
 
-//Undoing Moves
+//Undoing Moves - packed to 16 bytes (was 32): the made move itself lives in
+//S_BOARD::moveStack[ply], so it is not duplicated here. enPas max is NO_SQ=64,
+//castleRights max 15, both fit int8_t.
 typedef struct {
-    int move;
-    int castleRights;
-    int enPas;
-    int fiftyMove;
-    int pliesFromNull;
-    U64 posKey;
+    U64     posKey;
+    int16_t fiftyMove;
+    int16_t pliesFromNull;
+    int8_t  enPas;
+    int8_t  castleRights;
 } S_UNDO;
 
 //Search Details

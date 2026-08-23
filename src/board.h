@@ -25,7 +25,7 @@ typedef struct {
 //Board structure
 typedef struct {
     //important board things
-    int pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array
+    int8_t pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array (one cache line; values 0..12 fit)
     U64 bitboards[13]; // bitboards for the pieces including empty
     U64 occupancy[3]; // occupancy for white, black, both
     int side; //side to move

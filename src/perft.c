@@ -83,8 +83,10 @@ INLINE void MovePieces(const int from,const int to,S_BOARD *pos){
 INLINE void takeMoves(S_BOARD *pos){
 
     pos->hisPly--;
+    pos->ply--;
 
-    int move=pos->history[pos->hisPly].move;
+    //the move was stored by makeMoves at the pre-increment ply
+    int move=pos->moveStack[pos->ply];
     int from =FROMSQ(move);
     int to=TOSQ(move);
 
@@ -154,7 +156,8 @@ INLINE int makeMoves(S_BOARD *pos,int move){
         }
     }
 
-    pos->history[pos->hisPly].move=move;
+    //the move lives in moveStack (indexed by ply), history stores the rest
+    pos->moveStack[pos->ply]=move;
     pos->history[pos->hisPly].enPas=pos->enPas;
     pos->history[pos->hisPly].castleRights=pos->castleRights;
     pos->castleRights &= castlePerms[from];
@@ -166,6 +169,7 @@ INLINE int makeMoves(S_BOARD *pos,int move){
     }
 
     pos->hisPly++;
+    pos->ply++;
 
     if(piecePawn[pos->pieces[from]]){
         if(move & MVFLAGPS){
