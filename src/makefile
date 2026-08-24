@@ -162,7 +162,7 @@ clean:
 ifeq ($(OS), Windows_NT)
 	-rmdir /S /Q obj bin\windows bin\linux 2>NUL
 else
-	$(RM) -rf obj $(OUTDIR)
+	$(RM) -rf obj $(OUTDIR) $(TUNEOBJDIR)
 endif
 
 # ---------------------------------------------------------------------------
