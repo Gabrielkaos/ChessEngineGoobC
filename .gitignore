@@ -10,7 +10,7 @@ tools/.venv
 tools/vendor/
 tools/dataset*.epd
 
-src/weights_*
-src/tuner_best.bin
-src/tuner_checkpoint.bin
+weights_*
+tuner_best.bin
+tuner_checkpoint.bin
 src/*.bak

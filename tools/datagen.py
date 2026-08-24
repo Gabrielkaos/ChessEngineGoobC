@@ -25,11 +25,11 @@ import chess
 
 ENGINE = os.environ.get(
     "GOOB_ENGINE",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "bin", "GOOB-2.1"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "bin","linux", "GOOB-2.2-BETA-native"),
 )
-NODES = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-GAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
-THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+NODES = int(sys.argv[1]) if len(sys.argv) > 1 else 4000
+GAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 20000
+THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 7
 OUT = sys.argv[4] if len(sys.argv) > 4 else "dataset.epd"
 BOOK_FILE = sys.argv[5] if len(sys.argv) > 5 else "book.epd"
 POS_CAP = int(sys.argv[6]) if len(sys.argv) > 6 else 0

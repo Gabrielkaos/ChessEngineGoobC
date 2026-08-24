@@ -469,6 +469,22 @@ static int load_checkpoint(const char *path, double *loss, double *lr) {
 }
 
 /* ------------------------------------------------------------------ */
+/* progress formatting                                                 */
+/* ------------------------------------------------------------------ */
+static const char *fmt_time(double secs, char *buf, int bufsz) {
+    int s = (int)secs;
+    if (s < 60)
+        snprintf(buf, bufsz, "%ds", s);
+    else if (s < 3600)
+        snprintf(buf, bufsz, "%dm %02ds", s / 60, s % 60);
+    else
+        snprintf(buf, bufsz, "%dh %02dm %02ds", s / 3600, (s % 3600) / 60, s % 60);
+    return buf;
+}
+
+#define PROGRESS_EVERY 25  /* report every N weights */
+
+/* ------------------------------------------------------------------ */
 /* main                                                                */
 /* ------------------------------------------------------------------ */
 int main(int argc, char **argv) {
@@ -542,8 +558,37 @@ int main(int argc, char **argv) {
     double t0 = omp_get_wtime();
     for (int iter = start_iter; iter <= iterations; iter++) {
         double it0 = omp_get_wtime();
-        for (int k = 0; k < nweights; k++)
+        printf("\n══════════════════════════════════════════════════════════════\n");
+        printf("  ITERATION %d / %d  (overall %.1f%%)\n",
+               iter, iterations,
+               100.0 * (iter - 1) / iterations);
+        printf("══════════════════════════════════════════════════════════════\n");
+        fflush(stdout);
+
+        for (int k = 0; k < nweights; k++) {
             weight_grad(k, &grad_mg[k], &grad_eg[k]);
+
+            if ((k + 1) % PROGRESS_EVERY == 0 || k + 1 == nweights) {
+                double now = omp_get_wtime();
+                double elapsed = now - it0;
+                double frac = (double)(k + 1) / nweights;
+                double eta_iter = (frac > 0.001) ? elapsed / frac * (1.0 - frac) : 0;
+                char ebuf[32], rbuf[32];
+                int idx, r = reg_of(k, &idx);
+                printf("  [%4d / %4d weights]  %5.1f%%  │  elapsed %s  │  iter ETA %s  │  %s[%d]\n",
+                       k + 1, nweights,
+                       100.0 * frac,
+                       fmt_time(elapsed, ebuf, sizeof(ebuf)),
+                       fmt_time(eta_iter, rbuf, sizeof(rbuf)),
+                       regs[r].name, idx);
+                fflush(stdout);
+            }
+        }
+
+        double grad_time = omp_get_wtime() - it0;
+        char gtbuf[32];
+        printf("  gradient pass done in %s\n", fmt_time(grad_time, gtbuf, sizeof(gtbuf)));
+
         double gmax = 0, gsum = 0, gnon = 0;
         for (int k = 0; k < nweights; k++) {
             double a = fabs(grad_mg[k]) + fabs(grad_eg[k]);
@@ -576,7 +621,23 @@ int main(int argc, char **argv) {
         compute_base_evals();
         double loss = compute_loss();
         double dt = omp_get_wtime() - it0;
-        printf("iter %4d loss %.6f  %.1fs\n", iter, loss, dt);
+        double total_elapsed = omp_get_wtime() - t0;
+        int iters_done = iter - start_iter + 1;
+        int iters_left = iterations - iter;
+        double avg_iter = total_elapsed / iters_done;
+        double eta_total = avg_iter * iters_left;
+        char dtbuf[32], tebuf[32], etbuf[32], aibuf[32];
+        printf("──────────────────────────────────────────────────────────────\n");
+        printf("  iter %4d │ loss %.6f │ iter time %s │ avg/iter %s\n",
+               iter, loss,
+               fmt_time(dt, dtbuf, sizeof(dtbuf)),
+               fmt_time(avg_iter, aibuf, sizeof(aibuf)));
+        printf("  progress  │ %d / %d iters (%.1f%%) │ elapsed %s │ ETA %s\n",
+               iters_done, iterations - start_iter + 1,
+               100.0 * iter / iterations,
+               fmt_time(total_elapsed, tebuf, sizeof(tebuf)),
+               fmt_time(eta_total, etbuf, sizeof(etbuf)));
+        printf("──────────────────────────────────────────────────────────────\n");
         fflush(stdout);
         if (iter % CKPT_EVERY == 0 || iter == iterations)
             write_checkpoint(CKPT_FILE, iter, loss, lr);
