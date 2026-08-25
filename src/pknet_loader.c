@@ -30,19 +30,19 @@ int pknet_init(const char *path) {
     }
 
     // read scale factor written first by export_bin
-    fread(&pk_scale, sizeof(float), 1, f);
+    if (fread(&pk_scale, sizeof(float), 1, f) != 1) { fclose(f); return 0; }
 
     // fc1.weight [H1 x INPUT], fc1.bias [H1]
-    fread(pk_w1, sizeof(float), PK_H1 * PK_INPUT, f);
-    fread(pk_b1, sizeof(float), PK_H1,            f);
+    if (fread(pk_w1, sizeof(float), PK_H1 * PK_INPUT, f) != PK_H1 * PK_INPUT) { fclose(f); return 0; }
+    if (fread(pk_b1, sizeof(float), PK_H1,            f) != PK_H1) { fclose(f); return 0; }
 
     // fc2.weight [H2 x H1], fc2.bias [H2]
-    fread(pk_w2, sizeof(float), PK_H2 * PK_H1, f);
-    fread(pk_b2, sizeof(float), PK_H2,          f);
+    if (fread(pk_w2, sizeof(float), PK_H2 * PK_H1, f) != PK_H2 * PK_H1) { fclose(f); return 0; }
+    if (fread(pk_b2, sizeof(float), PK_H2,          f) != PK_H2) { fclose(f); return 0; }
 
     // fc3.weight [1 x H2], fc3.bias [1]
-    fread(pk_w3, sizeof(float), PK_H2, f);
-    fread(pk_b3, sizeof(float), 1,     f);
+    if (fread(pk_w3, sizeof(float), PK_H2, f) != PK_H2) { fclose(f); return 0; }
+    if (fread(pk_b3, sizeof(float), 1,     f) != 1) { fclose(f); return 0; }
 
     fclose(f);
     pknet_loaded = 1;

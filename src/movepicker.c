@@ -2,6 +2,7 @@
 #include "search.h"
 #include "makemove.h"
 #include "history.h"
+#include "movegen.h"
 
 static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600, 19200};
 

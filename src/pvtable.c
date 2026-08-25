@@ -10,9 +10,9 @@
 #include "string.h"
 
 
-#define EXTRACT_SCORE(x) ((x & 0xFFFF) - INFINITE_BOUND)
-#define EXTRACT_DEPTH(x) ((x >> 16) & 0x7F)
-#define EXTRACT_FLAGS(x) ((x >> 24) & 0x3)
+#define EXTRACT_SCORE(x) ((int)((x & 0xFFFF) - INFINITE_BOUND))
+#define EXTRACT_DEPTH(x) ((int)((x >> 16) & 0x7F))
+#define EXTRACT_FLAGS(x) ((int)((x >> 24) & 0x3))
 #define EXTRACT_MOVE(x) ((int)(x>>26))
 
 #define FOLD_DATA(sc,de,fl,mv) ((sc + INFINITE_BOUND) | (de << 16) | (fl << 24) | ((U64)mv << 26))

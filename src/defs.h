@@ -19,7 +19,7 @@
 #define ASSERT(n) assert((n))
 /////////////////////////////////////////
 
-typedef unsigned long long U64;
+typedef uint64_t U64;
 #define ALIGN64 alignas(64)
 typedef int16_t ContinuationTable[2][6][64][6][64];
 typedef int16_t HistoryTable[2][64][64];
