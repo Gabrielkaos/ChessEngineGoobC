@@ -17,7 +17,7 @@
 #include "hashkeys.h"
 #include "attacks.h"
 
-#define MAX_POS 2000000
+#define MAX_POS 6000000
 #define KAPPA   0.001667
 #define LAMBDA  0.0
 
