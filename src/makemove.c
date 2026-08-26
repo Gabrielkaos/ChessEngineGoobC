@@ -14,6 +14,9 @@
 #define HASH_CA (pos->posKey ^= (castleKeys[(pos->castleRights)]))
 #define HASH_EP (pos->posKey ^= (pieceKeys[EMPTY][pos->enPas]))
 #define HASH_PK(pce,sq) (pos->pkHash^=(pieceKeys[(pce)][(sq)]))
+//correction-history keys: non-pawn material per color, minors of both colors
+#define HASH_NP(pce,sq,col) (pos->npHash[(col)]^=(pieceKeys[(pce)][(sq)]))
+#define HASH_MINOR(pce,sq) (pos->minorHash^=(pieceKeys[(pce)][(sq)]))
 
 
 int moveIsTactical(S_BOARD *pos,int move){
@@ -116,6 +119,12 @@ INLINE void ClearPiece(const int sq,S_BOARD *pos){
         HASH_PK(pce,sq);
     }
 
+    if(!piecePawn[pce]){
+        HASH_NP(pce,sq,col);
+        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop)
+            HASH_MINOR(pce,sq);
+    }
+
     //psqtmat
     pos->psqtmat -= PSQTMATTABLE[pce][sq];
     nnue_update_remove(pos, pce, sq);
@@ -138,6 +147,12 @@ INLINE void AddPiece(const int sq,S_BOARD *pos,const int pce){
 
     if(piecePawn[pce] || pieceKing[pce]){
         HASH_PK(pce,sq);
+    }
+
+    if(!piecePawn[pce]){
+        HASH_NP(pce,sq,col);
+        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop)
+            HASH_MINOR(pce,sq);
     }
 
     //psqt mat
@@ -170,6 +185,15 @@ INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
     if(piecePawn[pce] || pieceKing[pce]){
         HASH_PK(pce,from);
         HASH_PK(pce,to);
+    }
+
+    if(!piecePawn[pce]){
+        HASH_NP(pce,from,col);
+        HASH_NP(pce,to,col);
+        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop){
+            HASH_MINOR(pce,from);
+            HASH_MINOR(pce,to);
+        }
     }
 
     //psqt mat

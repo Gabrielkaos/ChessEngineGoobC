@@ -218,6 +218,9 @@ static void setup_pos(S_BOARD *pos, const CPOS *cp) {
     pos->enPas = cp->ep;
     pos->fiftyMove = cp->fifty;
     pos->pkHash = GeneratePKHash(pos);
+    pos->npHash[WHITE] = GenerateNonPawnHash(pos, WHITE);
+    pos->npHash[BLACK] = GenerateNonPawnHash(pos, BLACK);
+    pos->minorHash = GenerateMinorHash(pos);
     pos->posKey = GeneratePosKey(pos);
     updateListMaterial(pos);
 }

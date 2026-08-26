@@ -14,6 +14,8 @@ void resetContinuationTable(S_BOARD *pos){
     memset(pos->shared->chist,0,sizeof(CaptureHistoryTable));
     memset(pos->shared->histtable,0,sizeof(HistoryTable));
     memset(pos->shared->cmtable,0,sizeof(CounterMoveTable));
+    clearCorrectionHistory(pos);
+    pos->shared->ttMoveHistory = 0;
 }
 
 void initStacks(S_BOARD *pos){
@@ -60,6 +62,9 @@ int checkBoard(const S_BOARD *pos){
     //check posKey and pawnPosKey
     ASSERT(pos->posKey==GeneratePosKey(pos));
     ASSERT(pos->pkHash==GeneratePKHash(pos));
+    ASSERT(pos->npHash[WHITE]==GenerateNonPawnHash(pos,WHITE));
+    ASSERT(pos->npHash[BLACK]==GenerateNonPawnHash(pos,BLACK));
+    ASSERT(pos->minorHash==GenerateMinorHash(pos));
 
     //avoid variants make engine play chess960 or just standard chess
     //pawns
@@ -127,6 +132,9 @@ void MirrorBoard(S_BOARD *pos){
 
     pos->posKey=GeneratePosKey(pos);
     pos->pkHash=GeneratePKHash(pos);
+    pos->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
+    pos->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
+    pos->minorHash=GenerateMinorHash(pos);
 
     updateListMaterial(pos);
 
@@ -280,6 +288,9 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     if(kings[WHITE]!=1 || kings[BLACK]!=1){ printf("FEN Not Valid \n"); return -1; }
 
     pos->pkHash=GeneratePKHash(pos);
+    pos->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
+    pos->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
+    pos->minorHash=GenerateMinorHash(pos);
     pos->posKey=GeneratePosKey(pos);
 
     return 0;
@@ -315,6 +326,9 @@ void ResetBoard(S_BOARD *pos){
 
     pos->posKey=0ULL;
     pos->pkHash=0ULL;
+    pos->npHash[WHITE]=0ULL;
+    pos->npHash[BLACK]=0ULL;
+    pos->minorHash=0ULL;
 }
 
 void PrintBoard(const S_BOARD *pos){

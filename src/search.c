@@ -631,8 +631,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int diff = bestScore - staticEval;
         int alphaRaised = bestScore > oldAlpha;
         if((bestScore > staticEval) == alphaRaised){
+            //updates pawn, minor and both non-pawn correction tables
             updateCorrectionHistory(pos, depth, diff);
-            updateNonPawnCorrectionHistory(pos, depth, diff);
         }
     }
 

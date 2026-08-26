@@ -8,5 +8,7 @@
 extern U64 GeneratePosKey(const S_BOARD *pos);
 //extern U64 GeneratePawnPosKey(const S_BOARD *pos);
 extern U64 GeneratePKHash(const S_BOARD *pos);
+extern U64 GenerateNonPawnHash(const S_BOARD *pos, int color);
+extern U64 GenerateMinorHash(const S_BOARD *pos);
 
 #endif // HASHKEYS_H

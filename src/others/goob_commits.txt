@@ -1703,6 +1703,9 @@
     ->cleaned how variables where treated in different compile
     ->added optimizations bulk pawn movegen, pext attacks, moveStack as move history
     ->made makefile support multiple ISA binaries
+    ->added minor piece correction
+
+    //GOOB-2.2-CORRECTION
 
     
 

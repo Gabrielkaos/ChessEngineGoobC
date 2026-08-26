@@ -48,3 +48,39 @@ U64 GeneratePKHash(const S_BOARD *pos){
     return finalKey;
 
 }
+
+//Stockfish-style non-pawn material key: hash of every piece of one color
+//except pawns (kings included)
+U64 GenerateNonPawnHash(const S_BOARD *pos, int color){
+    int sq=0;
+    int piece=EMPTY;
+    U64 finalKey=0ULL;
+
+    for(sq=0;sq<BOARD_NUMS_SQ;++sq){
+        piece=pos->pieces[sq];
+        if(piece != EMPTY && pieceCol[piece]==color && !piecePawn[piece]){
+            finalKey ^= pieceKeys[piece][sq];
+        }
+    }
+
+    return finalKey;
+
+}
+
+//minor piece key: hash of all knights and bishops on the board, both colors
+U64 GenerateMinorHash(const S_BOARD *pos){
+    int sq=0;
+    int piece=EMPTY;
+    U64 finalKey=0ULL;
+
+    for(sq=0;sq<BOARD_NUMS_SQ;++sq){
+        piece=pos->pieces[sq];
+        if(piece != EMPTY &&
+           (pieceType[piece]==p_knight || pieceType[piece]==p_bishop)){
+            finalKey ^= pieceKeys[piece][sq];
+        }
+    }
+
+    return finalKey;
+
+}

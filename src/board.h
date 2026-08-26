@@ -19,6 +19,7 @@ typedef struct {
     ALIGN64 CounterMoveTable     cmtable;
     ALIGN64 PawnCorrectionTable  pawnCorrHist;
     ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
+    ALIGN64 MinorCorrectionTable minorCorrHist;
     int ttMoveHistory;
 } S_SHARED_TABLES;
 
@@ -34,6 +35,8 @@ typedef struct {
     int castleRights; //castling rights
     U64 posKey; //position key
     U64 pkHash; //pawn king key
+    U64 npHash[2]; //non-pawn material keys, one per color (kings included)
+    U64 minorHash; //minor piece key (all knights + bishops, both colors)
     S_UNDO history[MAXGAMESMOVES]; //stores state of the board
     int hisPly; //total number of moves played on the board
     int psqtmat; //stores the score for the piece square table (updated while making move)
