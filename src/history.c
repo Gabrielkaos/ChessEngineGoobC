@@ -53,15 +53,23 @@ void updateKillers(S_BOARD *pos,int move){
     pos->searchKillers[0][pos->ply] = move;
 }
 
+static const int ContinuationOffsets[CONT_HIST_SLOTS] = {1,2,4,6};
+
+static int getContEntry(S_BOARD *pos,int slot,int piece,int to){
+    const int back = ContinuationOffsets[slot];
+    if(pos->ply < back)return 0;
+
+    const int move = pos->moveStack[pos->ply - back];
+    if(move==NOMOVE || move==NULLMOVE)return 0;
+
+    return pos->shared->continuation[slot][pos->pieceStack[pos->ply - back]][TOSQ(move)][piece][to];
+}
+
 int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
 
     int piece = pieceType[pos->pieces[FROMSQ(move)]];
     int to    = TOSQ(move);
     int from  = FROMSQ(move);
-
-    
-
-    
 
     int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
     int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
@@ -77,8 +85,12 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     if(fmMove==NOMOVE || fmMove==NULLMOVE)*fmhist = 0;
     else *fmhist = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
 
-    return *fmhist + *cmhist + pos->shared->histtable[pos->side][from][to];
+    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][from][to];
 
+    for(int slot=2;slot<CONT_HIST_SLOTS;++slot)
+        total += getContEntry(pos,slot,piece,to);
+
+    return total;
 }
 
 void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
@@ -96,11 +108,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
 
     if(!(length==1 && depth <= 3)){
 
-        int index,bonus,entry,delta,move,piece,to,from;
-
-        int fmMove  = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-        int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
-        int fmTo    = TOSQ(fmMove);
+        int index,bonus,entry,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
 
         bonus = MIN(depth*depth,HistoryMax);
 
@@ -117,16 +125,19 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
             pos->shared->histtable[pos->side][from][to] = entry;
 
-            if(cmMove != NOMOVE && cmMove != NULLMOVE){
-                entry = pos->shared->continuation[0][cmPiece][cmTo][piece][to];
-                entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-                pos->shared->continuation[0][cmPiece][cmTo][piece][to] = entry;
-            }
+            for(slot=0;slot<CONT_HIST_SLOTS;++slot){
+                back  = ContinuationOffsets[slot];
+                if(pos->ply < back)continue;
 
-            if(fmMove != NOMOVE && fmMove != NULLMOVE){
-                entry = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
+                pmove = pos->moveStack[pos->ply - back];
+                if(pmove==NOMOVE || pmove==NULLMOVE)continue;
+
+                ppiece = pos->pieceStack[pos->ply - back];
+                pto    = TOSQ(pmove);
+
+                entry = pos->shared->continuation[slot][ppiece][pto][piece][to];
                 entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-                pos->shared->continuation[1][fmPiece][fmTo][piece][to] = entry;
+                pos->shared->continuation[slot][ppiece][pto][piece][to] = entry;
             }
         }
 

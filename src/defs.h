@@ -21,7 +21,10 @@
 
 typedef uint64_t U64;
 #define ALIGN64 alignas(64)
-typedef int16_t ContinuationTable[2][6][64][6][64];
+//Stockfish-style continuation history: indexed by the move played
+//1, 2, 4 and 6 plies ago (counter, follow-up, plus two deeper continuations)
+enum{CONT_HIST_SLOTS=4};
+typedef int16_t ContinuationTable[CONT_HIST_SLOTS][6][64][6][64];
 typedef int16_t HistoryTable[2][64][64];
 typedef int16_t CaptureHistoryTable[6][64][5];
 typedef int CounterMoveTable[2][6][64];

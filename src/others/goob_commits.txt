@@ -1707,6 +1707,10 @@
 
     //GOOB-2.2-CORRECTION
 
+    ->added deeper continuation table
+
+    //GOOB-2.2-DEEPER
+
     
 
 	*/
