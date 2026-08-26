@@ -2,6 +2,28 @@
 #include "history.h"
 #include "some_maths.h"
 
+//Stockfish's StatsEntry operator<<: clamp bonus to [-D, D], then apply the
+//gravity formula entry += bonus - entry*|bonus|/D
+INLINE void histGravityUpdate(int16_t *entry,int bonus,int D){
+    int b = MIN(MAX(bonus, -D), D);
+    *entry = (int16_t)(*entry + b - *entry * abs(b) / D);
+}
+
+int getPawnHistory(S_BOARD *pos,int move){
+    const int to    = TOSQ(move);
+    const int piece = pieceType[pos->pieces[FROMSQ(move)]];
+    const int idx   = pos->pkHash & (PAWN_HIST_SIZE - 1);
+
+    return pos->shared->pawnHist[idx][piece][to];
+}
+
+void clearLowPlyHistory(S_BOARD *pos){
+    for(int ply = 0; ply < LOWPLY_HIST_SLOTS; ++ply)
+        for(int from = 0; from < 64; ++from)
+            for(int to = 0; to < 64; ++to)
+                pos->lowPlyHistory[ply][from][to] = 102;
+}
+
 int getCaptureHistory(S_BOARD *pos,int move){
     const int to   = TOSQ(move);
     const int from = FROMSQ(move);
@@ -124,6 +146,21 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             entry = pos->shared->histtable[pos->side][from][to];
             entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
             pos->shared->histtable[pos->side][from][to] = entry;
+
+            //low-ply history: only maintained near the root
+            //(Stockfish: lowPlyHistory[ply][move] << bonus * 712 / 1024)
+            if(pos->ply < LOWPLY_HIST_SLOTS)
+                histGravityUpdate(&pos->lowPlyHistory[pos->ply][from][to],
+                                  delta * 712 / 1024, LOWPLY_HIST_MAX);
+
+            //pawn history: keyed by pawn structure, so it transfers across
+            //the whole game (Stockfish: << bonus * (bonus > -4 ? 1104 : 459) / 1024)
+            {
+                const int pIdx = pos->pkHash & (PAWN_HIST_SIZE - 1);
+                const int pBonus = delta * (delta > -4 ? 1104 : 459) / 1024;
+                histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
+                                  pBonus, PAWN_HIST_MAX);
+            }
 
             for(slot=0;slot<CONT_HIST_SLOTS;++slot){
                 back  = ContinuationOffsets[slot];

@@ -82,6 +82,9 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     pos->rootPvMove = NOMOVE;
 
     pos->nmpMinPly = 0;
+
+    //low-ply history is refreshed every search (Stockfish fills it with 102)
+    clearLowPlyHistory(pos);
 }
 
 

@@ -460,6 +460,14 @@ void parsePosition(char* lineIn,S_BOARD *pos){
             }
         }
     }
+
+    //hisPly and the per-ply search stacks must be reset for every new position.
+    //makeMove() increments pos->hisPly (capped only by MAXGAMESMOVES), so without
+    //this reset it grows without bound across all games in one process and writes
+    //past pos->history[], corrupting board state and producing illegal moves.
+    pos->hisPly = 0;
+    initStacks(pos);
+
     ptrChar=strstr(lineIn,"moves");
     int move;
     if(ptrChar != NULL){

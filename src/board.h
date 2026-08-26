@@ -20,6 +20,8 @@ typedef struct {
     ALIGN64 PawnCorrectionTable  pawnCorrHist;
     ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
     ALIGN64 MinorCorrectionTable minorCorrHist;
+    ALIGN64 PawnHistoryTable     pawnHist;
+    ALIGN64 ContCorrectionTable  contCorrHist;
     int ttMoveHistory;
 } S_SHARED_TABLES;
 
@@ -61,6 +63,9 @@ typedef struct {
     int reduction_stack[MAXDEPTH];
     int moveStack[MAXDEPTH];
     int pieceStack[MAXDEPTH];
+
+    //per-thread low-ply history (cleared to 102 at the start of each search)
+    LowPlyHistoryTable lowPlyHistory;
 
 
     int useNNUE;   // flag: use NNUE evaluation

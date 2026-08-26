@@ -145,7 +145,17 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 mp->quietSize = mp->list->count - startCount;
                 for(int i = mp->split; i < mp->list->count; ++i){
                     move = mp->list->moves[i].move;
-                    mp->list->moves[i].score = getHistory(pos, move, &fm, &cm);
+                    //quiet score: butterfly + continuation histories plus the
+                    //shared pawn-structure history (Stockfish: 2 * pawn_entry)
+                    mp->list->moves[i].score = getHistory(pos, move, &fm, &cm)
+                                             + 2 * getPawnHistory(pos, move);
+
+                    //low-ply history boost near the root, fading out with ply
+                    //(Stockfish: += 8 * lowPlyHistory[ply][move] / (1 + ply))
+                    if(pos->ply < LOWPLY_HIST_SLOTS)
+                        mp->list->moves[i].score +=
+                            8 * pos->lowPlyHistory[pos->ply][FROMSQ(move)][TOSQ(move)]
+                              / (1 + pos->ply);
                 }
             }
             mp->stage = STAGE_QUIET;

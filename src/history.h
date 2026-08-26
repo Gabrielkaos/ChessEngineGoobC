@@ -14,4 +14,10 @@ extern void updateHistories(S_BOARD *pos,int *moves,int length, int depth);
 extern int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist);
 extern void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth);
 
+//pawn history: [pawn structure key][piece][to], shared across threads
+extern int getPawnHistory(S_BOARD *pos,int move);
+
+//low-ply history helpers (per-thread, cleared to 102 every search like Stockfish)
+extern void clearLowPlyHistory(S_BOARD *pos);
+
 #endif // HISTORY_H

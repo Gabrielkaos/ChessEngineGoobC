@@ -29,6 +29,22 @@ typedef int16_t HistoryTable[2][64][64];
 typedef int16_t CaptureHistoryTable[6][64][5];
 typedef int CounterMoveTable[2][6][64];
 
+//Stockfish-style low-ply history: butterfly history kept only for the
+//first few plies of the search, to sharpen move ordering near the root
+enum{LOWPLY_HIST_SLOTS=5};
+#define LOWPLY_HIST_MAX 7183
+typedef int16_t LowPlyHistoryTable[LOWPLY_HIST_SLOTS][64][64];
+
+//Stockfish-style pawn history: [pawn structure key][piece][to], shared
+//between threads; keyed by the pawn(-king) hash like the correction tables
+#define PAWN_HIST_SIZE 8192 // has to be a power of 2
+#define PAWN_HIST_MAX  8192
+typedef int16_t PawnHistoryTable[PAWN_HIST_SIZE][6][64];
+
+//continuation correction history: correlates the static eval error with
+//the last two moves played (the ss-2 and ss-4 tables of Stockfish)
+typedef int16_t ContCorrectionTable[6][64][6][64];
+
 
 #define NAME "GOOB"
 #define AUTHOR "Gabriel Montes"

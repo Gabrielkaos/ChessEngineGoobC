@@ -33,7 +33,10 @@ int main(int argc, char *argv[])
 	pos->pawnKingTable->paTable=NULL;
 	InitPawnKingTable(pos->pawnKingTable,pawnHashMB,0);
 
-    pos->shared = (S_SHARED_TABLES*) malloc(sizeof(S_SHARED_TABLES));
+    //S_SHARED_TABLES declares ALIGN64 members, so the allocation must be
+    //64-byte aligned too (plain malloc only guarantees 16-byte alignment)
+    size_t sharedSize = (sizeof(S_SHARED_TABLES) + 63) & ~(size_t)63;
+    pos->shared = (S_SHARED_TABLES*) aligned_alloc(64, sharedSize);
     if(pos->shared == NULL){
         printf("info string FATAL: shared table allocation failed\n");
         return 1;
