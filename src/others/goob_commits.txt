@@ -1719,6 +1719,10 @@
 
     //GOOB-2.2-RAZORING
 
+    ->added negative extension to Singular() -3
+
+    //GOOB-2.2-NEGATIVE
+
     
 
 	*/

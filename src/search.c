@@ -89,7 +89,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
 
 //protos
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut);
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode);
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 
 
@@ -520,8 +520,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      && !isShuffling(pos, moveInLoop);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
-            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut)
-                        :inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit);
+            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode)
+                        :(inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit));
 
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
 
@@ -655,7 +655,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //Singularity
 //checks if the move is truly singular or the only best move in the position
 //also checks if a stornger move if found(MULTICUT)
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut){
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode){
 
     int moveInLoop = NOMOVE;
     int skipQuiets = 0;
@@ -718,6 +718,17 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         // if(value < rBeta - TripleExtMargin) extension++;
         return extension;
     }
+
+    // Negative extensions
+    // If other moves failed high over rBeta without the ttMove on a reduced search,
+    // but we cannot do multi-cut because rBeta is lower than the original beta,
+    // we do not know if the ttMove is singular or can do a multi-cut, so we reduce the
+    // ttMove in favor of other moves based on some conditions:
+    // If the ttMove is assumed to fail high over current beta or if we are on a cutNode
+    if(ttValue >= beta || cutNode){
+        return -3;
+    }
+
     return 0;
 }
 
