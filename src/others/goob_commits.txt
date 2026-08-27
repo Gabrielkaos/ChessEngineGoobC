@@ -1715,6 +1715,10 @@
 
     //GOOB-2.2-MORETABLES
 
+    ->re added razoring
+
+    //GOOB-2.2-RAZORING
+
     
 
 	*/
