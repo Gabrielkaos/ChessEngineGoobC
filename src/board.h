@@ -57,6 +57,8 @@ typedef struct {
     int ply; //search ply
     int seldepth;
     int pvArray[MAXDEPTH];
+    int pvTable[MAXDEPTH][MAXDEPTH];
+    int pvLength[MAXDEPTH];
     int searchKillers[2][MAXDEPTH];
 
     int eval_stack[MAXDEPTH];

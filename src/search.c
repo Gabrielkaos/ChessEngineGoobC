@@ -93,13 +93,28 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 
 
-INLINE int isExcludedRootMove(const S_BOARD *pos,int move){
+int isExcludedRootMove(const S_BOARD *pos,int move){
     int i;
     for(i=0;i<pos->excludedRootMoveCount;++i){
         if(pos->excludedRootMoves[i]==move)return TRUE;
     }
     return FALSE;
 }
+
+void checkPvLegality(S_BOARD *pos, int *pvArray, int len) {
+    for (int i = 0; i < len; i++) {
+        int move = pvArray[i];
+        if (!makeMove(pos, move)) {
+            printf("ILLEGAL PV MOVE FOUND! move=%x\n", move);
+            fflush(stdout);
+            abort();
+        }
+    }
+    for (int i = 0; i < len; i++) {
+        takeMove(pos);
+    }
+}
+
 
 static int isShuffling(S_BOARD *pos, int move){
     if(moveIsTactical(pos,move) || pos->fiftyMove < 10) return FALSE;
@@ -120,6 +135,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     int value,moveInLoop,moveNum;
     int best;
+
+    pos->pvLength[pos->ply] = pos->ply;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -172,6 +189,11 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
             best = value;
             if(value>alpha){
                 alpha=value;
+                pos->pvTable[pos->ply][pos->ply] = moveInLoop;
+                for (int i = pos->ply + 1; i < pos->pvLength[pos->ply + 1]; i++) {
+                    pos->pvTable[pos->ply][i] = pos->pvTable[pos->ply + 1][i];
+                }
+                pos->pvLength[pos->ply] = pos->pvLength[pos->ply + 1];
             }
         }
 
@@ -198,6 +220,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int oldAlpha        =alpha;
     int Legal           =0;
     int bestScore       =-AB_BOUND;
+    
+    pos->pvLength[pos->ply] = pos->ply;
     int inCheck         =!!attackersToKingSq(pos,pos->side);
     int ttDepth         =0;
     int ttBound         =HFNONE;
@@ -598,6 +622,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             bestMove=moveInLoop;
             if(Score>alpha){
                 alpha=Score;
+                
+                pos->pvTable[pos->ply][pos->ply] = moveInLoop;
+                for (int i = pos->ply + 1; i < pos->pvLength[pos->ply + 1]; i++) {
+                    pos->pvTable[pos->ply][i] = pos->pvTable[pos->ply + 1][i];
+                }
+                pos->pvLength[pos->ply] = pos->pvLength[pos->ply + 1];
+
                 if(alpha>=beta)break;
             }
         }
@@ -928,20 +959,13 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 if(info->stopped==TRUE)break;
 
                 if(threadNum==0){
-                    numberOfPvMoves=getPvLine(searchDepth,pos,table);
-
-                    if(pos->rootPvMove != NOMOVE && pos->pvArray[0] != pos->rootPvMove){
-                        if(makeMove(pos, pos->rootPvMove)){
-                            int contLen = getPvLine(MAX(0,searchDepth-1), pos, table);
-                            takeMove(pos);
-
-                            int cpy;
-                            for(cpy=contLen; cpy>0; --cpy)
-                                pos->pvArray[cpy] = pos->pvArray[cpy-1];
-                            pos->pvArray[0] = pos->rootPvMove;
-                            numberOfPvMoves = contLen + 1;
-                        }
+                    numberOfPvMoves = pos->pvLength[0];
+                    for (int i = 0; i < numberOfPvMoves; i++) {
+                        pos->pvArray[i] = pos->pvTable[0][i];
                     }
+                    
+                    checkPvLegality(pos, pos->pvArray, numberOfPvMoves);
+
 
                     if(pvNum==0){
                         workerthread->bestMove   = pos->pvArray[0];
