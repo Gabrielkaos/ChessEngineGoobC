@@ -137,8 +137,10 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int ttMove=NOMOVE, ttValue=0, ttDepth=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit;
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval))){
         ttValue = valueFromTT(ttValue,pos->ply);
-        if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
-            return ttValue;
+        if(pos->fiftyMove < 96){
+            if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
+                return ttValue;
+            }
         }
     }
 
@@ -244,7 +246,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         ttValue = valueFromTT(ttValue,pos->ply);
 
-        if(ttDepth >= depth && (depth==0 || !pvNode)){
+        if(ttDepth >= depth && (depth==0 || !pvNode) && pos->fiftyMove < 96){
             if(    ttBound==HFEXACT
                || (ttBound==HFALPHA && ttValue <= alpha)
                || (ttBound==HFBETA  && ttValue >= beta)){
