@@ -93,6 +93,10 @@ typedef struct {
 
     S_SHARED_TABLES *shared;
 
+    int rootEffortMove[MAXPOSMOVES];
+    U64 rootEffortNodes[MAXPOSMOVES];
+    int rootEffortCount;
+
 } S_BOARD;
 
 #include "correction.h"

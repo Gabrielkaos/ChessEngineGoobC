@@ -111,6 +111,14 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         if(MB > maxHash) MB = maxHash;
         InitPvTable(pvTable, MB,1);
     }
+    else if (!strncmp(line, "setoption name Move Overhead value ", 35)) {
+        int mo = 50;
+        sscanf(line,"%*s %*s %*s %*s %d",&mo);
+        if(mo < 0) mo = 0;
+        if(mo > 5000) mo = 5000;
+        info->moveOverhead = mo;
+        printf("info string Move Overhead set to %d\n", mo);
+    }
 
 
     else if (!strncmp(line, "setoption name UseNNUE value ", 29)) {
@@ -356,7 +364,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     U64 nodestogo   =0;
     char *ptr       =NULL;
     int ponder      =FALSE;
-    int movestogo   =30;
+    int movestogo   =0;
 
     if((ptr=strstr(line,"infinite"))){
         info->UciInfinite=TRUE;
@@ -399,22 +407,76 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     }
     info->starttime=getTimeMs();
     if(time != -1){
-        time           /=movestogo;
-        time           -=50;
-        if(time < 1) time = 1;
+        if (movetime != -1) {
+            info->timeSet  =TRUE;
+            info->stoptime =info->starttime + time;
+            info->maximumTime =info->stoptime;
+            info->softTimeSet = FALSE;
+        } else {
+            int moveOverhead = info->moveOverhead;           
+            
+            // maximum move horizon (mtg), capped like SF's centiMTG (max 50 moves)
+            int centiMTG = (movestogo > 0) ? MIN(movestogo * 100, 5000) : 5051;
+            if (time < 1000) {
+                centiMTG = (int)(time * 5.051);
+            }
+            if (centiMTG < 1) centiMTG = 1;
 
-
-        info->timeSet  =TRUE;
-        info->stoptime =info->starttime+time+inc;
-        info->maximumTime =info->stoptime;
-
-        if(movetime == -1){
-            int budget  = time + inc;
-            int optimum = (int)(budget * 0.6);
-            if(optimum < 1) optimum = 1;
-
-            info->softTimeSet  =TRUE;
-            info->optimumTime  =info->starttime+optimum;
+            int timeLeft = time + (inc * (centiMTG - 100) - moveOverhead * (200 + centiMTG)) / 100;
+            if (timeLeft < 1) timeLeft = 1;
+            
+            double optScale, maxScale;
+            int ply = pos->hisPly;
+            
+            if (movestogo == 0) {
+                double timeForLog = time > 1 ? (double)time : 1.0;
+                double logTimeInSec = log10(timeForLog / 1000.0);
+                if (logTimeInSec < -3.0) logTimeInSec = -3.0; // avoid infinity if time is tiny
+                
+                double optConstant = 0.0032116 + 0.000321123 * logTimeInSec;
+                if (optConstant > 0.00508017) optConstant = 0.00508017;
+                
+                double maxConstant = 3.3977 + 3.03950 * logTimeInSec;
+                if (maxConstant < 2.94761) maxConstant = 2.94761;
+                
+                if (info->originalTimeAdjust < 0.0) {
+                    info->originalTimeAdjust = 0.3128 * log10((double)timeLeft) - 0.4354;
+                }
+                
+                double term1 = 0.0121431 + pow(ply + 2.94693, 0.461073) * optConstant;
+                double term2 = 0.213035 * time / timeLeft;
+                optScale = (term1 < term2 ? term1 : term2) * info->originalTimeAdjust;
+                if (optScale < 0.0) optScale = 0.0;
+                
+                maxScale = 6.67704;
+                double maxScaleCand = maxConstant + ply / 11.9847;
+                if (maxScaleCand < maxScale) maxScale = maxScaleCand;
+            } else {
+                double term1 = (0.88 + ply / 116.4) / (centiMTG / 100.0);
+                double term2 = 0.88 * time / timeLeft;
+                optScale = (term1 < term2 ? term1 : term2);
+                maxScale = 1.3 + 0.11 * (centiMTG / 100.0);
+            }
+            
+            int optimumTime = (int)(optScale * timeLeft);
+            if (optimumTime < 1) optimumTime = 1;
+            
+            int maximumTimeFromOpt = (int)(maxScale * optimumTime);
+            int maximumTimeFromRemaining = (int)(0.825179 * time - moveOverhead);
+            
+            int max_tmp = (maximumTimeFromOpt < maximumTimeFromRemaining) ? maximumTimeFromOpt : maximumTimeFromRemaining;
+            max_tmp -= 10;                              
+            if (max_tmp < optimumTime) max_tmp = optimumTime;
+            int maximumTime = max_tmp;
+            
+            info->timeSet  =TRUE;
+            info->stoptime =info->starttime + maximumTime;
+            info->maximumTime = info->stoptime;
+            
+            if (info->setOptionPonder) optimumTime += optimumTime / 4;   
+            
+            info->softTimeSet = TRUE;
+            info->optimumTime = info->starttime + optimumTime;
         }
     }
 
@@ -492,6 +554,7 @@ void uciPrint(){
     printf("option name PawnHash type spin default %d min 4 max %d\n",pawnHashMB,maxHash); //4
     printf("option name ContemptDrawPenalty type spin default 0 min -300 max 300\n"); //5
     printf("option name ContemptComplexity type spin default 0 min -300 max 300\n"); //6
+    printf("option name Move Overhead type spin default 50 min 0 max 5000\n");
     printf("option name Clear Hash type button\n"); //12
     printf("option name Ponder type check default false\n"); //10
     printf("option name UCI_AnalyseMode type check default false\n"); //15
@@ -525,6 +588,10 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 	info->nodeSet                =FALSE;
 	info->bruteForceMode         =FALSE;
 	info->multiPV                =1;
+	info->originalTimeAdjust     =-1.0;
+    info->moveOverhead = 50;
+    info->previousTimeReduction = 1.0;   // SF starts this at 1
+    info->bestPreviousScore = INFINITE_BOUND; // SF starts this effectively "infinite" so first move isn't treated as a falling eval
     pos->usePKNet                =FALSE;
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
@@ -555,6 +622,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             ClearThreadTables(info->threadNum);
             resetContinuationTable(pos);
             clearCorrectionHistory(pos);
+            info->originalTimeAdjust = -1.0;
         }
 
         else if (strStartsWith(str, "setoption")) {

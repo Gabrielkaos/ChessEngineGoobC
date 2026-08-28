@@ -209,7 +209,13 @@ typedef struct {
     int optimumTime;
     int maximumTime;
     int softTimeSet;
-
+    double originalTimeAdjust;
+    double previousTimeReduction;   // persists across the whole game, like originalTimeAdjust
+    int    bestPreviousScore;       // final bestScore from the previous move's search
+    int    bestPreviousAverageScore;// smoothed version of bestPreviousScore
+    int    iterValue[4];            // bestScore at the last few completed depths, this move
+    int    lastBestMoveDepth;       // depth at which current best move last changed
+    int    moveOverhead;            
 
     //thread
     int threadNum;

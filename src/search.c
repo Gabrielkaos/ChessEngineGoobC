@@ -51,8 +51,15 @@ INLINE void checkUp(S_SEARCHINFO *info){
         if(!hitLimit)return;
         //normally we wait until one depth has finished so a move always exists,
         //but never let that guard keep us running past the hard stop time
+        int grace = DepthOneGraceMs;
+        if (info->timeSet) {
+            int max_budget = info->stoptime - info->starttime;
+            if (grace > max_budget / 2) {
+                grace = max_budget / 2;
+            }
+        }
         if(!info->depthOneComplete &&
-           !(info->timeSet==TRUE && getTimeMs()>info->stoptime+DepthOneGraceMs))return;
+           !(info->timeSet==TRUE && getTimeMs()>info->stoptime+grace))return;
         info->stopped=TRUE;
     }
 
@@ -76,6 +83,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->stopped=0;
     info->nodes=0ULL;
     info->tbhits=0ULL;
+    pos->rootEffortCount = 0;
 
     info->depthOneComplete=FALSE; 
 
@@ -526,6 +534,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             continue;
         }
 
+        U64 nodesBeforeMove = info->nodes;
         if(!makeMove(pos,moveInLoop))continue;
         Legal++;
 
@@ -611,6 +620,18 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
 
         takeMove(pos);
+        if(rootNode){
+            U64 spent = info->nodes - nodesBeforeMove;
+            int fi;
+            for(fi=0; fi<pos->rootEffortCount; ++fi)
+                if(pos->rootEffortMove[fi]==moveInLoop) break;
+            if(fi==pos->rootEffortCount && pos->rootEffortCount<MAXPOSMOVES){
+                pos->rootEffortMove[fi]=moveInLoop;
+                pos->rootEffortNodes[fi]=0;
+                pos->rootEffortCount++;
+            }
+            if(fi<pos->rootEffortCount) pos->rootEffortNodes[fi]+=spent;
+        }
         if(quietMove)quietsTried[quietsPlayed++] = moveInLoop;
         else capturesTried[capturesPlayed++]     = moveInLoop;
 
@@ -1046,14 +1067,55 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             if(info->depthSet && currentDepth>=info->depth)break;
 
             if(threadNum==0 && info->softTimeSet && currentDepth > 4){
-                double instabilityFactor = 1.0 + 0.5 * bestMoveChanges;
-                int softLimit = (int)((info->optimumTime - info->starttime) * instabilityFactor);
-                int elapsed   = getTimeMs() - info->starttime;
-
-                if(elapsed > softLimit){
+                
+                if(prevBestMove == NOMOVE || workerthread->bestMove != prevBestMove)
+                    info->lastBestMoveDepth = currentDepth;
+                
+                int iterIdx = currentDepth & 3;
+                info->iterValue[iterIdx] = pvScore[0];
+                
+                //falling eval: is the score dropping compared to the previous move's
+                //final score and a few iterations ago this move?
+                double fallingEval = (11.396
+                                    + 2.035 * (info->bestPreviousAverageScore - pvScore[0])
+                                    + 0.968 * (info->iterValue[iterIdx] - pvScore[0])) / 100.0;
+                if(fallingEval < 0.5786) fallingEval = 0.5786;
+                if(fallingEval > 1.6752) fallingEval = 1.6752;
+                
+                //reduction: time saved if the best move has been stable a while,
+                //with hysteresis carried from the previous move via previousTimeReduction
+                double timeReduction = (info->lastBestMoveDepth + 8 < currentDepth) ? 1.4857 : 0.7046;
+                double reduction = (1.4540 + info->previousTimeReduction) / (2.1593 * timeReduction);
+                
+                //instability: widen the budget if the root best move keeps flipping
+                double bestMoveInstability = 1.0 + 1.8519 * bestMoveChanges;
+                
+                double totalTime = (info->optimumTime - info->starttime)
+                                  * fallingEval * reduction * bestMoveInstability;
+                
+                if(rootLegalMoves == 1 && totalTime > 500.0) totalTime = 500.0;
+                
+                int elapsed = getTimeMs() - info->starttime;
+                
+                //nodesEffort: if nearly all nodes went into the current best move and
+                //we're already past a chunk of budget, stop early regardless
+                int fi, bestFi = -1;
+                for(fi=0; fi<pos->rootEffortCount; ++fi)
+                    if(pos->rootEffortMove[fi]==workerthread->bestMove){ bestFi=fi; break; }
+                int nodesEffort = (bestFi>=0 && info->nodes>0)
+                                 ? (int)((pos->rootEffortNodes[bestFi]*100000ULL)/info->nodes) : 0;
+                
+                if(currentDepth>=10 && nodesEffort>=97000 && elapsed>totalTime*0.6539){
                     info->stopped = TRUE;
                     break;
                 }
+                
+                if(elapsed > totalTime){
+                    info->stopped = TRUE;
+                    break;
+                }
+                
+                info->previousTimeReduction = timeReduction;
             }
 
             //mate limits
@@ -1069,6 +1131,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
             }
         }
+    }
+    if (threadNum == 0) {
+        info->bestPreviousScore = pvScore[0];
+        info->bestPreviousAverageScore = pvScore[0];
     }
 }
 
