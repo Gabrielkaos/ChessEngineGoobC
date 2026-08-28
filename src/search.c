@@ -985,7 +985,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                         pos->pvArray[i] = pos->pvTable[0][i];
                     }
                     
-                    checkPvLegality(pos, pos->pvArray, numberOfPvMoves);
+                    // checkPvLegality(pos, pos->pvArray, numberOfPvMoves);
 
 
                     if(pvNum==0){

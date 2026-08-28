@@ -1728,5 +1728,6 @@
     ->added some guards in ScaleFactor K+Minor vs pawns
     ->Scalefactor for Bishop opposite to one promoting pawn
     
+    //GOOB-2.2-TIMEFACTOR
 
 	*/
