@@ -1095,11 +1095,66 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
             return SCALE_OCB_BISHOPS_ONLY;
     }
 
+    // Wrong colored bishop and rook pawn
+    if (   !(eval_info->knightsBB | eval_info->rooksBB | eval_info->queensBB)
+        && onlyOne(strong & eval_info->bishopsBB)
+        && !(weak & eval_info->bishopsBB)
+        && (strong & eval_info->pawnsBB)
+        && !(weak & eval_info->pawnsBB)) {
+
+        U64 pawns = strong & eval_info->pawnsBB;
+        // Check if all pawns are on A file, or all pawns on H file
+        if (   !(pawns & ~FileBBMask[FILE_A])
+            || !(pawns & ~FileBBMask[FILE_H])) {
+
+            int isAFile = (pawns & FileBBMask[FILE_A]) != 0;
+            // Promotion square
+            int promSq = isAFile ? ((strong == white) ? A8 : A1) : ((strong == white) ? H8 : H1);
+
+            int bishopSq = LSBINDEX(strong & eval_info->bishopsBB);
+
+            // Check if bishop color is opposite to promotion square color
+            if (!(squaresOfMatchingColour(bishopSq) & (1ULL << promSq))) {
+
+                int weakColor = (eval < 0) ? WHITE : BLACK;
+                int weakKingSq = eval_info->kingSq[weakColor];
+
+                // Only the corner itself and its immediate king-neighbours count
+                // as "fortress reached" — a small, unambiguous set, so the
+                // search doesn't have to map out a wide graduated boundary.
+                U64 drawingSquares = (1ULL << promSq) | king_attacks[promSq];
+
+                if (testBit(drawingSquares, weakKingSq)) {
+                    return SCALE_DRAW;
+                }
+            }
+        }
+    }
+
     // Lone Queens are weak against multiple pieces
     if (onlyOne(eval_info->queensBB) && several(pieces) && pieces == (weak & pieces))
         return SCALE_LONE_QUEEN;
 
     // Lone Minor vs King + Pawns should never be won
+    // K+P vs K (Rook pawn draw)
+    if (!(minors | eval_info->rooksBB | eval_info->queensBB)) {
+        if (COUNTBIT(strong) == 2 && COUNTBIT(weak) == 1) {
+            U64 pawns = strong & eval_info->pawnsBB;
+            if (   !(pawns & ~FileBBMask[FILE_A])
+                || !(pawns & ~FileBBMask[FILE_H])) {
+                int isAFile = (pawns & FileBBMask[FILE_A]) != 0;
+                int promSq = isAFile ? ((strong == white) ? A8 : A1) : ((strong == white) ? H8 : H1);
+                int weakColor = (eval < 0) ? WHITE : BLACK;
+                int weakKingSq = eval_info->kingSq[weakColor];
+
+                U64 drawingSquares = (1ULL << promSq) | king_attacks[promSq];
+                if (testBit(drawingSquares, weakKingSq)) {
+                    return SCALE_DRAW;
+                }
+            }
+        }
+    }
+
     if ((strong & minors) && COUNTBIT(strong) == 2)
         return SCALE_DRAW;
 
