@@ -1727,6 +1727,7 @@
     ->upgraded time management to mirror stockfish implementation
     ->added some guards in ScaleFactor K+Minor vs pawns
     ->Scalefactor for Bishop opposite to one promoting pawn
+    ->updated pk net code to match ethereal
     
     //GOOB-2.2-TIMEFACTOR
 
