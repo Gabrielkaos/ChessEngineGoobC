@@ -1351,8 +1351,8 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
         // network returns full PK score, store in pawnEval so evaluatePieces
         // picks it up normally via eval_info->pawnEval[WHITE/BLACK]
         int pk = pknet_eval(pos);
-        eval_info->pawnEval[WHITE] +=  S(pk,pk);
-        eval_info->pawnEval[BLACK] +=  0;  // already baked into WHITE score
+        eval_info->pawnEval[WHITE] +=  pk;  // pk is a tapered MakeScore(MG,EG)
+        eval_info->pawnEval[BLACK] +=  0;   // already baked into WHITE score
     }else {
         if (!tuneMode && ProbePawnKingEval(pos, eval_info)){
             // pawn eval was served from cache
@@ -1448,4 +1448,20 @@ void initPQSTMAT(){
         PSQTMATTABLE[bQ][sq] = -PiecesVal[QUEEN] - QueenTabless[sq2];
         PSQTMATTABLE[bK][sq] = -PiecesVal[KING] - KingTabless[sq2];
     }
+}
+#include "board.h"
+#include "init.h"
+void eval_fen_c(const char* fen, int* mg, int* eg) {
+    S_BOARD pos[1];
+    ParseFEN((char*)fen, pos);
+    pos->useNNUE = 0;
+    pos->usePKNet = 0;
+    pos->contempt = 0;
+    
+    EVAL_INFO eval_info[1];
+    initEvalThings(pos, eval_info);
+    int eval = getClassicalEval(pos, eval_info);
+    
+    *mg = ScoreMG(eval);
+    *eg = ScoreEG(eval);
 }

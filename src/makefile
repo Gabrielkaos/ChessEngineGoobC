@@ -185,3 +185,12 @@ rebuild: clean all
 depend: $(SRCS)
 	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|obj/x86-64/\1.o:|' > .depend
 -include .depend
+# ---------------------------------------------------------------------------
+# Python Shared Library for Evaluation
+# ---------------------------------------------------------------------------
+../tools/libgoob.so: $(SRCS)
+	$(CC) $(TUNE_CFLAGS) -fPIC -shared -I. $(SRCS) -o $@ $(LDFLAGS)
+	@echo "  LD  $@"
+
+.PHONY: python-eval
+python-eval: ../tools/libgoob.so

@@ -1,94 +1,118 @@
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include "pknet_loader.h"
+#include "bitboards.h"  // poplsb
+#include "evaluate.h"   // MakeScore / S
 
-#define PK_INPUT 256
-#define PK_H1    128
-#define PK_H2    64
+/*
+   Ethereal-style PK network.
+
+   Architecture:  [224 inputs] -> [32 hidden] -> [2 outputs (MG, EG)]
+
+   Inputs are the pawn + king placement only (everything else is classical
+   eval). Each input is a 0/1 indicator for "piece of type T on square s for
+   colour C", indexed exactly like Ethereal's computePKNetworkIndex():
+
+       idx = 112 * colour + (48 if KING) + sq - (8 if PAWN)
+
+   so white pawns use 0..47, white kings 48..111, black pawns 112..159,
+   black kings 160..223  (224 total). Pawns are restricted to ranks 2-7
+   (sq 8..55) since sq-8 makes rank-1/8 pawns negative and illegal.
+
+   Forward pass follows Ethereal: since the inputs are 0/1, the hidden
+   layer is a plain (unactivated) dot product, and we only loop over the
+   ~2 kings + ~16 pawns actually on the board using a TRANSPOSED weight
+   matrix inputWeights[idx][neuron]. A ReLU gate is applied only when
+   accumulating the hidden neurons into the output (hidden >= 0).
+
+   The two outputs are returned as a tapered MakeScore(MG, EG).
+*/
+
+#define PK_INPUT 224
+#define PK_H1    32
+#define PK_OUT   2
+
+/* "PK22" little-endian, rejects the old 256x128x64x1 binary format */
+#define PK_MAGIC 0x32324B50u
 
 int pknet_loaded = 0;
 
-static float pk_scale = 400.0f;
-static float pk_w1[PK_H1][PK_INPUT];
+static float pk_scale = 1.0f;
+
+/* transposed: row = input index (0..223), column = hidden neuron (0..31) */
+static float pk_w1[PK_INPUT][PK_H1];
 static float pk_b1[PK_H1];
-static float pk_w2[PK_H2][PK_H1];
-static float pk_b2[PK_H2];
-static float pk_w3[1][PK_H2];
-static float pk_b3[1];
+static float pk_w2[PK_OUT][PK_H1];
+static float pk_b2[PK_OUT];
 
-static inline float pk_relu(float x) { return x > 0.0f ? x : 0.0f; }
+static inline int pkIndex(int colour, int piece, int sq) {
+    int idx = 112 * colour;
+    if (piece == KING) idx += 48;
+    if (piece == PAWN) sq  -= 8;
+    return idx + sq;
+}
 
-int pknet_init(const char *path) { 
+int pknet_init(const char *path) {
+
     FILE *f = fopen(path, "rb");
     if (!f) {
         fprintf(stderr, "[PKNet] Cannot open %s\n", path);
         return 0;
     }
 
-    // read scale factor written first by export_bin
+    uint32_t magic = 0;
+    if (fread(&magic, sizeof(uint32_t), 1, f) != 1 || magic != PK_MAGIC) {
+        fclose(f);
+        fprintf(stderr, "[PKNet] %s: bad magic (not a PK22 net)\n", path);
+        return 0;
+    }
+
     if (fread(&pk_scale, sizeof(float), 1, f) != 1) { fclose(f); return 0; }
 
-    // fc1.weight [H1 x INPUT], fc1.bias [H1]
-    if (fread(pk_w1, sizeof(float), PK_H1 * PK_INPUT, f) != PK_H1 * PK_INPUT) { fclose(f); return 0; }
-    if (fread(pk_b1, sizeof(float), PK_H1,            f) != PK_H1) { fclose(f); return 0; }
+    if (fread(pk_w1, sizeof(float), PK_INPUT * PK_H1, f) != PK_INPUT * PK_H1) { fclose(f); return 0; }
+    if (fread(pk_b1, sizeof(float), PK_H1,            f) != PK_H1)            { fclose(f); return 0; }
 
-    // fc2.weight [H2 x H1], fc2.bias [H2]
-    if (fread(pk_w2, sizeof(float), PK_H2 * PK_H1, f) != PK_H2 * PK_H1) { fclose(f); return 0; }
-    if (fread(pk_b2, sizeof(float), PK_H2,          f) != PK_H2) { fclose(f); return 0; }
-
-    // fc3.weight [1 x H2], fc3.bias [1]
-    if (fread(pk_w3, sizeof(float), PK_H2, f) != PK_H2) { fclose(f); return 0; }
-    if (fread(pk_b3, sizeof(float), 1,     f) != 1) { fclose(f); return 0; }
+    if (fread(pk_w2, sizeof(float), PK_OUT * PK_H1, f) != PK_OUT * PK_H1) { fclose(f); return 0; }
+    if (fread(pk_b2, sizeof(float), PK_OUT,          f) != PK_OUT)        { fclose(f); return 0; }
 
     fclose(f);
     pknet_loaded = 1;
     fprintf(stderr, "[PKNet] Loaded %s  scale=%.0f\n", path, pk_scale);
     return 1;
- }
-int pknet_eval(const S_BOARD *pos) { 
-    // ── Build input vector (257 floats) ──────────────────────────────────────
-    float input[PK_INPUT];
-    memset(input, 0, sizeof(input));
+}
 
-    // sq 0=a1 ... 63=h8, same layout as fen_to_features in pknet.py
-    for (int sq = 0; sq < 64; sq++) {
-        int piece = pos->pieces[sq];
-        if      (piece == wP) input[sq]       = 1.0f;  // white pawns  [0..63]
-        else if (piece == bP) input[64 + sq]  = 1.0f;  // black pawns  [64..127]
-        else if (piece == wK) input[128 + sq] = 1.0f;  // white king   [128..191]
-        else if (piece == bK) input[192 + sq] = 1.0f;  // black king   [192..255]
-    }
-    // side to move feature
-    // input[256] = (pos->side == WHITE) ? 1.0f : 0.0f;
+int pknet_eval(const S_BOARD *pos) {
 
-    // ── Forward pass ─────────────────────────────────────────────────────────
-    float h1[PK_H1], h2[PK_H2];
+    float h[PK_H1];
+    for (int i = 0; i < PK_H1; i++)
+        h[i] = pk_b1[i];
 
-    // layer 1
-    for (int i = 0; i < PK_H1; i++) {
-        float acc = pk_b1[i];
-        for (int j = 0; j < PK_INPUT; j++)
-            acc += pk_w1[i][j] * input[j];
-        h1[i] = pk_relu(acc);
-    }
+    /* Piece-type bitboards give us exactly the sparse set of pieces the
+       network cares about, mirroring Ethereal's king/pawn extraction. */
+    U64 wp = pos->bitboards[wP];
+    U64 bp = pos->bitboards[bP];
+    U64 wk = pos->bitboards[wK];
+    U64 bk = pos->bitboards[bK];
 
-    // layer 2
-    for (int i = 0; i < PK_H2; i++) {
-        float acc = pk_b2[i];
+    if (wk) { int sq = poplsb(&wk); int idx = pkIndex(WHITE, KING, sq);
+              for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
+    if (bk) { int sq = poplsb(&bk); int idx = pkIndex(BLACK, KING, sq);
+              for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
+
+    while (wp) { int sq = poplsb(&wp); int idx = pkIndex(WHITE, PAWN, sq);
+                 for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
+    while (bp) { int sq = poplsb(&bp); int idx = pkIndex(BLACK, PAWN, sq);
+                 for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
+
+    float out[PK_OUT];
+    for (int o = 0; o < PK_OUT; o++) {
+        float acc = pk_b2[o];
         for (int j = 0; j < PK_H1; j++)
-            acc += pk_w2[i][j] * h1[j];
-        h2[i] = pk_relu(acc);
+            if (h[j] >= 0.0f)
+                acc += h[j] * pk_w2[o][j];
+        out[o] = acc * pk_scale;
     }
 
-    // output layer
-    float out = pk_b3[0];
-    for (int j = 0; j < PK_H2; j++)
-        out += pk_w3[0][j] * h2[j];
-
-    // multiply by scale to get back to centipawns (White's POV)
-    return (int)(out * pk_scale);
- }
+    return MakeScore((int) out[0], (int) out[1]);
+}

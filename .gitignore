@@ -1,14 +1,17 @@
 /src/bin/*
 /src/obj/*
 /src/obj-tune/*
+/src/weights
 
 /src/models/*
-tools/__pycache__/datagen.cpython-312.pyc
+tools/__pycache__/
 tools/*.pyc
 tools/*.epd
 tools/.venv
 tools/vendor/
 tools/dataset*.epd
+tools/*.bin
+tools/*.so
 
 weights_*
 tuner_best.bin
