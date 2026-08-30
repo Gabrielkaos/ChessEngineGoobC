@@ -1730,6 +1730,7 @@
     ->updated pk net code to match ethereal
     ->de bloat board struct created search thread struct
     ->tablebase fix on mates
+    ->I cant train 100m or 50m or 10m rows of positions for my pknet wtf
     
     //GOOB-2.2-TIMEFACTOR
 
