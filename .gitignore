@@ -12,6 +12,7 @@ tools/vendor/
 tools/dataset*.epd
 tools/*.bin
 tools/*.so
+tools/*.d
 
 weights_*
 tuner_best.bin
