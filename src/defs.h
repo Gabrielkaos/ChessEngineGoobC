@@ -166,6 +166,12 @@ typedef struct {
     S_MOVE moves[MAXPOSMOVES];
 }S_MOVELIST;
 
+// PV Line for stack-based tracking
+typedef struct {
+    int count;
+    int moves[MAXDEPTH];
+} S_PVLINE;
+
 //Undoing Moves - packed to 16 bytes (was 32): the made move itself lives in
 //S_BOARD::moveStack[ply], so it is not duplicated here. enPas max is NO_SQ=64,
 //castleRights max 15, both fit int8_t.

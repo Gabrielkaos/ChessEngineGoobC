@@ -144,8 +144,6 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int value,moveInLoop,moveNum;
     int best;
 
-    pos->pvLength[pos->ply] = pos->ply;
-
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
 
@@ -197,11 +195,6 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
             best = value;
             if(value>alpha){
                 alpha=value;
-                pos->pvTable[pos->ply][pos->ply] = moveInLoop;
-                for (int i = pos->ply + 1; i < pos->pvLength[pos->ply + 1]; i++) {
-                    pos->pvTable[pos->ply][i] = pos->pvTable[pos->ply + 1][i];
-                }
-                pos->pvLength[pos->ply] = pos->pvLength[pos->ply + 1];
             }
         }
 
@@ -212,7 +205,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 }
 
 //main search function alpha beta
-int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int doNULL, int cutNode){
+int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int doNULL, int cutNode, S_PVLINE *pv){
 
     int R,improving,quietMove,moveInLoop,newDepth,singular,extension,seeMargin[2];
     int fmhist          =0;
@@ -229,7 +222,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int Legal           =0;
     int bestScore       =-AB_BOUND;
     
-    pos->pvLength[pos->ply] = pos->ply;
+    S_PVLINE lpv;
+    lpv.count = 0;
+    if (pv != NULL) pv->count = 0;
     int inCheck         =!!attackersToKingSq(pos,pos->side);
     int ttDepth         =0;
     int ttBound         =HFNONE;
@@ -382,7 +377,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 R = 4 + depth / 6 + MIN(3, (staticEval - beta) / 200);
 
-                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE);
+                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, &lpv);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
 
@@ -400,7 +395,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     //confirm the cutoff holds without the null-move shortcut
                     pos->nmpMinPly = pos->ply + 3 * (depth - R) / 4;
 
-                    int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE);
+                    int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE, &lpv);
 
                     pos->nmpMinPly = 0;
 
@@ -440,10 +435,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE);
+                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, &lpv);
 
                 //now at shallow depth perform a more deeper search to confirm
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE);
+                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, &lpv);
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
@@ -604,18 +599,18 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //if not, no need to explore deeply
         if(R != 1){
             pos->reduction_stack[pos->ply] = R;
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, &lpv);
             pos->reduction_stack[pos->ply] = 0;
         }
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
         }
 
         //Normal Search
         if(pvNode && (Legal == 1 || Score > alpha)){
-            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, FALSE);
+            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, FALSE, &lpv);
         }
 
 
@@ -643,12 +638,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             bestMove=moveInLoop;
             if(Score>alpha){
                 alpha=Score;
-                
-                pos->pvTable[pos->ply][pos->ply] = moveInLoop;
-                for (int i = pos->ply + 1; i < pos->pvLength[pos->ply + 1]; i++) {
-                    pos->pvTable[pos->ply][i] = pos->pvTable[pos->ply + 1][i];
+                if (pv != NULL) {
+                    pv->moves[0] = moveInLoop;
+                    pv->count = 1 + lpv.count;
+                    for (int i = 0; i < lpv.count; i++) {
+                        pv->moves[i+1] = lpv.moves[i];
+                    }
                 }
-                pos->pvLength[pos->ply] = pos->pvLength[pos->ply + 1];
 
                 if(alpha>=beta)break;
             }
@@ -731,7 +727,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         quietMove = !moveIsTactical(pos,moveInLoop);
 
         if(!makeMove(pos,moveInLoop))continue;
-        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE);
+        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE, NULL);
         takeMove(pos);
         if(info->stopped==TRUE)break;
         //if found a stronger move breaks, triggers MultiCut
@@ -901,6 +897,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
     int currentDepth,numberOfPvMoves,bestScore;
     int pvNum;
+    S_PVLINE rootPv;
 
     int prevBestMove        = NOMOVE;
     double bestMoveChanges  = 0.0;
@@ -974,15 +971,15 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
             while(TRUE){
 
-                
-                bestScore = AlphaBeta(alpha,beta,MAX(1,searchDepth),pos,info,table,threadNum,TRUE, FALSE);
+                rootPv.count = 0;
+                bestScore = AlphaBeta(alpha,beta,MAX(1,searchDepth),pos,info,table,threadNum,TRUE, FALSE, &rootPv);
 
                 if(info->stopped==TRUE)break;
 
                 if(threadNum==0){
-                    numberOfPvMoves = pos->pvLength[0];
+                    numberOfPvMoves = rootPv.count;
                     for (int i = 0; i < numberOfPvMoves; i++) {
-                        pos->pvArray[i] = pos->pvTable[0][i];
+                        pos->pvArray[i] = rootPv.moves[i];
                     }
                     
                     // checkPvLegality(pos, pos->pvArray, numberOfPvMoves);
