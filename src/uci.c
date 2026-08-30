@@ -84,9 +84,28 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
     int bounded     = MAX(alpha, MIN(value, beta));
 
 
-    int score   = bounded >=  ISMATE ?  (AB_BOUND - bounded + 1) / 2
-                : bounded <= -ISMATE ? -(bounded + AB_BOUND)     / 2 : bounded;
-    char *type  = abs(bounded) >= ISMATE ? "mate" : "cp";
+    int is_tb_win  = bounded >= (TB_WIN_VALUE - MAXDEPTH) && bounded <= (TB_WIN_VALUE + MAXDEPTH);
+    int is_tb_loss = bounded <= -(TB_WIN_VALUE - MAXDEPTH) && bounded >= -(TB_WIN_VALUE + MAXDEPTH);
+
+    int score = 0;
+    char *type = "cp";
+
+    if (bounded >= ISMATE) {
+        score = (AB_BOUND - bounded + 1) / 2;
+        type = "mate";
+    } else if (bounded <= -ISMATE) {
+        score = -(bounded + AB_BOUND) / 2;
+        type = "mate";
+    } else if (is_tb_win) {
+        score = (TB_WIN_VALUE - bounded + 1) / 2;
+        type = "mate";
+    } else if (is_tb_loss) {
+        score = -( (bounded + TB_WIN_VALUE + 1) / 2 );
+        type = "mate";
+    } else {
+        score = bounded;
+        type = "cp";
+    }
 
     char *bound = bounded >=  beta ? " lowerbound "
                 : bounded <= alpha ? " upperbound " : " ";

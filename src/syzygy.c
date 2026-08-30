@@ -48,7 +48,7 @@ int TBLargestMen      = 0;
 //win/loss, and so that valueToTT/valueFromTT (which only rescale scores
 //that already exceed ISMATE) leave TB scores untouched on their way
 //into/out of the transposition table.
-#define TB_WIN_VALUE (ISMATE - 1000)
+
 
 void TBFree(void){
     if(SyzygyEnabled) tb_free();

@@ -74,6 +74,7 @@ enum {  MAXDEPTH=128,
         INFINITE_BOUND=32000,
         AB_BOUND=30000,
         ISMATE=AB_BOUND-MAXDEPTH,
+        TB_WIN_VALUE=ISMATE-1000,
         VALUE_NONE=AB_BOUND+1};
 enum {pawnHashMB=16,evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};

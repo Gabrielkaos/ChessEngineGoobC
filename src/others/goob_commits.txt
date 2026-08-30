@@ -1729,6 +1729,7 @@
     ->Scalefactor for Bishop opposite to one promoting pawn
     ->updated pk net code to match ethereal
     ->de bloat board struct created search thread struct
+    ->tablebase fix on mates
     
     //GOOB-2.2-TIMEFACTOR
 
