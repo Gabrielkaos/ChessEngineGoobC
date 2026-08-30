@@ -20,6 +20,13 @@ except ImportError:
     print("Please install it by running: pip install datasets")
     sys.exit(1)
 
+try:
+    import chess
+except ImportError:
+    print("Error: The 'chess' library is missing.")
+    print("Please install it by running: pip install chess")
+    sys.exit(1)
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 download_hf_dataset.py [num_positions] [out_file]")
@@ -61,6 +68,13 @@ def main():
             game_winner = row.get("game_winner")
             
             if not fen or game_winner is None:
+                continue
+                
+            try:
+                board = chess.Board(fen)
+                if board.is_check():
+                    continue
+            except ValueError:
                 continue
                 
             # Game Winner format: [white_win, draw, black_win]
