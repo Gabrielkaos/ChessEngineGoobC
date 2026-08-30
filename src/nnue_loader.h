@@ -148,7 +148,7 @@
  * currently set up (uci.c already does this). */
 int nnue_init(const char *path);
 
-/* Full rebuild of pos->nnue_acc[WHITE] and pos->nnue_acc[BLACK] from
+/* Full rebuild of pos->search->nnue_acc[WHITE] and pos->search->nnue_acc[BLACK] from
  * pos->pieces, from scratch. Call whenever a position is set up from
  * raw FEN/mirrored data rather than via incremental makeMove/takeMove
  * (board.c already does this from updateListMaterial), or right after
@@ -402,7 +402,7 @@ int nnue_init(const char *path) {
 
 /* ── Incremental accumulator maintenance ───────────────────────────────── */
 
-/* Rebuilds pos->nnue_acc[us] from scratch using pos->pieces[], with an
+/* Rebuilds pos->search->nnue_acc[us] from scratch using pos->pieces[], with an
  * EXPLICITLY supplied king square for `us` rather than reading it off
  * pos->bitboards. This matters in exactly one caller: the king-move
  * branch of nnue_update_move, where pos->pieces[] already reflects the
@@ -414,7 +414,7 @@ int nnue_init(const char *path) {
  * square, and nnue_refresh_accumulator does exactly that. */
 static void nnue_refresh_perspective_ks(S_BOARD *pos, int us, int kingSq) {
     int l1 = g_weights->l1_size;
-    int32_t *acc = pos->nnue_acc[us];
+    int32_t *acc = pos->search->nnue_acc[us];
     for (int i = 0; i < l1; i++) acc[i] = g_weights->ft_b[i];
     for (int sq = 0; sq < 64; sq++) {
         int p = pos->pieces[sq];
@@ -449,7 +449,7 @@ static inline void nnue_add_one(S_BOARD *pos, int viewer, int pce, int sq) {
     int kingSq = nnue_king_sq(pos, viewer);
     size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
     const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
-    int32_t *acc = pos->nnue_acc[viewer];
+    int32_t *acc = pos->search->nnue_acc[viewer];
     for (int i = 0; i < l1; i++) acc[i] += (int32_t)row[i];
 }
 
@@ -458,7 +458,7 @@ static inline void nnue_remove_one(S_BOARD *pos, int viewer, int pce, int sq) {
     int kingSq = nnue_king_sq(pos, viewer);
     size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
     const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
-    int32_t *acc = pos->nnue_acc[viewer];
+    int32_t *acc = pos->search->nnue_acc[viewer];
     for (int i = 0; i < l1; i++) acc[i] -= (int32_t)row[i];
 }
 
@@ -469,7 +469,7 @@ static inline void nnue_move_one(S_BOARD *pos, int viewer, int pce, int from, in
     size_t idx_to   = nnue_feature_index(viewer, kingSq, pce, to);
     const int16_t *row_from = g_weights->ft_w + idx_from * (size_t)l1;
     const int16_t *row_to   = g_weights->ft_w + idx_to   * (size_t)l1;
-    int32_t *acc = pos->nnue_acc[viewer];
+    int32_t *acc = pos->search->nnue_acc[viewer];
     for (int i = 0; i < l1; i++) acc[i] += (int32_t)row_to[i] - (int32_t)row_from[i];
 }
 
@@ -599,8 +599,8 @@ int nnue_eval(const S_BOARD *pos) {
      * absolute-feature version, which had to flip for Black). */
     int8_t in_i8[2 * NNUE_ACC_SIZE];
     for (int i = 0; i < l1; i++) {
-        in_i8[i]      = requantize_ft_i8(pos->nnue_acc[stm][i],   g_weights->qa_scale);
-        in_i8[l1 + i] = requantize_ft_i8(pos->nnue_acc[other][i], g_weights->qa_scale);
+        in_i8[i]      = requantize_ft_i8(pos->search->nnue_acc[stm][i],   g_weights->qa_scale);
+        in_i8[l1 + i] = requantize_ft_i8(pos->search->nnue_acc[other][i], g_weights->qa_scale);
     }
 
     int8_t h2_i8[NNUE_L2L3_MAX], h3_i8[NNUE_L2L3_MAX];

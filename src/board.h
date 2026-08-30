@@ -26,6 +26,7 @@ typedef struct {
     U64 rootEffortNodes[MAXPOSMOVES];
     int rootEffortCount;
     int rootPvMove;
+    int32_t nnue_acc[2][NNUE_ACC_SIZE];
 } S_SEARCH_THREAD;
 
 //Board structure
@@ -98,7 +99,7 @@ typedef struct {
     int currentPvNum; 
 
     
-    int32_t nnue_acc[2][NNUE_ACC_SIZE];
+
 
 
 
