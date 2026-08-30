@@ -30,6 +30,7 @@ void DataCheck(int move){
 
 void TestHASH(char *fen){
     S_BOARD pos[1];
+    pos->search = malloc(sizeof(S_SEARCH_THREAD));
     ParseFEN(fen, pos);
 
     S_MOVELIST list[1];
@@ -91,7 +92,7 @@ int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table){
 
         if(MoveExists(pos,move)){
             makeMove(pos,move);
-            pos->pvArray[count++]=move;
+            pos->search->pvArray[count++]=move;
         }else{
             break;
         }
@@ -220,6 +221,7 @@ static int ttProbe(S_BOARD *pos, S_PVTABLE *table, U64 key){
 int runTTReplacementTests(void){
     S_PVTABLE table[1];
     S_BOARD pos[1];
+    pos->search = malloc(sizeof(S_SEARCH_THREAD));
     memset(pos, 0, sizeof(S_BOARD));
     pos->ply = 0;
 

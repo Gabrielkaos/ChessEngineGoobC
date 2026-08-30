@@ -12,7 +12,7 @@ int drawRepetition(const S_BOARD *pos){
     int index=0;
     for(index=(pos->hisPly-pos->fiftyMove);index<pos->hisPly-1;++index){
 
-        if(pos->posKey==pos->history[index].posKey){
+        if(pos->posKey==pos->search->history[index].posKey){
             return TRUE;
         }
     }
@@ -27,7 +27,7 @@ int drawByRepetitionEthereals(const S_BOARD *pos){
         if (i < pos->hisPly - pos->fiftyMove)
             break;
 
-        if (    pos->history[i].posKey == pos->posKey
+        if (    pos->search->history[i].posKey == pos->posKey
             && (i > pos->hisPly - pos->ply || ++reps == 2))
             return 1;
     }

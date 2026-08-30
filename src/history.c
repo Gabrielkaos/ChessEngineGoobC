@@ -21,7 +21,7 @@ void clearLowPlyHistory(S_BOARD *pos){
     for(int ply = 0; ply < LOWPLY_HIST_SLOTS; ++ply)
         for(int from = 0; from < 64; ++from)
             for(int to = 0; to < 64; ++to)
-                pos->lowPlyHistory[ply][from][to] = 102;
+                pos->search->lowPlyHistory[ply][from][to] = 102;
 }
 
 int getCaptureHistory(S_BOARD *pos,int move){
@@ -69,10 +69,10 @@ void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth)
 }
 
 void updateKillers(S_BOARD *pos,int move){
-    if(pos->searchKillers[0][pos->ply]==move)return;
+    if(pos->search->searchKillers[0][pos->ply]==move)return;
 
-    pos->searchKillers[1][pos->ply] = pos->searchKillers[0][pos->ply];
-    pos->searchKillers[0][pos->ply] = move;
+    pos->search->searchKillers[1][pos->ply] = pos->search->searchKillers[0][pos->ply];
+    pos->search->searchKillers[0][pos->ply] = move;
 }
 
 static const int ContinuationOffsets[CONT_HIST_SLOTS] = {1,2,4,6};
@@ -81,10 +81,10 @@ static int getContEntry(S_BOARD *pos,int slot,int piece,int to){
     const int back = ContinuationOffsets[slot];
     if(pos->ply < back)return 0;
 
-    const int move = pos->moveStack[pos->ply - back];
+    const int move = pos->search->moveStack[pos->ply - back];
     if(move==NOMOVE || move==NULLMOVE)return 0;
 
-    return pos->shared->continuation[slot][pos->pieceStack[pos->ply - back]][TOSQ(move)][piece][to];
+    return pos->shared->continuation[slot][pos->search->pieceStack[pos->ply - back]][TOSQ(move)][piece][to];
 }
 
 int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
@@ -93,12 +93,12 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     int to    = TOSQ(move);
     int from  = FROMSQ(move);
 
-    int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
+    int cmMove  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1]:NOMOVE;
+    int cmPiece = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
     int cmTo    = TOSQ(cmMove);
 
-    int fmMove  = pos->ply > 1 ? pos->moveStack[pos->ply - 2]:NOMOVE;
-    int fmPiece = pos->ply > 1 ? pos->pieceStack[pos->ply - 2] : 0;
+    int fmMove  = pos->ply > 1 ? pos->search->moveStack[pos->ply - 2]:NOMOVE;
+    int fmPiece = pos->ply > 1 ? pos->search->pieceStack[pos->ply - 2] : 0;
     int fmTo    = TOSQ(fmMove);
 
     if(cmMove==NOMOVE || cmMove==NULLMOVE)*cmhist = 0;
@@ -120,8 +120,8 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     int bestMove = moves[length - 1];
     updateKillers(pos,bestMove);
 
-    int cmMove  = pos->ply > 0 ? pos->moveStack[pos->ply - 1]:NOMOVE;
-    int cmPiece = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
+    int cmMove  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1]:NOMOVE;
+    int cmPiece = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
     int cmTo    = TOSQ(cmMove);
 
     if (cmMove != NOMOVE && cmMove != NULLMOVE){
@@ -150,7 +150,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             //low-ply history: only maintained near the root
             //(Stockfish: lowPlyHistory[ply][move] << bonus * 712 / 1024)
             if(pos->ply < LOWPLY_HIST_SLOTS)
-                histGravityUpdate(&pos->lowPlyHistory[pos->ply][from][to],
+                histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][from][to],
                                   delta * 712 / 1024, LOWPLY_HIST_MAX);
 
             //pawn history: keyed by pawn structure, so it transfers across
@@ -166,10 +166,10 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
                 back  = ContinuationOffsets[slot];
                 if(pos->ply < back)continue;
 
-                pmove = pos->moveStack[pos->ply - back];
+                pmove = pos->search->moveStack[pos->ply - back];
                 if(pmove==NOMOVE || pmove==NULLMOVE)continue;
 
-                ppiece = pos->pieceStack[pos->ply - back];
+                ppiece = pos->search->pieceStack[pos->ply - back];
                 pto    = TOSQ(pmove);
 
                 entry = pos->shared->continuation[slot][ppiece][pto][piece][to];

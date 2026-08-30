@@ -1188,8 +1188,8 @@ int EvalPosition(S_BOARD *pos){
     int score;
 
     //null move recognizer
-    if(pos->ply > 0 && pos->moveStack[pos->ply - 1]==NULLMOVE){
-        score = -pos->eval_stack[pos->ply - 1] + 2*tempo;
+    if(pos->ply > 0 && pos->search->moveStack[pos->ply - 1]==NULLMOVE){
+        score = -pos->search->eval_stack[pos->ply - 1] + 2*tempo;
         return pos->useFiftyMoveRule ? score * (100-pos->fiftyMove)/100 : score;
     }
 
@@ -1262,6 +1262,7 @@ void initPQSTMAT(){
 #include "init.h"
 void eval_fen_c(const char* fen, int* mg, int* eg) {
     S_BOARD pos[1];
+    pos->search = malloc(sizeof(S_SEARCH_THREAD));
     ParseFEN((char*)fen, pos);
     pos->useNNUE = 0;
     pos->usePKNet = 0;

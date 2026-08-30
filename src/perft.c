@@ -86,12 +86,12 @@ INLINE void takeMoves(S_BOARD *pos){
     pos->ply--;
 
     //the move was stored by makeMoves at the pre-increment ply
-    int move=pos->moveStack[pos->ply];
+    int move=pos->search->moveStack[pos->ply];
     int from =FROMSQ(move);
     int to=TOSQ(move);
 
-    pos->castleRights=pos->history[pos->hisPly].castleRights;
-    pos->enPas=pos->history[pos->hisPly].enPas;
+    pos->castleRights=pos->search->history[pos->hisPly].castleRights;
+    pos->enPas=pos->search->history[pos->hisPly].enPas;
 
     pos->side ^= 1;
 
@@ -157,9 +157,9 @@ INLINE int makeMoves(S_BOARD *pos,int move){
     }
 
     //the move lives in moveStack (indexed by ply), history stores the rest
-    pos->moveStack[pos->ply]=move;
-    pos->history[pos->hisPly].enPas=pos->enPas;
-    pos->history[pos->hisPly].castleRights=pos->castleRights;
+    pos->search->moveStack[pos->ply]=move;
+    pos->search->history[pos->hisPly].enPas=pos->enPas;
+    pos->search->history[pos->hisPly].castleRights=pos->castleRights;
     pos->castleRights &= castlePerms[from];
     pos->castleRights &= castlePerms[to];
     pos->enPas=NO_SQ;

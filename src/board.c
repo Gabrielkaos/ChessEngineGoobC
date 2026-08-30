@@ -21,10 +21,10 @@ void resetContinuationTable(S_BOARD *pos){
 void initStacks(S_BOARD *pos){
     int index;
     for(index=0;index<MAXDEPTH;++index){
-        pos->eval_stack[index]=0;
-        pos->moveStack[index] =NOMOVE;
-        pos->pieceStack[index]=0;
-        pos->reduction_stack[index]=0;
+        pos->search->eval_stack[index]=0;
+        pos->search->moveStack[index] =NOMOVE;
+        pos->search->pieceStack[index]=0;
+        pos->search->reduction_stack[index]=0;
     }
     pos->shared->ttMoveHistory = 0;
 }

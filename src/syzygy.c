@@ -135,7 +135,7 @@ int TBProbeRoot(S_BOARD *pos){
     //"hasRepeated" root-probe argument.)
     int hasRepeated = FALSE;
     for(int i = pos->hisPly - pos->fiftyMove; i < pos->hisPly - 1; ++i){
-        if(pos->posKey == pos->history[i].posKey){ hasRepeated = TRUE; break; }
+        if(pos->posKey == pos->search->history[i].posKey){ hasRepeated = TRUE; break; }
     }
 
     struct TbRootMoves rm;

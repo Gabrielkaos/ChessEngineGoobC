@@ -57,24 +57,24 @@ int correctedStaticEval(const S_BOARD *pos, int rawEval){
     //to by the moves 2 and 4 plies ago and indexed by the last move
     int cntCorr = CONT_CORR_NOMOVE;
     if(pos->ply >= 1){
-        const int m1 = pos->moveStack[pos->ply - 1];
+        const int m1 = pos->search->moveStack[pos->ply - 1];
         if(m1 != NOMOVE && m1 != NULLMOVE){
-            const int pc1 = pos->pieceStack[pos->ply - 1];
+            const int pc1 = pos->search->pieceStack[pos->ply - 1];
             const int sq1 = TOSQ(m1);
 
             cntCorr = 0;
             if(pos->ply >= 2){
-                const int m2 = pos->moveStack[pos->ply - 2];
+                const int m2 = pos->search->moveStack[pos->ply - 2];
                 if(m2 != NOMOVE && m2 != NULLMOVE)
                     cntCorr += CONT_CORR_WEIGHT *
-                        pos->shared->contCorrHist[pos->pieceStack[pos->ply - 2]]
+                        pos->shared->contCorrHist[pos->search->pieceStack[pos->ply - 2]]
                                                  [TOSQ(m2)][pc1][sq1];
             }
             if(pos->ply >= 4){
-                const int m4 = pos->moveStack[pos->ply - 4];
+                const int m4 = pos->search->moveStack[pos->ply - 4];
                 if(m4 != NOMOVE && m4 != NULLMOVE)
                     cntCorr += CONT_CORR_WEIGHT *
-                        pos->shared->contCorrHist[pos->pieceStack[pos->ply - 4]]
+                        pos->shared->contCorrHist[pos->search->pieceStack[pos->ply - 4]]
                                                  [TOSQ(m4)][pc1][sq1];
             }
         }
@@ -108,23 +108,23 @@ void updateCorrectionHistory(S_BOARD *pos, int depth, int diff){
     //continuation correction history: the ss-2 table gets bonus*130/128 and
     //the ss-4 table bonus*70/128 (Stockfish's update_correction_history)
     if(pos->ply >= 1){
-        const int m1 = pos->moveStack[pos->ply - 1];
+        const int m1 = pos->search->moveStack[pos->ply - 1];
         if(m1 != NOMOVE && m1 != NULLMOVE){
-            const int pc1 = pos->pieceStack[pos->ply - 1];
+            const int pc1 = pos->search->pieceStack[pos->ply - 1];
             const int sq1 = TOSQ(m1);
 
             if(pos->ply >= 2){
-                const int m2 = pos->moveStack[pos->ply - 2];
+                const int m2 = pos->search->moveStack[pos->ply - 2];
                 if(m2 != NOMOVE && m2 != NULLMOVE)
                     updateEntry(&pos->shared->contCorrHist
-                                  [pos->pieceStack[pos->ply - 2]][TOSQ(m2)][pc1][sq1],
+                                  [pos->search->pieceStack[pos->ply - 2]][TOSQ(m2)][pc1][sq1],
                                 depth, diff, CONT_CORR_UP_SS2_W);
             }
             if(pos->ply >= 4){
-                const int m4 = pos->moveStack[pos->ply - 4];
+                const int m4 = pos->search->moveStack[pos->ply - 4];
                 if(m4 != NOMOVE && m4 != NULLMOVE)
                     updateEntry(&pos->shared->contCorrHist
-                                  [pos->pieceStack[pos->ply - 4]][TOSQ(m4)][pc1][sq1],
+                                  [pos->search->pieceStack[pos->ply - 4]][TOSQ(m4)][pc1][sq1],
                                 depth, diff, CONT_CORR_UP_SS4_W);
             }
         }

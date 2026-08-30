@@ -27,12 +27,12 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->threshold   = 0;
     mp->type        = NORMAL_PICKER;
 
-    int counter  = pos->ply > 0 ? pos->moveStack[pos->ply - 1] : NOMOVE;
-    int cmPiece  = pos->ply > 0 ? pos->pieceStack[pos->ply - 1] : 0;
+    int counter  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1] : NOMOVE;
+    int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
     int cmTo     = TOSQ(counter);
 
-    mp->killer1 = pos->searchKillers[0][pos->ply];
-    mp->killer2 = pos->searchKillers[1][pos->ply];
+    mp->killer1 = pos->search->searchKillers[0][pos->ply];
+    mp->killer2 = pos->search->searchKillers[1][pos->ply];
     mp->counter = (counter != NOMOVE && counter != NULLMOVE)
                 ? pos->shared->cmtable[!pos->side][cmPiece][cmTo] : NOMOVE;
 }
@@ -154,7 +154,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //(Stockfish: += 8 * lowPlyHistory[ply][move] / (1 + ply))
                     if(pos->ply < LOWPLY_HIST_SLOTS)
                         mp->list->moves[i].score +=
-                            8 * pos->lowPlyHistory[pos->ply][FROMSQ(move)][TOSQ(move)]
+                            8 * pos->search->lowPlyHistory[pos->ply][FROMSQ(move)][TOSQ(move)]
                               / (1 + pos->ply);
                 }
             }

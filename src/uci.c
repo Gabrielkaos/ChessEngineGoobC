@@ -97,7 +97,7 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
     //pv printing
     printf("pv");
     for(pvNum=0;pvNum<pvMoves;++pvNum){
-        printf(" %s",PrMove(pos->pvArray[pvNum]));
+        printf(" %s",PrMove(pos->search->pvArray[pvNum]));
     }
     printf("\n");
 }
@@ -526,7 +526,7 @@ void parsePosition(char* lineIn,S_BOARD *pos){
     //hisPly and the per-ply search stacks must be reset for every new position.
     //makeMove() increments pos->hisPly (capped only by MAXGAMESMOVES), so without
     //this reset it grows without bound across all games in one process and writes
-    //past pos->history[], corrupting board state and producing illegal moves.
+    //past pos->search->history[], corrupting board state and producing illegal moves.
     pos->hisPly = 0;
     initStacks(pos);
 

@@ -228,10 +228,10 @@ int makeMove(S_BOARD *pos,int move){
         return FALSE;
     }
 
-    pos->moveStack[pos->ply] = move;
-    pos->pieceStack[pos->ply] = pieceType[pos->pieces[from]];
+    pos->search->moveStack[pos->ply] = move;
+    pos->search->pieceStack[pos->ply] = pieceType[pos->pieces[from]];
 
-    pos->history[pos->hisPly].posKey=pos->posKey;
+    pos->search->history[pos->hisPly].posKey=pos->posKey;
 
     if(move & MVFLAGEP){
         if(side==WHITE){
@@ -261,11 +261,11 @@ int makeMove(S_BOARD *pos,int move){
     }
     HASH_CA;
 
-    //the move itself is stored in pos->moveStack[pos->ply], not in history
-    pos->history[pos->hisPly].enPas=pos->enPas;
-    pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
-    pos->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
-    pos->history[pos->hisPly].castleRights=pos->castleRights;
+    //the move itself is stored in pos->search->moveStack[pos->ply], not in history
+    pos->search->history[pos->hisPly].enPas=pos->enPas;
+    pos->search->history[pos->hisPly].fiftyMove=pos->fiftyMove;
+    pos->search->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
+    pos->search->history[pos->hisPly].castleRights=pos->castleRights;
     pos->castleRights &= castlePerm[from];
     pos->castleRights &= castlePerm[to];
     pos->enPas=NO_SQ;
@@ -320,7 +320,7 @@ void takeMove(S_BOARD *pos){
     pos->ply--;
 
     //the move was stored by makeMove at the pre-increment ply
-    int move=pos->moveStack[pos->ply];
+    int move=pos->search->moveStack[pos->ply];
     int from =FROMSQ(move);
     int to=TOSQ(move);
 
@@ -329,10 +329,10 @@ void takeMove(S_BOARD *pos){
     }
     HASH_CA;
 
-    pos->castleRights      = pos->history[pos->hisPly].castleRights;
-    pos->fiftyMove         = pos->history[pos->hisPly].fiftyMove;
-    pos->enPas             = pos->history[pos->hisPly].enPas;
-    pos->pliesFromNull     = pos->history[pos->hisPly].pliesFromNull;
+    pos->castleRights      = pos->search->history[pos->hisPly].castleRights;
+    pos->fiftyMove         = pos->search->history[pos->hisPly].fiftyMove;
+    pos->enPas             = pos->search->history[pos->hisPly].enPas;
+    pos->pliesFromNull     = pos->search->history[pos->hisPly].pliesFromNull;
 
     if(pos->enPas != NO_SQ){
         HASH_EP;
@@ -373,18 +373,18 @@ void takeMove(S_BOARD *pos){
 
 void makeNullMove(S_BOARD *pos){
 
-    pos->moveStack[pos->ply] = NULLMOVE;
+    pos->search->moveStack[pos->ply] = NULLMOVE;
     pos->ply++;
-    pos->history[pos->hisPly].posKey=pos->posKey;
+    pos->search->history[pos->hisPly].posKey=pos->posKey;
 
 
     if(pos->enPas != NO_SQ) HASH_EP;
 
-    //the move itself lives in pos->moveStack[ply] (NULLMOVE already stored)
-    pos->history[pos->hisPly].fiftyMove=pos->fiftyMove;
-    pos->history[pos->hisPly].enPas=pos->enPas;
-    pos->history[pos->hisPly].castleRights=pos->castleRights;
-    pos->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
+    //the move itself lives in pos->search->moveStack[ply] (NULLMOVE already stored)
+    pos->search->history[pos->hisPly].fiftyMove=pos->fiftyMove;
+    pos->search->history[pos->hisPly].enPas=pos->enPas;
+    pos->search->history[pos->hisPly].castleRights=pos->castleRights;
+    pos->search->history[pos->hisPly].pliesFromNull=pos->pliesFromNull;
 
     pos->enPas=NO_SQ;
     pos->pliesFromNull=0;
@@ -402,10 +402,10 @@ void takeNullMove(S_BOARD *pos){
 
     if(pos->enPas != NO_SQ) HASH_EP;
 
-    pos->castleRights  = pos->history[pos->hisPly].castleRights;
-    pos->fiftyMove     = pos->history[pos->hisPly].fiftyMove;
-    pos->enPas         = pos->history[pos->hisPly].enPas;
-    pos->pliesFromNull = pos->history[pos->hisPly].pliesFromNull;
+    pos->castleRights  = pos->search->history[pos->hisPly].castleRights;
+    pos->fiftyMove     = pos->search->history[pos->hisPly].fiftyMove;
+    pos->enPas         = pos->search->history[pos->hisPly].enPas;
+    pos->pliesFromNull = pos->search->history[pos->hisPly].pliesFromNull;
 
     if(pos->enPas != NO_SQ) HASH_EP;
 

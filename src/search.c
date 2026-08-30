@@ -73,7 +73,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     for(index=0;index<2;++index){
         for(index2=0;index2<MAXDEPTH;++index2){
-            pos->searchKillers[index][index2]=0;
+            pos->search->searchKillers[index][index2]=0;
         }
     }
 
@@ -83,11 +83,11 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->stopped=0;
     info->nodes=0ULL;
     info->tbhits=0ULL;
-    pos->rootEffortCount = 0;
+    pos->search->rootEffortCount = 0;
 
     info->depthOneComplete=FALSE; 
 
-    pos->rootPvMove = NOMOVE;
+    pos->search->rootPvMove = NOMOVE;
 
     pos->nmpMinPly = 0;
 
@@ -129,8 +129,8 @@ static int isShuffling(S_BOARD *pos, int move){
     if(pos->pliesFromNull < 6 || pos->ply < 20) return FALSE;
     if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
 
-    int m2 = pos->moveStack[pos->ply-2];
-    int m4 = pos->moveStack[pos->ply-4];
+    int m2 = pos->search->moveStack[pos->ply-2];
+    int m4 = pos->search->moveStack[pos->ply-4];
     if(m2==NOMOVE || m2==NULLMOVE || m4==NOMOVE || m4==NULLMOVE) return FALSE;
 
     return FROMSQ(move)==TOSQ(m2) && FROMSQ(m2)==TOSQ(m4);
@@ -168,7 +168,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     }
 
     //standing pat: save the static eval, then use it as our floor
-    int eval = pos->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int eval = pos->search->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
     best = eval;
     alpha = MAX(alpha, eval);
     if(alpha >= beta) return eval;
@@ -265,8 +265,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if (rAlpha >= rBeta) return rAlpha;
     }
 
-    pos->searchKillers[0][pos->ply+1] = NOMOVE;
-    pos->searchKillers[1][pos->ply+1] = NOMOVE;
+    pos->search->searchKillers[0][pos->ply+1] = NOMOVE;
+    pos->search->searchKillers[1][pos->ply+1] = NOMOVE;
 
     //probing Transposition Table
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
@@ -315,22 +315,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
 
     //store in eval_stack each staticEval (corrected, used for all pruning)
-    int staticEval = pos->eval_stack[pos->ply] =
+    int staticEval = pos->search->eval_stack[pos->ply] =
         inCheck ? rawEval : correctedStaticEval(pos, rawEval);
 
     //see if we improved on the last position
-    improving = pos->ply >= 2 && staticEval>pos->eval_stack[pos->ply-2];
+    improving = pos->ply >= 2 && staticEval>pos->search->eval_stack[pos->ply-2];
 
 
     //hindsight depth adjustment based on how much the parent reduced
     //to reach this node, and whether the position has kept getting
     //worse for the opponent since
-    int priorReduction = pos->ply >= 1 ? pos->reduction_stack[pos->ply] : 0;
-    int opponentWorsening = pos->ply >= 1 && staticEval > -pos->eval_stack[pos->ply-1];
+    int priorReduction = pos->ply >= 1 ? pos->search->reduction_stack[pos->ply] : 0;
+    int opponentWorsening = pos->ply >= 1 && staticEval > -pos->search->eval_stack[pos->ply-1];
 
     if(!info->bruteForceMode){
         if(priorReduction >= 3 && !opponentWorsening) depth++;
-        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->eval_stack[pos->ply-1] > HindsightMargin) depth--;
+        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->search->eval_stack[pos->ply-1] > HindsightMargin) depth--;
     }
 
     //RAZORING
@@ -369,8 +369,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 depth >= defaultNullMoveDepth &&
                 pos->ply >= pos->nmpMinPly &&
                 boardHasNonPawnMaterial(pos,pos->side) &&
-                (pos->ply < 1 || pos->moveStack[pos->ply-1] != NULLMOVE) &&
-                (pos->ply < 2 || pos->moveStack[pos->ply-2] != NULLMOVE) &&
+                (pos->ply < 1 || pos->search->moveStack[pos->ply-1] != NULLMOVE) &&
+                (pos->ply < 2 || pos->search->moveStack[pos->ply-2] != NULLMOVE) &&
                 (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
 
                 makeNullMove(pos);
@@ -598,9 +598,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //see if the move can exceed current alpha
         //if not, no need to explore deeply
         if(R != 1){
-            pos->reduction_stack[pos->ply] = R;
+            pos->search->reduction_stack[pos->ply] = R;
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, &lpv);
-            pos->reduction_stack[pos->ply] = 0;
+            pos->search->reduction_stack[pos->ply] = 0;
         }
 
         //PVS
@@ -618,14 +618,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(rootNode){
             U64 spent = info->nodes - nodesBeforeMove;
             int fi;
-            for(fi=0; fi<pos->rootEffortCount; ++fi)
-                if(pos->rootEffortMove[fi]==moveInLoop) break;
-            if(fi==pos->rootEffortCount && pos->rootEffortCount<MAXPOSMOVES){
-                pos->rootEffortMove[fi]=moveInLoop;
-                pos->rootEffortNodes[fi]=0;
-                pos->rootEffortCount++;
+            for(fi=0; fi<pos->search->rootEffortCount; ++fi)
+                if(pos->search->rootEffortMove[fi]==moveInLoop) break;
+            if(fi==pos->search->rootEffortCount && pos->search->rootEffortCount<MAXPOSMOVES){
+                pos->search->rootEffortMove[fi]=moveInLoop;
+                pos->search->rootEffortNodes[fi]=0;
+                pos->search->rootEffortCount++;
             }
-            if(fi<pos->rootEffortCount) pos->rootEffortNodes[fi]+=spent;
+            if(fi<pos->search->rootEffortCount) pos->search->rootEffortNodes[fi]+=spent;
         }
         if(quietMove)quietsTried[quietsPlayed++] = moveInLoop;
         else capturesTried[capturesPlayed++]     = moveInLoop;
@@ -691,7 +691,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //update TT
-    if(rootNode) pos->rootPvMove = bestMove;
+    if(rootNode) pos->search->rootPvMove = bestMove;
 
     if(!rootNode || pos->currentPvNum==0){
         ttBound = bestScore>=beta    ? HFBETA
@@ -855,6 +855,7 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 int SearchPositionThread(void *data){
     THREAD_DATA *thread_data = (THREAD_DATA*)data;
     S_BOARD *pos = malloc(sizeof(S_BOARD));
+    pos->search = malloc(sizeof(S_SEARCH_THREAD));
     memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
 
     pos->eTable->evalTable = threadEvalTable[0].evalTable;
@@ -979,15 +980,15 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 if(threadNum==0){
                     numberOfPvMoves = rootPv.count;
                     for (int i = 0; i < numberOfPvMoves; i++) {
-                        pos->pvArray[i] = rootPv.moves[i];
+                        pos->search->pvArray[i] = rootPv.moves[i];
                     }
                     
-                    // checkPvLegality(pos, pos->pvArray, numberOfPvMoves);
+                    // checkPvLegality(pos, pos->search->pvArray, numberOfPvMoves);
 
 
                     if(pvNum==0){
-                        workerthread->bestMove   = pos->pvArray[0];
-                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->pvArray[1] : NOMOVE;
+                        workerthread->bestMove   = pos->search->pvArray[0];
+                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
                     }
                 }
 
@@ -1050,8 +1051,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
 
             
-                if(pos->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
-                    pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->pvArray[0];
+                if(pos->search->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
+                    pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->search->pvArray[0];
                 }
             }
         }
@@ -1097,10 +1098,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 //nodesEffort: if nearly all nodes went into the current best move and
                 //we're already past a chunk of budget, stop early regardless
                 int fi, bestFi = -1;
-                for(fi=0; fi<pos->rootEffortCount; ++fi)
-                    if(pos->rootEffortMove[fi]==workerthread->bestMove){ bestFi=fi; break; }
+                for(fi=0; fi<pos->search->rootEffortCount; ++fi)
+                    if(pos->search->rootEffortMove[fi]==workerthread->bestMove){ bestFi=fi; break; }
                 int nodesEffort = (bestFi>=0 && info->nodes>0)
-                                 ? (int)((pos->rootEffortNodes[bestFi]*100000ULL)/info->nodes) : 0;
+                                 ? (int)((pos->search->rootEffortNodes[bestFi]*100000ULL)/info->nodes) : 0;
                 
                 if(currentDepth>=10 && nodesEffort>=97000 && elapsed>totalTime*0.6539){
                     info->stopped = TRUE;
@@ -1169,6 +1170,8 @@ void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINF
 
     pThread->originalPos = malloc(sizeof(S_BOARD));
     memcpy(pThread->originalPos, pos, sizeof(S_BOARD));
+    pThread->originalPos->search = malloc(sizeof(S_SEARCH_THREAD));
+    memcpy(pThread->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
 
     pThread->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
     pThread->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;

@@ -12,6 +12,23 @@
 #define NNUE_ACC_SIZE 1024
 
 
+
+typedef struct {
+    S_UNDO history[MAXGAMESMOVES]; //stores state of the board
+    int eval_stack[MAXDEPTH];
+    int reduction_stack[MAXDEPTH];
+    int moveStack[MAXDEPTH];
+    int pieceStack[MAXDEPTH];
+    int pvArray[MAXDEPTH];
+    int searchKillers[2][MAXDEPTH];
+    LowPlyHistoryTable lowPlyHistory;
+    int rootEffortMove[MAXPOSMOVES];
+    U64 rootEffortNodes[MAXPOSMOVES];
+    int rootEffortCount;
+    int rootPvMove;
+} S_SEARCH_THREAD;
+
+//Board structure
 typedef struct {
     ALIGN64 ContinuationTable    continuation;
     ALIGN64 CaptureHistoryTable  chist;
@@ -39,7 +56,7 @@ typedef struct {
     U64 pkHash; //pawn king key
     U64 npHash[2]; //non-pawn material keys, one per color (kings included)
     U64 minorHash; //minor piece key (all knights + bishops, both colors)
-    S_UNDO history[MAXGAMESMOVES]; //stores state of the board
+    S_SEARCH_THREAD *search;
     int hisPly; //total number of moves played on the board
     int psqtmat; //stores the score for the piece square table (updated while making move)
     int useFiftyMoveRule; //flag
@@ -56,16 +73,16 @@ typedef struct {
     //for search
     int ply; //search ply
     int seldepth;
-    int pvArray[MAXDEPTH];
-    int searchKillers[2][MAXDEPTH];
 
-    int eval_stack[MAXDEPTH];
-    int reduction_stack[MAXDEPTH];
-    int moveStack[MAXDEPTH];
-    int pieceStack[MAXDEPTH];
+
+
+
+
+
+
 
     //per-thread low-ply history (cleared to 102 at the start of each search)
-    LowPlyHistoryTable lowPlyHistory;
+
 
 
     int useNNUE;   // flag: use NNUE evaluation
@@ -83,7 +100,7 @@ typedef struct {
     
     int32_t nnue_acc[2][NNUE_ACC_SIZE];
 
-    int rootPvMove;
+
 
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
     int pliesFromNull;
@@ -91,9 +108,9 @@ typedef struct {
 
     S_SHARED_TABLES *shared;
 
-    int rootEffortMove[MAXPOSMOVES];
-    U64 rootEffortNodes[MAXPOSMOVES];
-    int rootEffortCount;
+
+
+
 
 } S_BOARD;
 
