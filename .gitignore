@@ -19,5 +19,6 @@ tuner_best.bin
 tuner_checkpoint.bin
 src/*.bak
 *.bak
+tools/*.sh
 
 Ethereal-12.75
