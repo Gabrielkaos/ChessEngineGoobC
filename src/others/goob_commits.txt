@@ -1731,6 +1731,7 @@
     ->de bloat board struct created search thread struct
     ->tablebase fix on mates
     ->I cant train 100m or 50m or 10m rows of positions for my pknet wtf
+    ->fixed tablebases bug where it cant find mate
     
     //GOOB-2.2-TIMEFACTOR
 

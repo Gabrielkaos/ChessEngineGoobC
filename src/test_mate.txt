@@ -1,0 +1,3 @@
+position fen 8/3KP3/8/8/5q2/5k2/8/8 b - - 0 1
+go depth 25
+quit
