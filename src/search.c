@@ -1000,6 +1000,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     }
                     
                     // checkPvLegality(pos, pos->search->pvArray, numberOfPvMoves);
+                    if(pvNum==0){
+                        workerthread->bestMove   = pos->search->pvArray[0];
+                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
+                    }
                 }
 
                 //brute force mode never aspirates, single full-window search only
@@ -1036,14 +1040,6 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 delta += delta/2;
                 if(delta > INFINITE_BOUND) delta = INFINITE_BOUND;
-            }
-
-            //commit bestMove only from a fully resolved aspiration window;
-            //if the search was interrupted mid-aspiration (e.g. time expired
-            //during a fail-high re-search), keep the previous depth's bestMove
-            if(threadNum==0 && pvNum==0 && !info->stopped){
-                workerthread->bestMove   = pos->search->pvArray[0];
-                workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
             }
 
             if(currentDepth==1 && pvNum==0 && threadNum==0){
