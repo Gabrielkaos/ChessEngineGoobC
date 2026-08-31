@@ -26,6 +26,10 @@ typedef struct {
     U64 rootEffortNodes[MAXPOSMOVES];
     int rootEffortCount;
     int rootPvMove;
+    int quietsTried[MAXDEPTH][MAXPOSMOVES];
+    int capturesTried[MAXDEPTH][MAXPOSMOVES];
+    S_MOVEPICKER movePickers[MAXDEPTH];
+    S_MOVEPICKER singularMovePickers[MAXDEPTH];
     int32_t nnue_acc[2][NNUE_ACC_SIZE];
 } S_SEARCH_THREAD;
 

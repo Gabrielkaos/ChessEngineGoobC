@@ -180,7 +180,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
         return eval;
 
-    S_MOVEPICKER mp[1];
+    S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
     initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin));
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
@@ -233,9 +233,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int ttEval          =VALUE_NONE;
     int ttHit           =FALSE;
     int quietsPlayed    =0;
-    int quietsTried[MAXPOSMOVES];
+    int *quietsTried    = pos->search->quietsTried[pos->ply];
     int capturesPlayed  =0;
-    int capturesTried[MAXPOSMOVES];
+    int *capturesTried  = pos->search->capturesTried[pos->ply];
     int hist            =0;
 
     //go to qsearch if depth<=0 AND we are not in check.
@@ -427,7 +427,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             int move_in_prob;
             //int probThresh = rBeta - staticEval;
 
-            S_MOVEPICKER probmp[1];
+            S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
             initNoisyMovePicker(probmp, rBeta - staticEval);
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
@@ -448,7 +448,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //generate the moves
-    S_MOVEPICKER mp[1];
+    S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
     initMovePicker(mp, pos, ttMove);
 
     Score = -AB_BOUND;
@@ -719,7 +719,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
     takeMove(pos);
 
     //generate the moves
-    S_MOVEPICKER smp[1];
+    S_MOVEPICKER *smp = &pos->search->singularMovePickers[pos->ply];
     initSingularMovePicker(smp, pos, ttMove);
 
     while((moveInLoop = selectNextMove(smp,pos,skipQuiets)) != NOMOVE){

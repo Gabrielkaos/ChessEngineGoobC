@@ -167,6 +167,40 @@ typedef struct {
     S_MOVE moves[MAXPOSMOVES];
 }S_MOVELIST;
 
+enum {
+    STAGE_TABLE,
+    STAGE_GENERATE_NOISY,
+    STAGE_GOOD_NOISY,
+    STAGE_KILLER_1,
+    STAGE_KILLER_2,
+    STAGE_COUNTER_MOVE,
+    STAGE_GENERATE_QUIET,
+    STAGE_QUIET,
+    STAGE_BAD_NOISY,
+    STAGE_DONE
+};
+
+enum { NORMAL_PICKER, NOISY_PICKER };
+
+typedef struct {
+    S_MOVELIST list[1];
+
+    int split;      // list->moves[0..split) are noisy, [split..list->count) are quiet
+    int noisySize;  // active un-popped count within [0, split)
+    int quietSize;  // active un-popped count within [split, split+quietSize)
+
+    int stage;
+    int type;
+    int threshold;
+
+    int tableMove;
+    int killer1;
+    int killer2;
+    int counter;
+
+    int lastStage;  // which case in selectNextMove produced the most recently returned move
+} S_MOVEPICKER;
+
 // PV Line for stack-based tracking
 typedef struct {
     int count;
