@@ -222,6 +222,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int Legal           =0;
     int bestScore       =-AB_BOUND;
     
+
+    
     S_PVLINE lpv;
     lpv.count = 0;
     if (pv != NULL) pv->count = 0;
@@ -283,6 +285,28 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     }
 
+    //Syzygy interior-node probe
+    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
+        int tbScore, tbBound;
+        if(TBProbeWDLSearch(pos, pos->ply, &tbScore, &tbBound)){
+            info->tbhits++;
+            
+            if (tbBound == HFEXACT
+                || (tbBound == HFBETA && tbScore >= beta)
+                || (tbBound == HFALPHA && tbScore <= alpha)) {
+                StoreHashEntry(pos, table, NOMOVE, tbScore, tbBound, MAXDEPTH-1, tbScore);
+                return tbScore;
+            }
+
+            if (tbBound == HFBETA) {
+                if (tbScore > alpha) alpha = tbScore;
+                if (tbScore > bestScore) bestScore = tbScore;
+            } else if (tbBound == HFALPHA) {
+                if (tbScore < beta) beta = tbScore;
+            }
+        }
+    }
+
     //SMALL PROBCUT
     //cheap TT-only cutoff: if we already have a lower-bound entry from a
     //reasonably deep search that clears beta by a solid margin, trust it
@@ -299,15 +323,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //     return smallProbCutBeta;
     // }
 
-    //Syzygy interior-node probe
-    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
-        int tbScore;
-        if(TBProbeWDLSearch(pos, pos->ply, &tbScore)){
-            info->tbhits++;
-            StoreHashEntry(pos, table, NOMOVE, tbScore, HFEXACT, MAXDEPTH-1, tbScore);
-            return tbScore;
-        }
-    }
+
 
     //store in eval_stack each staticEval
     //history stays independent of how much correction was already
@@ -984,12 +1000,6 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     }
                     
                     // checkPvLegality(pos, pos->search->pvArray, numberOfPvMoves);
-
-
-                    if(pvNum==0){
-                        workerthread->bestMove   = pos->search->pvArray[0];
-                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
-                    }
                 }
 
                 //brute force mode never aspirates, single full-window search only
@@ -1026,6 +1036,14 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 delta += delta/2;
                 if(delta > INFINITE_BOUND) delta = INFINITE_BOUND;
+            }
+
+            //commit bestMove only from a fully resolved aspiration window;
+            //if the search was interrupted mid-aspiration (e.g. time expired
+            //during a fail-high re-search), keep the previous depth's bestMove
+            if(threadNum==0 && pvNum==0 && !info->stopped){
+                workerthread->bestMove   = pos->search->pvArray[0];
+                workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
             }
 
             if(currentDepth==1 && pvNum==0 && threadNum==0){

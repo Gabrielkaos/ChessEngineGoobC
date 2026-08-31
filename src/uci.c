@@ -97,11 +97,11 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
         score = -(bounded + AB_BOUND) / 2;
         type = "mate";
     } else if (is_tb_win) {
-        score = (TB_WIN_VALUE - bounded + 1) / 2;
-        type = "mate";
+        score = bounded;
+        type = "cp";
     } else if (is_tb_loss) {
-        score = -( (bounded + TB_WIN_VALUE + 1) / 2 );
-        type = "mate";
+        score = bounded;
+        type = "cp";
     } else {
         score = bounded;
         type = "cp";

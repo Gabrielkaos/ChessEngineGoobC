@@ -50,6 +50,6 @@ int TBRootMoveAllowed(const S_BOARD *pos, int move);
 //Returns 0 if the position could not be probed (too many pieces,
 //castling rights still available, non-zero fifty-move counter, or no
 //tablebase loaded).
-int TBProbeWDLSearch(S_BOARD *pos, int ply, int *scoreOut);
+int TBProbeWDLSearch(S_BOARD *pos, int ply, int *scoreOut, int *boundOut);
 
 #endif // SYZYGY_H

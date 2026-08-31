@@ -201,7 +201,7 @@ int TBRootMoveAllowed(const S_BOARD *pos,int move){
     return 0;
 }
 
-int TBProbeWDLSearch(S_BOARD *pos,int ply,int *scoreOut){
+int TBProbeWDLSearch(S_BOARD *pos,int ply,int *scoreOut, int *boundOut){
 
     //WDL tables carry no fifty-move information, so (like Fathom's own
     //tb_probe_wdl() wrapper enforces) they're only meaningful exactly
@@ -221,17 +221,31 @@ int TBProbeWDLSearch(S_BOARD *pos,int ply,int *scoreOut){
     if(wdl == TB_RESULT_FAILED) return 0;
 
     int score;
+    int bound;
     switch(wdl){
-        case TB_WIN:          score =  (TB_WIN_VALUE - ply); break;
-        case TB_LOSS:         score = -(TB_WIN_VALUE - ply); break;
-        //A cursed win / blessed loss is a true win/loss that the 50-move
-        //rule can rescue into a draw -- score it as a draw unless the
-        //user has explicitly told us to ignore the 50-move rule.
-        case TB_CURSED_WIN:   score = Syzygy50MoveRule ? 0 :  (TB_WIN_VALUE - ply); break;
-        case TB_BLESSED_LOSS: score = Syzygy50MoveRule ? 0 : -(TB_WIN_VALUE - ply); break;
-        default:              score = 0; break; //TB_DRAW
+        case TB_WIN:          
+            score =  (TB_WIN_VALUE - ply); 
+            bound = HFBETA; 
+            break;
+        case TB_LOSS:         
+            score = -(TB_WIN_VALUE - ply); 
+            bound = HFALPHA; 
+            break;
+        case TB_CURSED_WIN:   
+            score = Syzygy50MoveRule ? 0 :  (TB_WIN_VALUE - ply); 
+            bound = Syzygy50MoveRule ? HFEXACT : HFBETA;
+            break;
+        case TB_BLESSED_LOSS: 
+            score = Syzygy50MoveRule ? 0 : -(TB_WIN_VALUE - ply); 
+            bound = Syzygy50MoveRule ? HFEXACT : HFALPHA;
+            break;
+        default:              
+            score = 0; 
+            bound = HFEXACT;
+            break; //TB_DRAW
     }
 
     *scoreOut = score;
+    *boundOut = bound;
     return 1;
 }

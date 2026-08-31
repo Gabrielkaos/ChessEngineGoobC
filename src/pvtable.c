@@ -71,6 +71,8 @@ void updateAge(S_PVTABLE *table){
 int valueFromTT(int score,int ply){
     if(score > ISMATE)       score -= ply;
     else if(score < -ISMATE) score += ply;
+    else if(score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) score -= ply;
+    else if(score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) score += ply;
 
     return score;
 }
@@ -78,6 +80,8 @@ int valueFromTT(int score,int ply){
 int valueToTT(int score,int ply){
     if(score > ISMATE)       score += ply;
     else if(score < -ISMATE) score -= ply;
+    else if(score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) score += ply;
+    else if(score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) score -= ply;
 
     return score;
 }
