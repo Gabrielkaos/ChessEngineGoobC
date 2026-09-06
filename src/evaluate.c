@@ -1181,6 +1181,24 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 }
 
 
+INLINE int ScaleWDL(int score, const S_BOARD *pos) {
+    int material = COUNTBIT(pos->bitboards[wP] | pos->bitboards[bP])
+                 + 3 * COUNTBIT(pos->bitboards[wN] | pos->bitboards[bN])
+                 + 3 * COUNTBIT(pos->bitboards[wB] | pos->bitboards[bB])
+                 + 5 * COUNTBIT(pos->bitboards[wR] | pos->bitboards[bR])
+                 + 9 * COUNTBIT(pos->bitboards[wQ] | pos->bitboards[bQ]);
+
+    if (material < 17) material = 17;
+    if (material > 78) material = 78;
+
+    double m = material / 58.0;
+
+    double as[] = {-142.72052667, 372.35176398, -340.71073572, 415.23490212};
+    double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
+
+    return (int)((score * 300.0) / a);
+}
+
 int EvalPosition(S_BOARD *pos){
 
     EVAL_INFO eval_info[1];
@@ -1203,7 +1221,7 @@ int EvalPosition(S_BOARD *pos){
     }
 
     if (!tuneMode && pos->useNNUE && nnue_loaded) {
-        int nn_score = nnue_eval(pos);
+        int nn_score = ScaleWDL(nnue_eval(pos), pos);
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
         score = nn_score + tempo;
@@ -1227,6 +1245,9 @@ int EvalPosition(S_BOARD *pos){
     //interpolate
     score = (ScoreMG(eval) * (256-pos->gamePhase)
             +  ScoreEG(eval) * pos->gamePhase * factor / SCALE_NORMAL) / 256;
+
+    //apply WDL scaling
+    score = ScaleWDL(score, pos);
 
     //store score
     if (!tuneMode) StoreTTEval(pos,score);

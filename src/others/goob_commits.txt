@@ -1739,4 +1739,8 @@
 
     //GOOB-2.2-BUTTERFLY
 
+    ->added evaluation WDL
+
+    //GOOB-2.2-EVALWDL
+
 	*/
