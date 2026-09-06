@@ -19,9 +19,9 @@ int getPawnHistory(S_BOARD *pos,int move){
 
 void clearLowPlyHistory(S_BOARD *pos){
     for(int ply = 0; ply < LOWPLY_HIST_SLOTS; ++ply)
-        for(int from = 0; from < 64; ++from)
+        for(int p = 0; p < 6; ++p)
             for(int to = 0; to < 64; ++to)
-                pos->search->lowPlyHistory[ply][from][to] = 102;
+                pos->search->lowPlyHistory[ply][p][to] = 102;
 }
 
 int getCaptureHistory(S_BOARD *pos,int move){
@@ -107,7 +107,7 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     if(fmMove==NOMOVE || fmMove==NULLMOVE)*fmhist = 0;
     else *fmhist = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
 
-    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][from][to];
+    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][piece][to];
 
     for(int slot=2;slot<CONT_HIST_SLOTS;++slot)
         total += getContEntry(pos,slot,piece,to);
@@ -143,14 +143,14 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             from  = FROMSQ(move);
             to    = TOSQ(move);
 
-            entry = pos->shared->histtable[pos->side][from][to];
+            entry = pos->shared->histtable[pos->side][piece][to];
             entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-            pos->shared->histtable[pos->side][from][to] = entry;
+            pos->shared->histtable[pos->side][piece][to] = entry;
 
             //low-ply history: only maintained near the root
             //(Stockfish: lowPlyHistory[ply][move] << bonus * 712 / 1024)
             if(pos->ply < LOWPLY_HIST_SLOTS)
-                histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][from][to],
+                histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
                                   delta * 712 / 1024, LOWPLY_HIST_MAX);
 
             //pawn history: keyed by pawn structure, so it transfers across

@@ -1735,4 +1735,8 @@
     
     //GOOB-2.2-TIMEFACTOR
 
+    ->now using Butterfly history piece-to
+
+    //GOOB-2.2-BUTTERFLY
+
 	*/

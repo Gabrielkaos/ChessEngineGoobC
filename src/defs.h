@@ -25,7 +25,7 @@ typedef uint64_t U64;
 //1, 2, 4 and 6 plies ago (counter, follow-up, plus two deeper continuations)
 enum{CONT_HIST_SLOTS=4};
 typedef int16_t ContinuationTable[CONT_HIST_SLOTS][6][64][6][64];
-typedef int16_t HistoryTable[2][64][64];
+typedef int16_t HistoryTable[2][6][64];
 typedef int16_t CaptureHistoryTable[6][64][5];
 typedef int CounterMoveTable[2][6][64];
 
@@ -33,7 +33,7 @@ typedef int CounterMoveTable[2][6][64];
 //first few plies of the search, to sharpen move ordering near the root
 enum{LOWPLY_HIST_SLOTS=5};
 #define LOWPLY_HIST_MAX 7183
-typedef int16_t LowPlyHistoryTable[LOWPLY_HIST_SLOTS][64][64];
+typedef int16_t LowPlyHistoryTable[LOWPLY_HIST_SLOTS][6][64];
 
 //Stockfish-style pawn history: [pawn structure key][piece][to], shared
 //between threads; keyed by the pawn(-king) hash like the correction tables

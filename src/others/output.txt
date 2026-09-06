@@ -4,9 +4,9 @@ info depth 20 seldepth 31 score cp 18 time 2228 nodes 3338259 hashfull 258 pv e2
 bestmove e2e4
 
 ## Output of current code GOOB - startpos
-info depth 20 seldepth 33 multipv 1 score cp 30 time 2812 nodes 3649673 hashfull 574 tbhits 0 pv e2e4 e7e6 b1c3 d7d5 d2d4 d5e4 c3e4 g8f6 e4f6 g7f6 g1f3 h8g8 c1e3 b8c6 c2c3 g8g6 d1b3 g6g4 b3b5 g4e4 a1d1
+info depth 20 seldepth 33 multipv 1 score cp 17 time 1595 nodes 2703053 hashfull 461 tbhits 0 pv e2e4 e7e6 g1f3 d7d5 e4d5 e6d5 d2d4 g8f6 f1d3 f8d6 e1g1 e8g8 b1c3 c7c6 f1e1 b8d7 c3e2 f6e4 e2g3 e4g3 h2g3 d7f6 c2c4 f8e8 e1e8 d8e8 c1g5
 bestmove e2e4
 
 fen - r2q1rk1/1bp1bpp1/p1n2n1p/1p2p3/4N3/1B1P1N2/PPPB1PPP/R2Q1RK1 w - - 1 12
-info depth 20 seldepth 28 multipv 1 score cp 15 time 3651 nodes 4067794 hashfull 591 tbhits 0 pv d1e2 d8d7 d2c3 f6e4 e2e4 e7f6 a2a4 c6a5 f3e5 b7e4 e5d7 f6c3 b2c3 e4d3 d7f8 d3f1 g1f1 g8f8 a4b5 a6b5
-bestmove d1e2
+info depth 20 seldepth 31 multipv 1 score cp 23 time 1465 nodes 2588175 hashfull 426 tbhits 0 pv f1e1 f6e4 d3e4 e7c5 b3d5 d8f6 d1e2 f8d8 b2b4 c5a7 c2c3 d8d6 a2a4 b5a4 a1a4 a8d8 b4b5 a6b5 d5c6 b5a4
+bestmove f1e1

@@ -154,7 +154,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //(Stockfish: += 8 * lowPlyHistory[ply][move] / (1 + ply))
                     if(pos->ply < LOWPLY_HIST_SLOTS)
                         mp->list->moves[i].score +=
-                            8 * pos->search->lowPlyHistory[pos->ply][FROMSQ(move)][TOSQ(move)]
+                            8 * pos->search->lowPlyHistory[pos->ply][pieceType[pos->pieces[FROMSQ(move)]]][TOSQ(move)]
                               / (1 + pos->ply);
                 }
             }
