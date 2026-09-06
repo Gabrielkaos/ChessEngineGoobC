@@ -494,7 +494,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //get history
         //get history of the move
-        hist = !quietMove ? getCaptureHistory(pos,moveInLoop):getHistory(pos,moveInLoop,&fmhist,&cmhist);
+        hist = !quietMove ? getCaptureHistory(pos,moveInLoop, mp->threats):getHistory(pos,moveInLoop,&fmhist,&cmhist, mp->threats);
 
         //Quiet late Move pruning
         if (!info->bruteForceMode && quietMove && bestScore > -ISMATE){

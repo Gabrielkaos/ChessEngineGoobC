@@ -1,5 +1,6 @@
 
 #include "history.h"
+#include "attacks.h"
 #include "some_maths.h"
 
 //Stockfish's StatsEntry operator<<: clamp bonus to [-D, D], then apply the
@@ -24,7 +25,7 @@ void clearLowPlyHistory(S_BOARD *pos){
                 pos->search->lowPlyHistory[ply][p][to] = 102;
 }
 
-int getCaptureHistory(S_BOARD *pos,int move){
+int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
     const int to   = TOSQ(move);
     const int from = FROMSQ(move);
 
@@ -34,12 +35,17 @@ int getCaptureHistory(S_BOARD *pos,int move){
     if (move & MVFLAGEP   ) captured = p_pawn;
     if (move & MVFLAGPROM   ) captured = p_pawn;
 
-    return pos->shared->chist[piece][to][captured]
+    int threat_from = (threats & (1ULL << from)) ? 1 : 0;
+    int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
+
+    return pos->shared->chist[piece][threat_from][threat_to][to][captured]
          + 64000 * (pieceType[PROMOTED(move)] == p_queen);
 }
 
 void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth){
     const int bonus = MIN(depth*depth,HistoryMax);
+    // Compute threats once per update
+    U64 threats = allAttackedSquares(pos, pos->side ^ 1);
 
     int i,move,from,to,delta,piece,captured,entry;
 
@@ -60,9 +66,12 @@ void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth)
         ASSERT(piece >= p_pawn && piece <= p_king);
         ASSERT(captured >= p_pawn && captured < p_king);
 
-        entry = pos->shared->chist[piece][to][captured];
+        int threat_from = (threats & (1ULL << from)) ? 1 : 0;
+        int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
+
+        entry = pos->shared->chist[piece][threat_from][threat_to][to][captured];
         entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-        pos->shared->chist[piece][to][captured] = entry;
+        pos->shared->chist[piece][threat_from][threat_to][to][captured] = entry;
 
     }
 
@@ -87,11 +96,14 @@ static int getContEntry(S_BOARD *pos,int slot,int piece,int to){
     return pos->shared->continuation[slot][pos->search->pieceStack[pos->ply - back]][TOSQ(move)][piece][to];
 }
 
-int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
+int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
 
     int piece = pieceType[pos->pieces[FROMSQ(move)]];
     int to    = TOSQ(move);
     int from  = FROMSQ(move);
+
+    int threat_from = (threats & (1ULL << from)) ? 1 : 0;
+    int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
     int cmMove  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1]:NOMOVE;
     int cmPiece = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
@@ -107,7 +119,7 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist){
     if(fmMove==NOMOVE || fmMove==NULLMOVE)*fmhist = 0;
     else *fmhist = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
 
-    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][piece][to];
+    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][threat_from][threat_to][piece][to];
 
     for(int slot=2;slot<CONT_HIST_SLOTS;++slot)
         total += getContEntry(pos,slot,piece,to);
@@ -130,6 +142,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
 
     if(!(length==1 && depth <= 3)){
 
+        U64 threats = allAttackedSquares(pos, pos->side ^ 1);
         int index,bonus,entry,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
 
         bonus = MIN(depth*depth,HistoryMax);
@@ -143,9 +156,12 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             from  = FROMSQ(move);
             to    = TOSQ(move);
 
-            entry = pos->shared->histtable[pos->side][piece][to];
+            int threat_from = (threats & (1ULL << from)) ? 1 : 0;
+            int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
+
+            entry = pos->shared->histtable[pos->side][threat_from][threat_to][piece][to];
             entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-            pos->shared->histtable[pos->side][piece][to] = entry;
+            pos->shared->histtable[pos->side][threat_from][threat_to][piece][to] = entry;
 
             //low-ply history: only maintained near the root
             //(Stockfish: lowPlyHistory[ply][move] << bonus * 712 / 1024)

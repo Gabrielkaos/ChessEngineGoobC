@@ -1,5 +1,6 @@
 #include "movepicker.h"
 #include "search.h"
+#include "attacks.h"
 #include "makemove.h"
 #include "history.h"
 #include "movegen.h"
@@ -68,6 +69,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             /* fallthrough */
 
         case STAGE_GENERATE_NOISY: {
+            mp->threats = allAttackedSquares(pos, pos->side ^ 1);
             GenerateAllNoisy(pos, mp->list);
             for(int i = 0; i < mp->list->count; ++i){
                 move = mp->list->moves[i].move;
@@ -75,8 +77,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 int captured = pieceType[pos->pieces[to]];
                 if(move & MVFLAGEP)   captured = p_pawn;
                 if(move & MVFLAGPROM) captured = p_pawn;
-                int attacker = pieceType[pos->pieces[FROMSQ(move)]];
-                mp->list->moves[i].score = getCaptureHistory(pos, move) + MVVAugment[captured] - attacker;
+                mp->list->moves[i].score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured];
             }
             mp->split = mp->noisySize = mp->list->count;
             mp->stage = STAGE_GOOD_NOISY;
@@ -148,7 +149,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     move = mp->list->moves[i].move;
                     //quiet score: butterfly + continuation histories plus the
                     //shared pawn-structure history (Stockfish: 2 * pawn_entry)
-                    mp->list->moves[i].score = getHistory(pos, move, &fm, &cm)
+                    mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
                                              + 2 * getPawnHistory(pos, move);
 
                     //low-ply history boost near the root, fading out with ply

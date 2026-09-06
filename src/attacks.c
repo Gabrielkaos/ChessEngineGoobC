@@ -547,6 +547,36 @@ U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
          | (get_rook_attacks(sq, occupied) & (rooks | queens))
          | (king_attacks[sq] & kings);
 }
+U64 allAttackedSquares(const S_BOARD *pos, int side) {
+    U64 attacks = 0ULL;
+    U64 occ = pos->occupancy[BOTH];
+
+    U64 pawns = side == WHITE ? pos->bitboards[wP] : pos->bitboards[bP];
+    attacks |= pawnRightAttacks(pawns, ~0ULL, side) | pawnLeftAttacks(pawns, ~0ULL, side);
+
+    U64 knights = side == WHITE ? pos->bitboards[wN] : pos->bitboards[bN];
+    while(knights) {
+        attacks |= knight_attacks[LSBINDEX(knights)];
+        knights &= knights - 1;
+    }
+
+    U64 kings = side == WHITE ? pos->bitboards[wK] : pos->bitboards[bK];
+    if(kings) attacks |= king_attacks[LSBINDEX(kings)];
+
+    U64 bishops = side == WHITE ? (pos->bitboards[wB] | pos->bitboards[wQ]) : (pos->bitboards[bB] | pos->bitboards[bQ]);
+    while(bishops) {
+        attacks |= get_bishop_attacks(LSBINDEX(bishops), occ);
+        bishops &= bishops - 1;
+    }
+
+    U64 rooks = side == WHITE ? (pos->bitboards[wR] | pos->bitboards[wQ]) : (pos->bitboards[bR] | pos->bitboards[bQ]);
+    while(rooks) {
+        attacks |= get_rook_attacks(LSBINDEX(rooks), occ);
+        rooks &= rooks - 1;
+    }
+
+    return attacks;
+}
 
 U64 attackersToKingSq(const S_BOARD *pos,int side){
     ASSERT(SideValid(side));
