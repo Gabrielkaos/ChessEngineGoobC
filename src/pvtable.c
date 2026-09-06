@@ -11,11 +11,11 @@
 
 
 #define EXTRACT_SCORE(x) ((int)((x & 0xFFFF) - INFINITE_BOUND))
-#define EXTRACT_DEPTH(x) ((int)((x >> 16) & 0x7F))
+#define EXTRACT_DEPTH(x) ((int)(int8_t)((x >> 16) & 0xFF))
 #define EXTRACT_FLAGS(x) ((int)((x >> 24) & 0x3))
 #define EXTRACT_MOVE(x) ((int)(x>>26))
 
-#define FOLD_DATA(sc,de,fl,mv) ((sc + INFINITE_BOUND) | (de << 16) | (fl << 24) | ((U64)mv << 26))
+#define FOLD_DATA(sc,de,fl,mv) ((U64)(sc + INFINITE_BOUND) | ((U64)(de & 0xFF) << 16) | ((U64)(fl & 0x3) << 24) | ((U64)mv << 26))
 
 
 void DataCheck(int move){
@@ -153,7 +153,7 @@ void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table,const int move, int score, co
             // same position — always allowed to overwrite, but keep your
             // existing depth-preference guard for non-exact bounds
             int existingDepth = EXTRACT_DEPTH(bucket->entries[i].smp_data);
-            if(flags != HFEXACT && depth < existingDepth - 3) return;
+            if((flags != HFEXACT || depth < 0) && depth < existingDepth - 3) return;
             replaceIdx = i;
             break;
         }
