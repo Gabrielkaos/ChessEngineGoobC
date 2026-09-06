@@ -1743,7 +1743,6 @@
 
     //GOOB-2.2-EVALWDL
 
-    ->storing TT in Quiescence
     -> 4 ply lookback at improving
     ->futility pruning added !isSpecial
     ->extension ttBound >=HFBETA instead of ==

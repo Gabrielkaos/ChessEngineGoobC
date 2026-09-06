@@ -169,7 +169,6 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     //standing pat: save the static eval, then use it as our floor
     int eval = pos->search->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
-    int oldAlpha = alpha;
     best = eval;
     alpha = MAX(alpha, eval);
     if(alpha >= beta) return eval;
@@ -185,7 +184,6 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
     initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin), ttMove);
-    int bestMove = NOMOVE;
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
@@ -197,17 +195,13 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(value>best){
             best = value;
-            bestMove = moveInLoop;
             if(value>alpha){
                 alpha=value;
             }
         }
 
-        if(alpha>=beta) break;
+        if(alpha>=beta)return best;
     }
-
-    ttBound = best >= beta ? HFBETA : (best > oldAlpha ? HFEXACT : HFALPHA);
-    StoreHashEntry(pos, table, bestMove, best, ttBound, 0, eval);
 
     return best;
 }
