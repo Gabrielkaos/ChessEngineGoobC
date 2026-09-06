@@ -169,6 +169,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     //standing pat: save the static eval, then use it as our floor
     int eval = pos->search->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int oldAlpha = alpha;
     best = eval;
     alpha = MAX(alpha, eval);
     if(alpha >= beta) return eval;
@@ -180,8 +181,11 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
         return eval;
 
+    if (ttMove != NOMOVE && !moveIsTactical(pos, ttMove)) ttMove = NOMOVE;
+
     S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
-    initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin));
+    initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin), ttMove);
+    int bestMove = NOMOVE;
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
@@ -193,13 +197,17 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(value>best){
             best = value;
+            bestMove = moveInLoop;
             if(value>alpha){
                 alpha=value;
             }
         }
 
-        if(alpha>=beta)return best;
+        if(alpha>=beta) break;
     }
+
+    ttBound = best >= beta ? HFBETA : (best > oldAlpha ? HFEXACT : HFALPHA);
+    StoreHashEntry(pos, table, bestMove, best, ttBound, 0, eval);
 
     return best;
 }
@@ -335,7 +343,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         inCheck ? rawEval : correctedStaticEval(pos, rawEval);
 
     //see if we improved on the last position
-    improving = pos->ply >= 2 && staticEval>pos->search->eval_stack[pos->ply-2];
+    improving = (!inCheck && pos->ply >= 2) ? (staticEval > pos->search->eval_stack[pos->ply-2] || (pos->ply >= 4 && staticEval > pos->search->eval_stack[pos->ply-4])) : 1;
 
 
     //hindsight depth adjustment based on how much the parent reduced
@@ -444,7 +452,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //int probThresh = rBeta - staticEval;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
-            initNoisyMovePicker(probmp, rBeta - staticEval);
+            initNoisyMovePicker(probmp, rBeta - staticEval, NOMOVE);
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
                 if (!makeMove(pos,move_in_prob))continue;
@@ -501,14 +509,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //checking if this position is likely to improve
             //if not then we skip it
             if (   depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin * depth) <= alpha
-                && hist < FutilityPruningHistoryLimit[improving]){
+                && (staticEval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
                     skipQuiets = 1;
                 }
 
-            if (   depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
-                    skipQuiets = 1;
+            if (   !skipQuiets
+                && !isSpecial
+                && depth <= FutilityPruningDepth
+                && (staticEval + FutilityMargin * depth) <= alpha
+                && hist < FutilityPruningHistoryLimit[improving]){
+                    continue;
                 }
 
             //if weve searched for quite a while Late moves that are quiet are pruned based on threshold
@@ -562,7 +572,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      &&  depth >= 8
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
-                     && (ttBound == HFBETA)
+                     && (ttBound >= HFBETA)
                      && !isShuffling(pos, moveInLoop);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
@@ -593,6 +603,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R += inCheck && pieceKing[pos->pieces[TOSQ(moveInLoop)]];
 
             R -= isSpecial;
+
+            R += cutNode;
 
             R -= MAX(-2, MIN(2, hist / 5000));
 
@@ -1105,7 +1117,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 double totalTime = (info->optimumTime - info->starttime)
                                   * fallingEval * reduction * bestMoveInstability;
                 
-                if(rootLegalMoves == 1 && totalTime > 500.0) totalTime = 500.0;
+                if(rootLegalMoves == 1 && totalTime > 5.0) totalTime = 5.0;
                 
                 int elapsed = getTimeMs() - info->starttime;
                 

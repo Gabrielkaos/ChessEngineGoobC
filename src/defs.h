@@ -64,7 +64,7 @@ typedef int16_t ContCorrectionTable[6][64][6][64];
 #define NOMOVE 0
 #define NULLMOVE 507904
 
-#define TT_BUCKET_SIZE 3
+#define TT_BUCKET_SIZE 4
 
 enum{p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king};
 enum{PAWN=1,KNIGHT,BISHOP,ROOK,QUEEN,KING};
@@ -142,11 +142,11 @@ typedef struct{
     int depth;
     int flags;*/
 
-    int eval;
-    int generation;
-
-    U64 smp_key;
     U64 smp_data;
+    uint32_t smp_key;
+    int16_t eval;
+    uint8_t generation;
+    uint8_t padding;
 
 } S_PVENTRY;
 
@@ -185,7 +185,9 @@ enum { NORMAL_PICKER, NOISY_PICKER };
 typedef struct {
     S_MOVELIST list[1];
 
-    int split;      // list->moves[0..split) are noisy, [split..list->count) are quiet
+    int split;
+    S_MOVE badNoisies[128];
+    int badNoisyCount;
     int noisySize;  // active un-popped count within [0, split)
     int quietSize;  // active un-popped count within [split, split+quietSize)
 

@@ -140,14 +140,14 @@ void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table,const int move, int score, co
 
     score = valueToTT(score,pos->ply);
     U64 new_data = FOLD_DATA(score,depth,flags,move);
-    U64 new_key  = pos->posKey ^ new_data;
+    uint32_t new_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ new_data ^ (new_data >> 32));
 
     // 1. Look for an existing entry with the same key (update in place)
     int replaceIdx = -1;
     int worstScore = INT32_MAX;
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        U64 test_key = pos->posKey ^ bucket->entries[i].smp_data;
+        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
 
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0){
             // same position — always allowed to overwrite, but keep your
@@ -186,7 +186,7 @@ int ProbePvTable(const S_BOARD *pos, S_PVTABLE *table){
     S_PVBUCKET *bucket = &table->pTable[index];
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        U64 test_key = pos->posKey ^ bucket->entries[i].smp_data;
+        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0)
             return EXTRACT_MOVE(bucket->entries[i].smp_data);
     }
@@ -199,7 +199,7 @@ int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *tt
     S_PVBUCKET *bucket = &table->pTable[index];
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        U64 test_key = pos->posKey ^ bucket->entries[i].smp_data;
+        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0){
             bucket->entries[i].generation = table->generation;   // refresh on hit
             *ttEval  = bucket->entries[i].eval;

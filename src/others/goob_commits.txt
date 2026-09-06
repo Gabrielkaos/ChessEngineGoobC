@@ -1743,4 +1743,12 @@
 
     //GOOB-2.2-EVALWDL
 
+    ->storing TT in Quiescence
+    -> 4 ply lookback at improving
+    ->futility pruning added !isSpecial
+    ->extension ttBound >=HFBETA instead of ==
+    ->added cutNode extension
+    ->5ms if 1 root legal move
+    ->added mvvlva removed the < 0 skip of noisy moves
+
 	*/

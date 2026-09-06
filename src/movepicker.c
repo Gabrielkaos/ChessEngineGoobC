@@ -26,6 +26,7 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->tableMove   = ttMove;
     mp->threshold   = 0;
     mp->type        = NORMAL_PICKER;
+    mp->badNoisyCount = 0;
 
     int counter  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1] : NOMOVE;
     int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
@@ -42,12 +43,14 @@ void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->stage = STAGE_GENERATE_NOISY;   // skip offering ttMove a second time
 }
 
-void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold){
+void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove){
     mp->list->count = 0;
-    mp->stage       = STAGE_GENERATE_NOISY;
-    mp->tableMove = mp->killer1 = mp->killer2 = mp->counter = NOMOVE;
+    mp->stage       = STAGE_TABLE;
+    mp->tableMove = ttMove;
+    mp->killer1 = mp->killer2 = mp->counter = NOMOVE;
     mp->threshold   = threshold;
     mp->type        = NOISY_PICKER;
+    mp->badNoisyCount = 0;
 }
 
 int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
@@ -72,7 +75,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 int captured = pieceType[pos->pieces[to]];
                 if(move & MVFLAGEP)   captured = p_pawn;
                 if(move & MVFLAGPROM) captured = p_pawn;
-                mp->list->moves[i].score = getCaptureHistory(pos, move) + MVVAugment[captured];
+                int attacker = pieceType[pos->pieces[FROMSQ(move)]];
+                mp->list->moves[i].score = getCaptureHistory(pos, move) + MVVAugment[captured] - attacker;
             }
             mp->split = mp->noisySize = mp->list->count;
             mp->stage = STAGE_GOOD_NOISY;
@@ -82,15 +86,12 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
         case STAGE_GOOD_NOISY:
             while(mp->noisySize){
                 best = mp_getBestIndex(mp->list->moves, 0, mp->noisySize);
+                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, best);
 
-                if(mp->list->moves[best].score < 0) break; // rest are worse - defer to STAGE_BAD_NOISY
-
-                if(!StaticExchangeEvaluation(pos, mp->list->moves[best].move, mp->threshold)){
-                    mp->list->moves[best].score = -1;
+                if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
+                    mp->badNoisies[mp->badNoisyCount++].move = move;
                     continue;
                 }
-
-                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, best);
 
                 if(move == mp->tableMove) continue;
                 if(move == mp->killer1) mp->killer1 = NOMOVE;
@@ -178,8 +179,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             /* fallthrough */
 
         case STAGE_BAD_NOISY:
-            if(mp->noisySize && mp->type != NOISY_PICKER){
-                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, 0);
+            if(mp->badNoisyCount && mp->type != NOISY_PICKER){
+                move = mp->badNoisies[--mp->badNoisyCount].move;
 
                 if(move == mp->tableMove || move == mp->killer1 ||
                    move == mp->killer2  || move == mp->counter)
