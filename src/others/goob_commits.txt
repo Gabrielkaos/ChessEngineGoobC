@@ -1767,6 +1767,15 @@
     ->Stockfish-style NNUE Accumulator Invalidation & Lazy Evaluation
     ->inline functions at attack and bitboards
     ->implemented stockfish style repetition recognizer
+    ->added flto and pgo
+    ->added showWDL in uci
+    ->aligned malloc for 64 bit in TT
+    ->added PREFETCHING of TT after makeMove
+    ->added allNode IIR
+    ->added shallower depth for singular extension from 8 > 7
+    ->added pawnHist for LMR reduction
+    ->added more granular LMR for non quiet moves
+    ->added more smooth PreviousAverageScore for time management
     ->
 
 	*/

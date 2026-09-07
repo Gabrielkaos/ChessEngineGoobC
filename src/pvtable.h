@@ -19,4 +19,11 @@ extern int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,
 extern void TestHASH(char *fen);
 extern int runTTReplacementTests(void);
 
+// Software prefetch: load the TT bucket into L2 cache before we need it,
+// hiding the ~60-200 cycle DRAM latency.  Call right after makeMove().
+INLINE void prefetchTT(S_PVTABLE *table, U64 key) {
+    int index = key & (table->numEntries - 1);
+    __builtin_prefetch(&table->pTable[index], 0, 1);
+}
+
 #endif //PVTABLE_H

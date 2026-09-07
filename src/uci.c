@@ -110,8 +110,38 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
     char *bound = bounded >=  beta ? " lowerbound "
                 : bounded <= alpha ? " upperbound " : " ";
 
-    printf("info depth %d seldepth %d multipv %d score %s %d%stime %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
-           currentDepth, pos->seldepth, multiPvNum, type, score,bound, elapsed, info->nodes,hashfullTT(table),info->tbhits);
+    printf("info depth %d seldepth %d multipv %d score %s %d%s", currentDepth, pos->seldepth, multiPvNum, type, score, bound);
+
+    //WDL: convert centipawn score to win/draw/loss milliprobabilities
+    //using a logistic model.  For mate/TB scores, use exact values.
+    if(info->showWDL){
+        int wdl_w, wdl_d, wdl_l;
+        if(bounded >= ISMATE){
+            wdl_w = 1000; wdl_d = 0; wdl_l = 0;
+        } else if(bounded <= -ISMATE){
+            wdl_w = 0; wdl_d = 0; wdl_l = 1000;
+        } else if(is_tb_win){
+            wdl_w = 1000; wdl_d = 0; wdl_l = 0;
+        } else if(is_tb_loss){
+            wdl_w = 0; wdl_d = 0; wdl_l = 1000;
+        } else {
+            //sigmoid: P(win) = 1 / (1 + exp(-score / 111.714))
+            //with a draw model: P(draw) = 1 - P(win) - P(loss)
+            double s = (double)bounded / 111.714;
+            double pw = 1.0 / (1.0 + exp(-s));
+            double pl = 1.0 / (1.0 + exp(s));
+            double pd = 1.0 - pw - pl;
+            if(pd < 0.0) pd = 0.0;
+            wdl_w = (int)(pw * 1000.0 + 0.5);
+            wdl_d = (int)(pd * 1000.0 + 0.5);
+            wdl_l = 1000 - wdl_w - wdl_d;
+            if(wdl_l < 0) wdl_l = 0;
+        }
+        printf("wdl %d %d %d ", wdl_w, wdl_d, wdl_l);
+    }
+
+    printf("time %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
+           elapsed, info->nodes, hashfullTT(table), info->tbhits);
 
     //pv printing
     printf("pv");
@@ -367,6 +397,12 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string SyzygyProbeLimit set to %d\n",SyzygyProbeLimit);
     }
 
+    else if (!strncmp(line, "setoption name UCI_ShowWDL value ", 33)) {
+        char *ptrTrue = strstr(line, "true");
+        info->showWDL = (ptrTrue != NULL);
+        printf("info string UCI_ShowWDL set to %s\n", info->showWDL ? "true" : "false");
+    }
+
 }
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
@@ -592,6 +628,7 @@ void uciPrint(){
     printf("option name SyzygyProbeDepth type spin default 1 min 0 max 100\n");
     printf("option name Syzygy50MoveRule type check default true\n");
     printf("option name SyzygyProbeLimit type spin default 7 min 0 max 7\n");
+    printf("option name UCI_ShowWDL type check default false\n");
     printf("uciok\n");
 }
 
@@ -616,6 +653,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     pos->usePKNet                =FALSE;
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
+    info->showWDL                =FALSE;
 
     ParseFEN(START_FEN, pos);
 

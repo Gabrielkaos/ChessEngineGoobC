@@ -193,6 +193,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         if(!legal(pos, moveInLoop)) continue;
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
+        prefetchTT(table, pos->st->posKey);
         value=-Quiescence(-beta,-alpha,pos,info,table);
         takeMove(pos);
 
@@ -430,9 +431,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
-    //IIR
-    if(!info->bruteForceMode && !allNode && depth>=IIRDepth && ttMove==NOMOVE)
-        depth--;
+    //IIR — reduce depth when no TT move is available.
+    //All-nodes get a stronger reduction (-2) since they are least likely
+    //to have a useful move from the TT.
+    if(!info->bruteForceMode && depth>=IIRDepth && ttMove==NOMOVE)
+        depth -= (1 + allNode);
 
     //PROBCUT
     //prune unlikely moves
@@ -458,6 +461,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if (!legal(pos, move_in_prob)) continue;
                 StateInfo probSt;
                 makeMove(pos, move_in_prob, &probSt);
+                prefetchTT(table, pos->st->posKey);
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
@@ -503,6 +507,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //get history
         //get history of the move
         hist = !quietMove ? getCaptureHistory(pos,moveInLoop, mp->threats):getHistory(pos,moveInLoop,&fmhist,&cmhist, mp->threats);
+
+        //pawn history: orthogonal signal based on pawn structure
+        int pawnHist = quietMove ? getPawnHistory(pos, moveInLoop) : 0;
 
         //Quiet late Move pruning
         if (!info->bruteForceMode && quietMove && bestScore > -ISMATE){
@@ -561,6 +568,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!legal(pos, moveInLoop)) continue;
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
+        prefetchTT(table, pos->st->posKey);
         Legal++;
 
         //uci report the current move
@@ -573,7 +581,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //then we search this line deeper
         if(!info->bruteForceMode){
             singular = !rootNode
-                     &&  depth >= 8
+                     &&  depth >= 7
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
                      && (ttBound >= HFBETA)
@@ -610,7 +618,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += cutNode;
 
-            R -= MAX(-2, MIN(2, hist / 5000));
+            R -= MAX(-2, MIN(2, (hist + pawnHist) / 5000));
 
             //scale up reduction further at expected all-nodes, proportional to
             //existing R rather than a flat bump, so it doesn't dominate at low depth
@@ -619,9 +627,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = MIN(depth - 1, MAX(R, 1));
         }
         //for non quiet moves
-        //we reduce search based on their performance history
+        //we reduce search based on their performance history (more granular)
         else if (!quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
-            R = MIN(depth - 1, MAX(1, MIN(3, 3 - (hist + 4000) / 2000)));
+            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
+            R += !pvNode;
+            R -= MAX(-2, MIN(2, hist / 5000));
+            R = MIN(depth - 1, MAX(R, 1));
         }else{
             R = 1;
         }
@@ -761,6 +772,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         if(!legal(pos, moveInLoop)) continue;
         StateInfo singSt;
         makeMove(pos, moveInLoop, &singSt);
+        prefetchTT(table, pos->st->posKey);
         value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE, NULL);
         takeMove(pos);
         if(info->stopped==TRUE)break;
@@ -1177,7 +1189,12 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     }
     if (threadNum == 0) {
         info->bestPreviousScore = pvScore[0];
-        info->bestPreviousAverageScore = pvScore[0];
+        //running average: smooth the fallingEval TM signal across moves
+        //to prevent overreaction to single-depth score fluctuations
+        info->bestPreviousAverageScore =
+            (info->bestPreviousAverageScore != INFINITE_BOUND)
+            ? (info->bestPreviousAverageScore + pvScore[0]) / 2
+            : pvScore[0];
     }
 }
 

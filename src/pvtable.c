@@ -124,7 +124,7 @@ void InitPvTable(S_PVTABLE *table,const int mb,int noisy){
 
     if(table->pTable != NULL) free(table->pTable);
 
-    table->pTable=(S_PVBUCKET *) malloc(table->numEntries*sizeof(S_PVBUCKET));
+    table->pTable=(S_PVBUCKET *) aligned_alloc(64, table->numEntries*sizeof(S_PVBUCKET));
 
     if(table->pTable==NULL){
         if(noisy)printf("info string PV HashTable Initialization failed with %d MB\n",mb);

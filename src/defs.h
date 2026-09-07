@@ -281,6 +281,7 @@ typedef struct {
     //thread
     int threadNum;
     int depthOneComplete;
+    int showWDL;
 
 } S_SEARCHINFO;
 

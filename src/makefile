@@ -65,8 +65,8 @@ SRCS := $(wildcard *.c)
 # -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
 #               path; the inner #ifdef __BMI2__ guard makes it a no-op on
 #               CPUs that do not have BMI2.
-BASE_CFLAGS := -O3 $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
-LDFLAGS     := -lm
+BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
+LDFLAGS     := -lm -flto=auto
 
 # ---------------------------------------------------------------------------
 # Per-ISA march flags
@@ -170,6 +170,32 @@ endif
 # ---------------------------------------------------------------------------
 .PHONY: rebuild
 rebuild: clean all
+
+# ---------------------------------------------------------------------------
+# Profile-Guided Optimization (PGO) — native tier only
+# Three-phase build: instrument → profile → optimise.  Yields ~5-10% NPS.
+# ---------------------------------------------------------------------------
+PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate
+PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use -fno-peel-loops -fno-tracer
+PGO_OBJS_GEN    := $(patsubst %.c, obj/pgo-gen/%.o, $(SRCS))
+PGO_OBJS_USE    := $(patsubst %.c, obj/pgo-use/%.o, $(SRCS))
+PGO_BIN_GEN     := $(OUTDIR)/$(NAME)-pgo-gen$(EXE)
+PGO_BIN         := $(OUTDIR)/$(NAME)-native$(EXE)
+
+.PHONY: pgo
+pgo:
+	@echo "=== PGO Phase 1: instrumented build ==="
+	$(MKDIR) obj/pgo-gen
+	$(MKDIR) $(OUTDIR)
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo-gen/$(basename $(src)).o;)
+	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS_GEN) -o $(PGO_BIN_GEN) $(LDFLAGS)
+	@echo "=== PGO Phase 2: collecting profile ==="
+	$(PGO_BIN_GEN) bench || true
+	@echo "=== PGO Phase 3: optimised build ==="
+	$(MKDIR) obj/pgo-use
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo-use/$(basename $(src)).o;)
+	$(CC) $(PGO_CFLAGS_USE) $(PGO_OBJS_USE) -o $(PGO_BIN) $(LDFLAGS)
+	@echo "  LD  $(PGO_BIN) (PGO)"
 
 # ---------------------------------------------------------------------------
 # Auto-generated header dependency includes (-MMD -MP)
