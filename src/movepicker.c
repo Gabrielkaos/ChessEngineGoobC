@@ -142,11 +142,45 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
         case STAGE_GENERATE_QUIET:
             if(!skipQuiets){
                 int fm, cm;
+                
+                U64 threatByLesser[6];
+                int enemy = pos->side ^ 1;
+                U64 enemyPawns   = (enemy == WHITE) ? pos->bitboards[wP] : pos->bitboards[bP];
+                U64 enemyKnights = (enemy == WHITE) ? pos->bitboards[wN] : pos->bitboards[bN];
+                U64 enemyBishops = (enemy == WHITE) ? pos->bitboards[wB] : pos->bitboards[bB];
+                U64 enemyRooks   = (enemy == WHITE) ? pos->bitboards[wR] : pos->bitboards[bR];
+                U64 occ = pos->occupancy[BOTH];
+
+                U64 pawnAttacks = pawnRightAttacks(enemyPawns, ~0ULL, enemy) | pawnLeftAttacks(enemyPawns, ~0ULL, enemy);
+                
+                U64 knightAttacks = 0ULL;
+                U64 temp = enemyKnights;
+                while(temp) { knightAttacks |= knight_attacks[LSBINDEX(temp)]; temp &= temp - 1; }
+                
+                U64 bishopAttacks = 0ULL;
+                temp = enemyBishops;
+                while(temp) { bishopAttacks |= get_bishop_attacks(LSBINDEX(temp), occ); temp &= temp - 1; }
+                
+                U64 rookAttacks = 0ULL;
+                temp = enemyRooks;
+                while(temp) { rookAttacks |= get_rook_attacks(LSBINDEX(temp), occ); temp &= temp - 1; }
+
+                threatByLesser[p_pawn] = 0;
+                threatByLesser[p_knight] = pawnAttacks;
+                threatByLesser[p_bishop] = pawnAttacks;
+                threatByLesser[p_rook]   = pawnAttacks | knightAttacks | bishopAttacks;
+                threatByLesser[p_queen]  = threatByLesser[p_rook] | rookAttacks;
+                threatByLesser[p_king]   = 0;
+
                 int startCount = mp->list->count; // == mp->split
                 GenerateAllQuiet(pos, mp->list);   // appends
                 mp->quietSize = mp->list->count - startCount;
                 for(int i = mp->split; i < mp->list->count; ++i){
                     move = mp->list->moves[i].move;
+                    int from = FROMSQ(move);
+                    int to = TOSQ(move);
+                    int pType = pieceType[pos->pieces[from]];
+                    
                     //quiet score: butterfly + continuation histories plus the
                     //shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
@@ -156,8 +190,15 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //(Stockfish: += 8 * lowPlyHistory[ply][move] / (1 + ply))
                     if(pos->ply < LOWPLY_HIST_SLOTS)
                         mp->list->moves[i].score +=
-                            8 * pos->search->lowPlyHistory[pos->ply][pieceType[pos->pieces[FROMSQ(move)]]][TOSQ(move)]
+                            8 * pos->search->lowPlyHistory[pos->ply][pType][to]
                               / (1 + pos->ply);
+                              
+                    // penalty for moving to a square threatened by a lesser piece
+                    // or bonus for escaping an attack by a lesser piece.
+                    int v = 20 * ((threatByLesser[pType] & (1ULL << from) ? 1 : 0) - 
+                                  (threatByLesser[pType] & (1ULL << to) ? 1 : 0));
+                    int piece_value_lookup = (pos->side == WHITE) ? (wP + pType) : (bP + pType);
+                    mp->list->moves[i].score += SEEPieceValues[piece_value_lookup] * v;
                 }
             }
             mp->stage = STAGE_QUIET;

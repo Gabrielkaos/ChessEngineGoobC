@@ -1751,5 +1751,8 @@
     ->added mvvlva removed the < 0 skip of noisy moves
     ->added ttmove in Quiescence move ordering
     ->added threats to history table 
+    ->added threatbyLesser penalty to quiet moves
+    ->fixed pos->search memory leakage
+    ->added safeguard to bestmove returns
 
 	*/

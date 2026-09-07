@@ -827,7 +827,10 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 
     occupied = pos->occupancy[BOTH];
     occupied = (occupied ^ (1ull << from)) | (1ull << to);
-    if(isEnpassant) occupied ^= (1ull << pos->enPas);
+    if(isEnpassant) {
+        int epCapSq = (pos->side == WHITE) ? to - 8 : to + 8;
+        occupied ^= (1ull << epCapSq);
+    }
 
     attackers = allAttackersToSquare(pos,occupied,to) & occupied;
 
@@ -877,8 +880,9 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 int SearchPositionThread(void *data){
     THREAD_DATA *thread_data = (THREAD_DATA*)data;
     S_BOARD *pos = malloc(sizeof(S_BOARD));
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
     memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
+    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    memcpy(pos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
 
     pos->eTable->evalTable = threadEvalTable[0].evalTable;
     pos->eTable->numEntries = threadEvalTable[0].numEntries;
@@ -888,6 +892,7 @@ int SearchPositionThread(void *data){
 
     SearchPosition(pos, thread_data->info, thread_data->ttable);
 
+    free(pos->search);
     free(pos);
     free(thread_data);
     return 0;
@@ -1163,6 +1168,24 @@ int startWorkerThreads(void *data){
     IterativeDeepening(thread_data);
 
     if (thread_data->threadNumber==0){
+        //safety net: verify the bestmove is actually legal before sending it
+        //to the GUI — a TT collision or threading issue could leave a stale
+        //move that passed makeMove in a different internal state
+        if(thread_data->bestMove != NOMOVE &&
+           !MoveExists(thread_data->originalPos, thread_data->bestMove)){
+            S_MOVELIST fallbackList[1];
+            GenerateAllMoves(thread_data->originalPos, fallbackList);
+            thread_data->bestMove = NOMOVE;
+            thread_data->ponderMove = NOMOVE;
+            for(int i=0; i<fallbackList->count; ++i){
+                if(makeMove(thread_data->originalPos, fallbackList->moves[i].move)){
+                    takeMove(thread_data->originalPos);
+                    thread_data->bestMove = fallbackList->moves[i].move;
+                    break;
+                }
+            }
+        }
+
         if(thread_data->info->setOptionPonder){
             if(thread_data->ponderMove != NOMOVE){
                 printf("bestmove %s ",PrMove(thread_data->bestMove));
