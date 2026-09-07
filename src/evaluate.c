@@ -15,7 +15,7 @@
 #include "pknet_loader.h"
 
 /*General*/
-int PSQTMATTABLE[13][64];
+int PSQTMATTABLE[16][64];
 int DistanceBetween[64][64];
 int tuneMode = 0;
 int distanceBetween(int sq1,int sq2){
@@ -363,11 +363,11 @@ TUNABLE int tempo = 20;
 
 INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
         int evaluation=0;
-        int oppRank=ranksBoard[oppKing];
-        int oppFile=filesBoard[oppKing];
+        int oppRank=RANK_OF(oppKing);
+        int oppFile=FILE_OF(oppKing);
 
         evaluation+=(MAX(3-oppFile,oppFile-4)+MAX(3-oppRank,oppRank-4));
-        evaluation-=(abs(filesBoard[friendKing]-oppFile)+abs(ranksBoard[friendKing]-oppRank));
+        evaluation-=(abs(FILE_OF(friendKing)-oppFile)+abs(RANK_OF(friendKing)-oppRank));
 
         return S(0,evaluation*2);
 
@@ -376,11 +376,11 @@ INLINE int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing){
 
 INLINE int evaluateChess960Trapped(S_BOARD *pos,int color){
 
-    U64 ourBishop    = color==WHITE ? pos->bitboards[wB] : pos->bitboards[bB];
-    U64 ourPawns     = color==WHITE ? pos->bitboards[wP] : pos->bitboards[bP];
-    U64 ourRooks     = color==WHITE ? pos->bitboards[wR] : pos->bitboards[bR];
-    U64 ourKings     = color==WHITE ? pos->bitboards[wK] : pos->bitboards[bK];
-    U64 ourOccupancy = color==WHITE ? pos->occupancy[WHITE] : pos->occupancy[BLACK];
+    U64 ourBishop    = pieces_cp(pos, color, BISHOP);
+    U64 ourPawns     = pieces_cp(pos, color, PAWN);
+    U64 ourRooks     = pieces_cp(pos, color, ROOK);
+    U64 ourKings     = pieces_cp(pos, color, KING);
+    U64 ourOccupancy = pos->byColorBB[color];
 
     int flag;
     int eval=0;
@@ -407,7 +407,7 @@ INLINE int evaluateChess960Trapped(S_BOARD *pos,int color){
 
     //bishop trapped
     if(testBit(ourBishop,A8) && testBit(ourPawns,B7)){
-        flag=!!testBit(pos->occupancy[BLACK],B6);
+        flag=!!testBit(pos->byColorBB[BLACK],B6);
         eval+=BishopTrapped[flag];
     }
     if(testBit(ourBishop,H8) && testBit(ourPawns,G7)){
@@ -433,25 +433,28 @@ INLINE int evaluateKingsPawns(S_BOARD *pos,EVAL_INFO *eval_info, int colour) {
     int dist, blocked;
     int eval=0;
 
-    U64 myPawns     = eval_info->pawnsBB & pos->occupancy[  US];
-    U64 enemyPawns  = eval_info->pawnsBB & pos->occupancy[THEM];
+    U64 myPawns     = pieces_cp(pos, US, PAWN);
+    U64 enemyPawns  = pieces_cp(pos, THEM, PAWN);
 
     int kingSq = eval_info->kingSq[US];
 
     dist = kingPawnFileDistance(eval_info->pawnsBB, kingSq);
     eval += KingPawnFileProximity[dist];
 
-    for (int file = MAX(0, filesBoard[kingSq] - 1); file <= MIN(8 - 1, filesBoard[kingSq] + 1); file++) {
+    int kFile = FILE_OF(kingSq);
+    int kRank = RANK_OF(kingSq);
 
-        U64 ours = myPawns & FileBBMask[file] & forwardRanksMasks(US, ranksBoard[kingSq]);
-        int ourDist = !ours ? 7 : abs(ranksBoard[kingSq] - ranksBoard[backmost(US, ours)]);
+    for (int file = MAX(0, kFile - 1); file <= MIN(8 - 1, kFile + 1); file++) {
 
-        U64 theirs = enemyPawns & FileBBMask[file] & forwardRanksMasks(US, ranksBoard[kingSq]);
-        int theirDist = !theirs ? 7 : abs(ranksBoard[kingSq] - ranksBoard[backmost(US, theirs)]);
+        U64 ours = myPawns & FileBBMask[file] & forwardRanksMasks(US, kRank);
+        int ourDist = !ours ? 7 : abs(kRank - RANK_OF(backmost(US, ours)));
 
-        eval += KingShelter[file == filesBoard[kingSq]][file][ourDist];
+        U64 theirs = enemyPawns & FileBBMask[file] & forwardRanksMasks(US, kRank);
+        int theirDist = !theirs ? 7 : abs(kRank - RANK_OF(backmost(US, theirs)));
 
-        eval_info->pkSafety[US] += SafetyShelter[file == filesBoard[kingSq]][ourDist];
+        eval += KingShelter[file == kFile][file][ourDist];
+
+        eval_info->pkSafety[US] += SafetyShelter[file == kFile][ourDist];
 
         blocked = (ourDist != 7 && (ourDist == theirDist - 1));
         eval += KingStorm[blocked][mirrorFile(file)][theirDist];
@@ -464,25 +467,24 @@ INLINE int evaluateKingsPawns(S_BOARD *pos,EVAL_INFO *eval_info, int colour) {
 
 
 INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
-    int sq,pce;
+    int sq;
     int file,rank;
     int flag;
     U64 stoppers,threats,backups,neighbors,supports;
     U64 pushThreats,pushSupport,leftovers;
     U64 enemyPawns,friendlyPawn,bitboard;
 
-    pce=wP;
-    enemyPawns=pos->bitboards[bP];
-    friendlyPawn=pos->bitboards[wP];
+    enemyPawns=pieces_cp(pos, BLACK, PAWN);
+    friendlyPawn=pieces_cp(pos, WHITE, PAWN);
     int US=WHITE;
     int THEM=!US;
     int FORWARD=8;
-    bitboard=pos->bitboards[pce];
+    bitboard=friendlyPawn;
     while(bitboard){
 
         sq=LSBINDEX(bitboard);
-        file=filesBoard[sq];
-        rank=ranksBoard[sq];
+        file=FILE_OF(sq);
+        rank=RANK_OF(sq);
 
         neighbors=friendlyPawn & IsolatedMask[file];
         backups=friendlyPawn & pawnPassedMark(THEM,sq);
@@ -510,7 +512,7 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
         }
 
         //doubled pawn
-        if(several(FileBBMask[file] & pos->bitboards[wP])){
+        if(several(FileBBMask[file] & friendlyPawn)){
             flag=(stoppers && (threats || neighbors)) ||
                 (stoppers & ~ForwardFileMasks[WHITE][sq]);
             eval_info->pawnEval[WHITE]+=PawnStacked[flag][file];
@@ -518,30 +520,28 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
 
         //backwards pawn
         if(!backups && pushThreats && neighbors){
-            flag=!(FileBBMask[file] & pos->bitboards[bP]);
+            flag=!(FileBBMask[file] & enemyPawns);
             eval_info->pawnEval[WHITE]+=PawnBackwards[flag][rank];
         }
 
         //connected pawns
-        else if(PawnConnectedMasks[WHITE][sq] & pos->bitboards[wP]){
+        else if(PawnConnectedMasks[WHITE][sq] & friendlyPawn){
             eval_info->pawnEval[WHITE]+=PawnConnected32[relativeSquare32(WHITE,sq)];
         }
         POPBIT(bitboard,sq);
     }
 
-    pce=bP;
-    enemyPawns=pos->bitboards[wP];
-    friendlyPawn=pos->bitboards[bP];
+    enemyPawns=pieces_cp(pos, WHITE, PAWN);
+    friendlyPawn=pieces_cp(pos, BLACK, PAWN);
     US=BLACK;
     THEM=!US;
     FORWARD=-FORWARD;
-    bitboard=pos->bitboards[pce];
+    bitboard=friendlyPawn;
     while(bitboard){
 
         sq=LSBINDEX(bitboard);
-        file=filesBoard[sq];
-        rank=ranksBoard[sq];
-
+        file=FILE_OF(sq);
+        rank=RANK_OF(sq);
 
         neighbors=friendlyPawn & IsolatedMask[file];
         backups=friendlyPawn & pawnPassedMark(THEM,sq);
@@ -569,7 +569,7 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
         }
 
         //doubled pawn
-        if(several(FileBBMask[file] & pos->bitboards[bP])){
+        if(several(FileBBMask[file] & friendlyPawn)){
             flag=(stoppers && (threats || neighbors)) ||
                 (stoppers & ~ForwardFileMasks[BLACK][sq]);
             eval_info->pawnEval[BLACK]+=PawnStacked[flag][file];
@@ -577,12 +577,12 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
 
         //backwards pawn
         if(!backups && pushThreats && neighbors){
-            flag=!(FileBBMask[file] & pos->bitboards[wP]);
+            flag=!(FileBBMask[file] & enemyPawns);
             eval_info->pawnEval[BLACK]+=PawnBackwards[flag][7-rank];
         }
 
         //connected pawns
-        else if(PawnConnectedMasks[BLACK][sq] & pos->bitboards[bP]){
+        else if(PawnConnectedMasks[BLACK][sq] & friendlyPawn){
             eval_info->pawnEval[BLACK]+=PawnConnected32[relativeSquare32(BLACK,sq)];
         }
         POPBIT(bitboard,sq);
@@ -595,13 +595,12 @@ INLINE int evalKnights(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int count;
     int kingDistance;
     int side=color;
-    int pce,sq;
+    int sq;
     int defended,outside;
     U64 attacks,bitboard;
 
-    U64 enemyPawns =   color==WHITE ? pos->bitboards[bP]:pos->bitboards[wP];
-    pce=color      ==  WHITE ? wN:bN;
-    bitboard       =   pos->bitboards[pce];
+    U64 enemyPawns = pieces_cp(pos, color ^ 1, PAWN);
+    bitboard       = pieces_cp(pos, color, KNIGHT);
 
     while(bitboard){
 
@@ -655,10 +654,9 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int side=color;
     int count,sq;
     int defended,outside;
-    int pce=color==WHITE ? wB:bB;
     U64 attacks,bitboard;
-    U64 enemyPawns=color==WHITE ? pos->bitboards[bP]:pos->bitboards[wP];
-    bitboard=pos->bitboards[pce];
+    U64 enemyPawns=pieces_cp(pos, color ^ 1, PAWN);
+    bitboard=pieces_cp(pos, color, BISHOP);
 
     //bishop pair
     if((bitboard & lightsquaresBB) && (bitboard & darksquaresBB)){
@@ -723,16 +721,16 @@ INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int safety, mg, eg;
     int eval=0;
 
-    U64 enemyQueens=(pos->bitboards[bQ] | pos->bitboards[wQ]) & pos->occupancy[THEM];
+    U64 enemyQueens=pieces_cp(pos, THEM, QUEEN);
 
     //endgame king usage
     eval+=RewardForOppKingDistanceFromCenter(eval_info->kingSq[THEM],eval_info->kingSq[US]);
 
 
     //king defenders
-    U64 defenders  = (eval_info->pawnsBB & pos->occupancy[US])
-                        | (eval_info->knightsBB & pos->occupancy[US])
-                        | (eval_info->bishopsBB & pos->occupancy[US]);
+    U64 defenders  = (eval_info->pawnsBB & pos->byColorBB[US])
+                        | (eval_info->knightsBB & pos->byColorBB[US])
+                        | (eval_info->bishopsBB & pos->byColorBB[US]);
 
     int count = COUNTBIT(defenders & eval_info->kingAreas[US]);
     eval += KingDefenders[count];
@@ -744,10 +742,10 @@ INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
                     & (~eval_info->attacked[US] | eval_info->attacks_array_queens[US] | king_attacks[sq]);
         int scaledAttackCounts = 9.0 * eval_info->kingAttacksCount[US] / COUNTBIT(eval_info->kingAreas[US]);
 
-        U64 safe = ~pos->occupancy[THEM]
+        U64 safe = ~pos->byColorBB[THEM]
                     & (~eval_info->attacked[US] | (weak & eval_info->attackedBy2[THEM]));
 
-        U64 occupied = pos->occupancy[BOTH];
+        U64 occupied = pos->byTypeBB[ALL_PIECES];
         U64 knightThreats = knight_attacks[sq];
         U64 bishopThreats = get_bishop_attacks(sq,occupied);
         U64 rookThreats   = get_rook_attacks(sq,occupied);
@@ -784,8 +782,7 @@ INLINE int evalQueens(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int side=color;
     U64 attacks;
     int eval=0;
-    int pce=color==WHITE ? wQ:bQ;
-    U64 bitboard=pos->bitboards[pce];
+    U64 bitboard=pieces_cp(pos, color, QUEEN);
 
     while(bitboard){
 
@@ -796,7 +793,7 @@ INLINE int evalQueens(S_BOARD *pos, EVAL_INFO *eval_info,int color){
             eval += QueenRelativePin;
         }
 
-        attacks = get_queen_attacks(sq, pos->occupancy[BOTH]);
+        attacks = get_queen_attacks(sq, pos->byTypeBB[ALL_PIECES]);
         eval_info->attacks_array_queens[side] |= attacks;
         eval_info->attackedBy2[side] |= attacks & eval_info->attacked[side];
         eval_info->attacked[side] |= attacks;
@@ -824,12 +821,11 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int open;
     int side=color;
     int eval=0;
-    int pce=color==WHITE ? wR:bR;
     U64 attacks;
 
-    U64 myPawns=color==WHITE ? pos->bitboards[wP]:pos->bitboards[bP];
-    U64 notMyPawns=pos->occupancy[!color] & eval_info->pawnsBB;
-    U64 bitboard=pos->bitboards[pce];
+    U64 myPawns=pieces_cp(pos, color, PAWN);
+    U64 notMyPawns=pos->byColorBB[!color] & eval_info->pawnsBB;
+    U64 bitboard=pieces_cp(pos, color, ROOK);
 
     while(bitboard){
 
@@ -837,8 +833,8 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
 
         //open files
-        if (!(myPawns & FileBBMask[filesBoard[sq]])) {
-            open = !(notMyPawns & FileBBMask[filesBoard[sq]]);
+        if (!(myPawns & FileBBMask[FILE_OF(sq)])) {
+            open = !(notMyPawns & FileBBMask[FILE_OF(sq)]);
             eval += RookFile[open];
         }
 
@@ -875,8 +871,8 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
     const U64 minors  = eval_info->knightsBB | eval_info->bishopsBB;
     const U64 pieces  = eval_info->knightsBB | eval_info->bishopsBB | eval_info->rooksBB;
 
-    const U64 white   = pos->occupancy[WHITE];
-    const U64 black   = pos->occupancy[BLACK];
+    const U64 white   = pos->byColorBB[WHITE];
+    const U64 black   = pos->byColorBB[BLACK];
 
     const U64 weak    = eval < 0 ? white : black;
     const U64 strong  = eval < 0 ? black : white;
@@ -986,9 +982,9 @@ INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
     int sq, rank, dist, flag, canAdvance, safeAdvance, eval = 0;
 
     U64 bitboard;
-    U64 ourRooks = colour==WHITE ? pos->bitboards[wR]:pos->bitboards[bR];
-    U64 myPassers = colour==WHITE ? eval_info->passers[WHITE]:eval_info->passers[BLACK];
-    U64 occupied  = pos->occupancy[BOTH];
+    U64 ourRooks = pieces_cp(pos, colour, ROOK);
+    U64 myPassers = eval_info->passers[colour];
+    U64 occupied  = pos->byTypeBB[ALL_PIECES];
     U64 tempPawns = myPassers;
 
     while (tempPawns) {
@@ -1017,8 +1013,8 @@ INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
         //eval+=S(0,pos->gamePhase);
 
         // Apply a bonus when the path to promoting is uncontested
-        bitboard = forwardRanksMasks(US, ranksBoard[sq]) & FileBBMask[filesBoard[sq]];
-        flag = !(bitboard & (pos->occupancy[THEM] | eval_info->attacked[THEM]));
+        bitboard = forwardRanksMasks(US, RANK_OF(sq)) & FileBBMask[FILE_OF(sq)];
+        flag = !(bitboard & (pos->byColorBB[THEM] | eval_info->attacked[THEM]));
         eval += flag * PassedSafePromotionPath;
     }
 
@@ -1033,24 +1029,24 @@ INLINE int materialScore(S_BOARD *pos){
     int blackMaterial=0;
 
     //pawns
-    whiteMaterial+=COUNTBIT(pos->bitboards[wP]) * PiecesVal[PAWN];
-    blackMaterial+=COUNTBIT(pos->bitboards[bP]) * PiecesVal[PAWN];
+    whiteMaterial+=COUNTBIT(pieces_cp(pos, WHITE, PAWN)) * PiecesVal[PAWN];
+    blackMaterial+=COUNTBIT(pieces_cp(pos, BLACK, PAWN)) * PiecesVal[PAWN];
 
     //knights
-    whiteMaterial+=COUNTBIT(pos->bitboards[wN]) * PiecesVal[KNIGHT];
-    blackMaterial+=COUNTBIT(pos->bitboards[bN]) * PiecesVal[KNIGHT];
+    whiteMaterial+=COUNTBIT(pieces_cp(pos, WHITE, KNIGHT)) * PiecesVal[KNIGHT];
+    blackMaterial+=COUNTBIT(pieces_cp(pos, BLACK, KNIGHT)) * PiecesVal[KNIGHT];
 
     //bishops
-    whiteMaterial+=COUNTBIT(pos->bitboards[wB]) * PiecesVal[BISHOP];
-    blackMaterial+=COUNTBIT(pos->bitboards[bB]) * PiecesVal[BISHOP];
+    whiteMaterial+=COUNTBIT(pieces_cp(pos, WHITE, BISHOP)) * PiecesVal[BISHOP];
+    blackMaterial+=COUNTBIT(pieces_cp(pos, BLACK, BISHOP)) * PiecesVal[BISHOP];
 
     //rooks
-    whiteMaterial+=COUNTBIT(pos->bitboards[wR]) * PiecesVal[ROOK];
-    blackMaterial+=COUNTBIT(pos->bitboards[bR]) * PiecesVal[ROOK];
+    whiteMaterial+=COUNTBIT(pieces_cp(pos, WHITE, ROOK)) * PiecesVal[ROOK];
+    blackMaterial+=COUNTBIT(pieces_cp(pos, BLACK, ROOK)) * PiecesVal[ROOK];
 
     //queens
-    whiteMaterial+=COUNTBIT(pos->bitboards[wQ]) * PiecesVal[QUEEN];
-    blackMaterial+=COUNTBIT(pos->bitboards[bQ]) * PiecesVal[QUEEN];
+    whiteMaterial+=COUNTBIT(pieces_cp(pos, WHITE, QUEEN)) * PiecesVal[QUEEN];
+    blackMaterial+=COUNTBIT(pieces_cp(pos, BLACK, QUEEN)) * PiecesVal[QUEEN];
 
     return whiteMaterial - blackMaterial;
 
@@ -1060,16 +1056,16 @@ INLINE int materialScore(S_BOARD *pos){
 INLINE void initEvalThings(S_BOARD *pos, EVAL_INFO *eval_info){
     int index;
     //king sq
-    eval_info->kingSq[WHITE]=LSBINDEX(pos->bitboards[wK]);
-    eval_info->kingSq[BLACK]=LSBINDEX(pos->bitboards[bK]);
+    eval_info->kingSq[WHITE]=LSBINDEX(pieces_cp(pos, WHITE, KING));
+    eval_info->kingSq[BLACK]=LSBINDEX(pieces_cp(pos, BLACK, KING));
     //pos->pkEval = 0;
 
-    U64 white=pos->occupancy[WHITE];
-    U64 black=pos->occupancy[BLACK];
-    U64 pawns=pos->bitboards[wP] | pos->bitboards[bP];
-    U64 kings=pos->bitboards[wK] | pos->bitboards[bK];
-    U64 rooks=pos->bitboards[wR] | pos->bitboards[bR];
-    U64 bishops=pos->bitboards[wB] | pos->bitboards[bB];
+    U64 white=pos->byColorBB[WHITE];
+    U64 black=pos->byColorBB[BLACK];
+    U64 pawns=pos->byTypeBB[PAWN];
+    U64 kings=pos->byTypeBB[KING];
+    U64 rooks=pos->byTypeBB[ROOK];
+    U64 bishops=pos->byTypeBB[BISHOP];
     for(index=0;index<2;++index){
         eval_info->attCnt[index]=0;
         eval_info->passers[index]=0ULL;
@@ -1093,8 +1089,8 @@ INLINE void initEvalThings(S_BOARD *pos, EVAL_INFO *eval_info){
     eval_info->attacks_array_pawns[BLACK]    = pawnAttackSpan(black & pawns, ~0ull, BLACK);
     eval_info->pawnAttackedBy2[WHITE] = pawnAttackDouble(white & pawns, ~0ull, WHITE);
     eval_info->pawnAttackedBy2[BLACK] = pawnAttackDouble(black & pawns, ~0ull, BLACK);
-    eval_info->rammedPawns[WHITE]=pawnAdvance(pos->occupancy[BLACK] & pawns, ~(pos->occupancy[WHITE] & pawns), BLACK);
-    eval_info->rammedPawns[BLACK]=pawnAdvance(pos->occupancy[WHITE] & pawns, ~(pos->occupancy[BLACK] & pawns), WHITE);
+    eval_info->rammedPawns[WHITE]=pawnAdvance(black & pawns, ~(white & pawns), BLACK);
+    eval_info->rammedPawns[BLACK]=pawnAdvance(white & pawns, ~(black & pawns), WHITE);
     U64 BlockedPawnWhite  = pawnAdvance(white | black, ~(white & pawns), BLACK);
     U64 BlockedPawnBlack  = pawnAdvance(white | black, ~(black & pawns), WHITE);
 
@@ -1117,10 +1113,10 @@ INLINE void initEvalThings(S_BOARD *pos, EVAL_INFO *eval_info){
     eval_info->occupiedMinusRooks[BLACK]=(white | black) ^ (black & rooks);
 
     eval_info->pawnsBB   = pawns;
-    eval_info->knightsBB = pos->bitboards[wN] | pos->bitboards[bN];
+    eval_info->knightsBB = pos->byTypeBB[KNIGHT];
     eval_info->bishopsBB = bishops;
     eval_info->rooksBB   = rooks;
-    eval_info->queensBB  = pos->bitboards[wQ] | pos->bitboards[bQ];
+    eval_info->queensBB  = pos->byTypeBB[QUEEN];
 }
 
 
@@ -1182,11 +1178,11 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
 
 INLINE int ScaleWDL(int score, const S_BOARD *pos) {
-    int material = COUNTBIT(pos->bitboards[wP] | pos->bitboards[bP])
-                 + 3 * COUNTBIT(pos->bitboards[wN] | pos->bitboards[bN])
-                 + 3 * COUNTBIT(pos->bitboards[wB] | pos->bitboards[bB])
-                 + 5 * COUNTBIT(pos->bitboards[wR] | pos->bitboards[bR])
-                 + 9 * COUNTBIT(pos->bitboards[wQ] | pos->bitboards[bQ]);
+    int material = COUNTBIT(pos->byTypeBB[PAWN])
+                 + 3 * COUNTBIT(pos->byTypeBB[KNIGHT])
+                 + 3 * COUNTBIT(pos->byTypeBB[BISHOP])
+                 + 5 * COUNTBIT(pos->byTypeBB[ROOK])
+                 + 9 * COUNTBIT(pos->byTypeBB[QUEEN]);
 
     if (material < 17) material = 17;
     if (material > 78) material = 78;

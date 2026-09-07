@@ -50,9 +50,9 @@ typedef struct {
 //Board structure
 typedef struct {
     //important board things
-    int8_t pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array (one cache line; values 0..12 fit)
-    U64 bitboards[13]; // bitboards for the pieces including empty
-    U64 occupancy[3]; // occupancy for white, black, both
+    int8_t pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array (values 0..15 fit)
+    U64 byTypeBB[PIECE_TYPE_NB];  // bitboards by piece type: ALL_PIECES=0, PAWN=1..KING=6
+    U64 byColorBB[COLOR_NB];      // occupancy for WHITE=0, BLACK=1
     int side; //side to move
     int enPas; //where the enpas in 64 square
     int fiftyMove; //counter for fifty move
@@ -118,6 +118,11 @@ typedef struct {
 
 
 } S_BOARD;
+
+#define pieces_all(pos)          ((pos)->byTypeBB[ALL_PIECES])
+#define pieces_color(pos, c)     ((pos)->byColorBB[(c)])
+#define pieces_type(pos, pt)     ((pos)->byTypeBB[(pt)])
+#define pieces_cp(pos, c, pt)    ((pos)->byColorBB[(c)] & (pos)->byTypeBB[(pt)])
 
 #include "correction.h"
 

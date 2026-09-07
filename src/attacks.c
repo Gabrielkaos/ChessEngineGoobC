@@ -397,42 +397,7 @@ U64 set_occupancy(int index,int bits_in_mask,U64 attack_mask){
     return occupancy;
 }
 
-///////////////////////
-//QUEEN ATTACKS GET IT
-///////////////////////
-U64 get_queen_attacks(int square,U64 occupancy){
-    ASSERT(SqOnBoard(square));
-    return (get_bishop_attacks(square,occupancy) | get_rook_attacks(square,occupancy));
-}
-///////////////////////
-//BISHOP ATTACKS GET IT
-///////////////////////
-U64 get_bishop_attacks(int square,U64 occupancy){
-    ASSERT(SqOnBoard(square));
-#ifdef PEXT_ATTACKS
-    return bishop_attacks_table[bishop_offset[square] + _pext_u64(occupancy,bishop_masks[square])];
-#else
-    occupancy&=bishop_masks[square];
-    occupancy*=bishop_magic_numbers[square];
-    occupancy >>=64-bishop_relevant_bits[square];
 
-    return bishop_attacks_table[bishop_offset[square] + occupancy];
-#endif
-}
-///////////////////////
-//ROOK ATTACKS GET IT
-///////////////////////
-U64 get_rook_attacks(int square,U64 occupancy){
-    ASSERT(SqOnBoard(square));
-#ifdef PEXT_ATTACKS
-    return rook_attacks_table[rook_offset[square] + _pext_u64(occupancy,rook_masks[square])];
-#else
-    occupancy&=rook_masks[square];
-    occupancy*=rook_magic_numbers[square];
-    occupancy>>=64-rook_relevant_bits[square];
-    return rook_attacks_table[rook_offset[square] + occupancy];
-#endif
-}
 
 void initSliderPiecesAttacks(int bishop){
     int sq,index;
@@ -503,28 +468,24 @@ int is_square_attacked_BB(const int square,const int side,const S_BOARD *state){
     ASSERT(SideValid(side));
     ASSERT(checkBoard(state));
 
-    const U64 occ = state->occupancy[BOTH];
+    const U64 occ = state->byTypeBB[ALL_PIECES];
+    const U64 colorBB = state->byColorBB[side];
 
-    if ((side == WHITE) && (pawn_attacks[BLACK][square] & state->bitboards[wP])) return 1;
-    if ((side == BLACK) && (pawn_attacks[WHITE][square] & state->bitboards[bP])) return 1;
+    if (pawn_attacks[side ^ 1][square] & state->byTypeBB[PAWN] & colorBB) return 1;
 
-    if (knight_attacks[square] & ((side == WHITE) ? state->bitboards[wN] : state->bitboards[bN])) return 1;
+    if (knight_attacks[square] & state->byTypeBB[KNIGHT] & colorBB) return 1;
 
     //each slider attack set is computed once and tested against bishops AND
     //queens / rooks AND queens OF THE ATTACKING SIDE (the old code called
     //get_queen_attacks here, re-running both magic lookups). the emptiness
     //guards skip the lookups entirely in slider-less positions.
-    const U64 diag = (side == WHITE)
-        ? (state->bitboards[wB] | state->bitboards[wQ])
-        : (state->bitboards[bB] | state->bitboards[bQ]);
+    const U64 diag = (state->byTypeBB[BISHOP] | state->byTypeBB[QUEEN]) & colorBB;
     if (diag && (get_bishop_attacks(square, occ) & diag)) return 1;
 
-    const U64 orth = (side == WHITE)
-        ? (state->bitboards[wR] | state->bitboards[wQ])
-        : (state->bitboards[bR] | state->bitboards[bQ]);
+    const U64 orth = (state->byTypeBB[ROOK] | state->byTypeBB[QUEEN]) & colorBB;
     if (orth && (get_rook_attacks(square, occ) & orth)) return 1;
 
-    if (king_attacks[square] & ((side == WHITE) ? state->bitboards[wK] : state->bitboards[bK])) return 1;
+    if (king_attacks[square] & state->byTypeBB[KING] & colorBB) return 1;
 
     return 0;
 }
@@ -533,43 +494,37 @@ U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
 
     ASSERT(SqOnBoard(sq));
 
-    U64 pawns    =pos->bitboards[wP] | pos->bitboards[bP];
-    U64 knights  =pos->bitboards[wN] | pos->bitboards[bN];
-    U64 bishops  =pos->bitboards[wB] | pos->bitboards[bB];
-    U64 queens   =pos->bitboards[wQ] | pos->bitboards[bQ];
-    U64 rooks    =pos->bitboards[wR] | pos->bitboards[bR];
-    U64 kings    =pos->bitboards[wK] | pos->bitboards[bK];
-
-    return (pawn_attacks[WHITE][sq] & pos->occupancy[BLACK] & pawns)
-         | (pawn_attacks[BLACK][sq] & pos->occupancy[WHITE] & pawns)
-         | (knight_attacks[sq] & knights)
-         | (get_bishop_attacks(sq, occupied) & (bishops | queens))
-         | (get_rook_attacks(sq, occupied) & (rooks | queens))
-         | (king_attacks[sq] & kings);
+    return (pawn_attacks[WHITE][sq] & pos->byColorBB[BLACK] & pos->byTypeBB[PAWN])
+         | (pawn_attacks[BLACK][sq] & pos->byColorBB[WHITE] & pos->byTypeBB[PAWN])
+         | (knight_attacks[sq] & pos->byTypeBB[KNIGHT])
+         | (get_bishop_attacks(sq, occupied) & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
+         | (get_rook_attacks(sq, occupied) & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
+         | (king_attacks[sq] & pos->byTypeBB[KING]);
 }
 U64 allAttackedSquares(const S_BOARD *pos, int side) {
     U64 attacks = 0ULL;
-    U64 occ = pos->occupancy[BOTH];
+    U64 occ = pos->byTypeBB[ALL_PIECES];
+    U64 colorBB = pos->byColorBB[side];
 
-    U64 pawns = side == WHITE ? pos->bitboards[wP] : pos->bitboards[bP];
+    U64 pawns = colorBB & pos->byTypeBB[PAWN];
     attacks |= pawnRightAttacks(pawns, ~0ULL, side) | pawnLeftAttacks(pawns, ~0ULL, side);
 
-    U64 knights = side == WHITE ? pos->bitboards[wN] : pos->bitboards[bN];
+    U64 knights = colorBB & pos->byTypeBB[KNIGHT];
     while(knights) {
         attacks |= knight_attacks[LSBINDEX(knights)];
         knights &= knights - 1;
     }
 
-    U64 kings = side == WHITE ? pos->bitboards[wK] : pos->bitboards[bK];
+    U64 kings = colorBB & pos->byTypeBB[KING];
     if(kings) attacks |= king_attacks[LSBINDEX(kings)];
 
-    U64 bishops = side == WHITE ? (pos->bitboards[wB] | pos->bitboards[wQ]) : (pos->bitboards[bB] | pos->bitboards[bQ]);
+    U64 bishops = colorBB & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]);
     while(bishops) {
         attacks |= get_bishop_attacks(LSBINDEX(bishops), occ);
         bishops &= bishops - 1;
     }
 
-    U64 rooks = side == WHITE ? (pos->bitboards[wR] | pos->bitboards[wQ]) : (pos->bitboards[bR] | pos->bitboards[bQ]);
+    U64 rooks = colorBB & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]);
     while(rooks) {
         attacks |= get_rook_attacks(LSBINDEX(rooks), occ);
         rooks &= rooks - 1;
@@ -581,32 +536,26 @@ U64 allAttackedSquares(const S_BOARD *pos, int side) {
 U64 attackersToKingSq(const S_BOARD *pos,int side){
     ASSERT(SideValid(side));
 
-    U64 kbb=side==WHITE ? pos->bitboards[wK]:pos->bitboards[bK];
+    U64 kbb = pos->byColorBB[side] & pos->byTypeBB[KING];
 
     //unreachable through make/unmake (king captures are rejected) - degrade
     //gracefully instead of ctzll(0) on a corrupt board
     ASSERT(kbb);
     if(!kbb) return 0ULL;
 
-    int ksq=LSBINDEX(kbb);
-    U64 occ=pos->occupancy[BOTH];
+    int ksq = LSBINDEX(kbb);
+    U64 occ = pos->byTypeBB[ALL_PIECES];
+    int them = side ^ 1;
+    U64 enemyBB = pos->byColorBB[them];
 
     //only ever needs the opponent's pieces, so go straight at them instead of
     //building combined white|black bitboards (allAttackersToSquare) and then
     //masking half of it away with & pos->occupancy[!side]
-    if(side==WHITE){
-        return (pawn_attacks[WHITE][ksq] & pos->bitboards[bP])
-             | (knight_attacks[ksq]      & pos->bitboards[bN])
-             | (get_bishop_attacks(ksq,occ) & (pos->bitboards[bB] | pos->bitboards[bQ]))
-             | (get_rook_attacks(ksq,occ)   & (pos->bitboards[bR] | pos->bitboards[bQ]))
-             | (king_attacks[ksq]         & pos->bitboards[bK]); //catches illegal kings-adjacent case
-    }else{
-        return (pawn_attacks[BLACK][ksq] & pos->bitboards[wP])
-             | (knight_attacks[ksq]       & pos->bitboards[wN])
-             | (get_bishop_attacks(ksq,occ) & (pos->bitboards[wB] | pos->bitboards[wQ]))
-             | (get_rook_attacks(ksq,occ)   & (pos->bitboards[wR] | pos->bitboards[wQ]))
-             | (king_attacks[ksq]         & pos->bitboards[wK]);
-    }
+    return (pawn_attacks[side][ksq] & enemyBB & pos->byTypeBB[PAWN])
+         | (knight_attacks[ksq]      & enemyBB & pos->byTypeBB[KNIGHT])
+         | (get_bishop_attacks(ksq,occ) & enemyBB & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
+         | (get_rook_attacks(ksq,occ)   & enemyBB & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
+         | (king_attacks[ksq]         & enemyBB & pos->byTypeBB[KING]); //catches illegal kings-adjacent case
 }
 
 U64 pawnAttacks(int color,int sq){
@@ -619,14 +568,14 @@ U64 discoveredAttacks(S_BOARD *pos, int sq, int US) {
     ASSERT(SideValid(US));
     ASSERT(SqOnBoard(sq));
 
-    U64 enemy    = pos->occupancy[!US];
-    U64 occupied = pos->occupancy[BOTH];
+    U64 enemy    = pos->byColorBB[!US];
+    U64 occupied = pos->byTypeBB[ALL_PIECES];
 
     U64 rAttacks = get_rook_attacks(sq,occupied);
     U64 bAttacks = get_bishop_attacks(sq,occupied);
 
-    U64 rooks   = (enemy & (pos->bitboards[wR] | pos->bitboards[bR])) & ~rAttacks;
-    U64 bishops = (enemy & (pos->bitboards[wB] | pos->bitboards[bB])) & ~bAttacks;
+    U64 rooks   = (enemy & pos->byTypeBB[ROOK]) & ~rAttacks;
+    U64 bishops = (enemy & pos->byTypeBB[BISHOP]) & ~bAttacks;
 
     return (  rooks &  get_rook_attacks(sq, occupied & ~rAttacks))
          | (bishops & get_bishop_attacks(sq, occupied & ~bAttacks));

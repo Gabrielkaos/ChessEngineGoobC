@@ -765,105 +765,17 @@ const int PromoteSquare[BOTH][FILE_NONE]={
 /*FUNCTIONS*/
 int boardHasNonPawnMaterial(S_BOARD *pos, int turn) {
     ASSERT(SideValid(turn));
-    U64 friendly = pos->occupancy[turn];
-    U64 kings    = pos->bitboards[wK] | pos->bitboards[bK];
-    U64 pawns    = pos->bitboards[wP] | pos->bitboards[bP];
-    return (friendly & (kings | pawns)) != friendly;
-}
-
-U64 pawnPassedMark(int color,int sq){
-    ASSERT(SideValid(color));
-    ASSERT(SqOnBoard(sq));
-    return color==WHITE ? WhitePassedMark[sq]:BlackPassedMask[sq];
-}
-
-U64 getOutpostSquareMasks(int color,int sq){
-    ASSERT(SideValid(color));
-    ASSERT(SqOnBoard(sq));
-    return color==WHITE ? OutpostSquareMasks[WHITE][sq]:OutpostSquareMasks[BLACK][sq];
-}
-
-U64 getOutpostRanksMasks(int color){
-    ASSERT(SideValid(color));
-    return color==WHITE ? OutpostRanksMasks[WHITE]:OutpostRanksMasks[BLACK];
-}
-
-U64 forwardRanksMasks(int color,int rank){
-    ASSERT(SideValid(color));
-    ASSERT(FileRankValid(rank));
-    return ForwardRanksMasks[color][rank];
+    return (pos->byColorBB[turn] & ~(pos->byTypeBB[KING] | pos->byTypeBB[PAWN])) != 0;
 }
 
 int kingPawnFileDistance(U64 pawns, int ksq) {
     ASSERT(SqOnBoard(ksq));
     pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
-    return KingPawnFileDistance[filesBoard[ksq]][pawns & 0xFF];
-}
-
-int getmsb(U64 bb) {
-    return __builtin_clzll(bb) ^ 63;
-}
-
-U64 KingAreaMasks(int color,int sq){
-    ASSERT(SideValid(color));
-    ASSERT(SqOnBoard(sq));
-    return KingAreasMask[color][sq];
-}
-
-bool testBit(U64 bb, int i) {
-    ASSERT(SqOnBoard(i));
-    return bb & (1Ull << i);
-}
-
-int mirrorFile(int file) {
-    ASSERT(FileRankValid(file));
-    static const int Mirror[] = {0,1,2,3,3,2,1,0};
-    return Mirror[file];
-}
-
-int relativeRankOf(int colour, int sq) {
-    ASSERT(SideValid(colour));
-    ASSERT(SqOnBoard(sq));
-    return colour == WHITE ? ranksBoard[sq] : 7 - ranksBoard[sq];
-}
-
-int relativeSquare32(int colour, int sq) {
-    ASSERT(SideValid(colour));
-    ASSERT(SqOnBoard(sq));
-    return 4 * relativeRankOf(colour, sq) + mirrorFile(filesBoard[sq]);
-}
-
-bool several(U64 bb) {
-    return bb & (bb - 1);
-}
-
-U64 pawnAdvance(U64 pawns, U64 occupied, int colour) {
-    ASSERT(SideValid(colour));
-    return ~occupied & (colour == WHITE ? (pawns << 8) : (pawns >> 8));
+    return KingPawnFileDistance[FILE_OF(ksq)][pawns & 0xFF];
 }
 
 int openFileCount(U64 pawns) {
     pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
     return COUNTBIT(~pawns & 0xFF);
-}
-
-U64 squaresOfMatchingColour(int sq) {
-    ASSERT(SqOnBoard(sq));
-    return testBit(lightsquaresBB, sq) ? lightsquaresBB : darksquaresBB;
-}
-
-bool onlyOne(U64 bb) {
-    return bb && !several(bb);
-}
-
-int poplsb(U64 *bb) {
-    int lsb = LSBINDEX(*bb);
-    *bb &= *bb - 1;
-    return lsb;
-}
-
-int backmost(int colour, U64 bb) {
-    ASSERT(SideValid(colour));
-    return colour == WHITE ? LSBINDEX(bb) : getmsb(bb);
 }
 

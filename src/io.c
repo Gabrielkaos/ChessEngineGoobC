@@ -10,8 +10,8 @@ char * PrSq(const int sq){
 
     static char SqStr[3];
 
-    int file=filesBoard[sq];
-    int rank=ranksBoard[sq];
+    int file=FILE_OF(sq);
+    int rank=RANK_OF(sq);
 
     sprintf(SqStr,"%c%c",('a'+file),('1'+rank));
 
@@ -26,21 +26,25 @@ char * PrMove(const int move){
         return moveStr;
     }
 
-    int fromFile=filesBoard[FROMSQ(move)];
-    int fromRank=ranksBoard[FROMSQ(move)];
+    int from = FROMSQ(move);
+    int to   = TOSQ(move);
 
-    int toFile=filesBoard[TOSQ(move)];
-    int toRank=ranksBoard[TOSQ(move)];
+    int fromFile=FILE_OF(from);
+    int fromRank=RANK_OF(from);
+
+    int toFile=FILE_OF(to);
+    int toRank=RANK_OF(to);
 
     int promoted=PROMOTED(move);
 
     if(promoted){
         char pchar='q';
-        if(ISKni(promoted)){
+        int pt = TYPE_OF(promoted);
+        if(pt == KNIGHT){
             pchar='n';
-        }else if(ISRQ(promoted) && !ISBQ(promoted)){
+        }else if(pt == ROOK){
             pchar='r';
-        }else if(!ISRQ(promoted) && ISBQ(promoted)){
+        }else if(pt == BISHOP){
             pchar='b';
         }
         sprintf(moveStr,"%c%c%c%c%c",('a'+fromFile),('1'+fromRank),('a'+toFile),('1'+toRank),pchar);
@@ -82,8 +86,8 @@ void printFen(const S_BOARD *pos,char *fen){
     *fen++ = ' ';
 
     if(pos->enPas != NO_SQ){
-        *fen++='a'+filesBoard[pos->enPas];
-        *fen++='1'+ranksBoard[pos->enPas];
+        *fen++='a'+FILE_OF(pos->enPas);
+        *fen++='1'+RANK_OF(pos->enPas);
     }else{
         *fen++='-';
     }
@@ -146,13 +150,14 @@ int ParseMove(char *ptrChar, S_BOARD *pos){
         if(FROMSQ(Move)==from && TOSQ(Move)==to){
             prom_piece=PROMOTED(Move);
             if (prom_piece != EMPTY){
-                if(ISRQ(prom_piece) && ! ISBQ(prom_piece) && ptrChar[4]=='r'){
+                int pt = TYPE_OF(prom_piece);
+                if(pt == ROOK && ptrChar[4]=='r'){
                     return Move;
-                }else if(!ISRQ(prom_piece) && ISBQ(prom_piece) && ptrChar[4]=='b'){
+                }else if(pt == BISHOP && ptrChar[4]=='b'){
                     return Move;
-                }else if(ISRQ(prom_piece) && ISBQ(prom_piece) && ptrChar[4]=='q'){
+                }else if(pt == QUEEN && ptrChar[4]=='q'){
                     return Move;
-                }else if(ISKni(prom_piece) && ptrChar[4]=='n'){
+                }else if(pt == KNIGHT && ptrChar[4]=='n'){
                     return Move;
                 }
                 continue;

@@ -23,7 +23,7 @@ U64 RAND_64() {
 
 
 
-U64 pieceKeys[13][BOARD_NUMS_SQ];
+U64 pieceKeys[16][BOARD_NUMS_SQ];
 U64 sideKey;
 U64 castleKeys[16];
 
@@ -33,7 +33,7 @@ S_OPTIONS EngineOptions[1];
 void InitHashKeys(){
     int index=0;
     int index2=0;
-    for (index=0;index<13;++index){
+    for (index=0;index<16;++index){
         for(index2=0;index2<BOARD_NUMS_SQ;++index2){
             pieceKeys[index][index2]=RAND_64();
         }

@@ -6,8 +6,9 @@
 /*
     Some variables shamelessly copied from Ethereal
 */
-static const int SEEPieceValues[] = {
-     0, 100, 450, 450, 675, 1300, 0, 100, 450, 450, 675, 1300, 0
+static const int SEEPieceValues[16] = {
+     0, 100, 450, 450, 675, 1300, 0, 0,
+     0, 100, 450, 450, 675, 1300, 0, 0
 };
 static const int SEEPruningDepth = 9;
 static const int SEEQuietMargin  = -64;

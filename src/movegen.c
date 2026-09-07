@@ -37,27 +37,23 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
     int source_square, target_square;
     U64 bitboard;
 
-    //kings are never capturable - capturing one would clear the enemy king
-    //bitboard and blind makeMove's legality check
-    const U64 capturable = pos->occupancy[!side] & ~(pos->bitboards[wK]|pos->bitboards[bK]);
-
-    //fix #2: only the 6 piece types belonging to the side to move are ever
-    //relevant here (wP..wK = 1..6, bP..bK = 7..12 in the enum), so walk only
-    //those instead of looping over all 12 and branching on side every time
+    const U64 occ = pos->byTypeBB[ALL_PIECES];
+    const U64 my_occ = pos->byColorBB[side];
+    const U64 capturable = pos->byColorBB[!side] & ~pos->byTypeBB[KING];
     int base = (side == WHITE) ? wP : bP;
 
-    for (int piece = base; piece <= base + 5; piece++)
+    for (int pt = PAWN; pt <= KING; pt++)
     {
-        bitboard = pos->bitboards[piece];
+        bitboard = my_occ & pos->byTypeBB[pt];
 
         if (side == WHITE)
         {
-            if (piece == wP)
+            if (pt == PAWN)
             {
                 //bulk generation: whole pawn sets are shifted at once and
                 //promotions are split off by target rank, instead of walking
                 //pawn-by-pawn with per-pawn rank lookups
-                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 empty   = ~occ;
                 const U64 pawnsBB = bitboard;
                 const U64 rank8   = RankBBMask[RANK_8];
                 U64 t;
@@ -149,7 +145,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                 }
             }
 
-            if (piece == wK)
+            if (pt == KING)
             {
                 if (pos->castleRights & (WKCA|WQCA))
                 {
@@ -157,12 +153,12 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
                     if ((pos->castleRights & WKCA) && kingSqSafe &&
-                        !(pos->occupancy[BOTH] & ((1ULL << F1) | (1ULL << G1))) &&
+                        !(occ & ((1ULL << F1) | (1ULL << G1))) &&
                         !is_square_attacked_BB(F1, BLACK, pos))
                         AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
 
                     if ((pos->castleRights & WQCA) && kingSqSafe &&
-                        !(pos->occupancy[BOTH] & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
+                        !(occ & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
                         !is_square_attacked_BB(D1, BLACK, pos))
                         AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
                 }
@@ -171,11 +167,11 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
         else
         {
-            if (piece == bP)
+            if (pt == PAWN)
             {
                 //bulk generation, black mirrors: shifts go down, promotions
                 //land on rank 1, doubles run through rank 6
-                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 empty   = ~occ;
                 const U64 pawnsBB = bitboard;
                 const U64 rank1   = RankBBMask[RANK_1];
                 U64 t;
@@ -264,19 +260,19 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                 }
             }
 
-            if (piece == bK)
+            if (pt == KING)
             {
                 if (pos->castleRights & (BKCA|BQCA))
                 {
                     const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
                     if ((pos->castleRights & BKCA) && kingSqSafe &&
-                        !(pos->occupancy[BOTH] & ((1ULL << F8) | (1ULL << G8))) &&
+                        !(occ & ((1ULL << F8) | (1ULL << G8))) &&
                         !is_square_attacked_BB(F8, WHITE, pos))
                         AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
 
                     if ((pos->castleRights & BQCA) && kingSqSafe &&
-                        !(pos->occupancy[BOTH] & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
+                        !(occ & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
                         !is_square_attacked_BB(D8, WHITE, pos))
                         AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
                 }
@@ -284,16 +280,13 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //knights
-        if (piece == base + 1)
+        if (pt == KNIGHT)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                //fix #4: attacks already excludes our own pieces, so every
-                //target square is either empty or an enemy piece - split into
-                //two branch-free loops instead of testing GETBIT per move
-                U64 pseudo = knight_attacks[source_square] & ~pos->occupancy[side];
+                U64 pseudo = knight_attacks[source_square] & ~my_occ;
 
                 U64 caps = pseudo & capturable;
                 while (caps)
@@ -303,7 +296,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -316,13 +309,13 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //bishops
-        if (piece == base + 2)
+        if (pt == BISHOP)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_bishop_attacks(source_square, occ) & ~my_occ;
 
                 U64 caps = pseudo & capturable;
                 while (caps)
@@ -332,7 +325,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -345,13 +338,13 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //rooks
-        if (piece == base + 3)
+        if (pt == ROOK)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_rook_attacks(source_square, occ) & ~my_occ;
 
                 U64 caps = pseudo & capturable;
                 while (caps)
@@ -361,7 +354,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -374,13 +367,13 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //queens
-        if (piece == base + 4)
+        if (pt == QUEEN)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_queen_attacks(source_square, occ) & ~my_occ;
 
                 U64 caps = pseudo & capturable;
                 while (caps)
@@ -390,7 +383,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -403,13 +396,13 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //kings
-        if (piece == base + 5)
+        if (pt == KING)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = king_attacks[source_square] & ~pos->occupancy[side];
+                U64 pseudo = king_attacks[source_square] & ~my_occ;
 
                 U64 caps = pseudo & capturable;
                 while (caps)
@@ -419,7 +412,7 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -443,22 +436,22 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
 
     U64 bitboard, attacks;
 
-    //kings are never capturable - capturing one would clear the enemy king
-    //bitboard and blind makeMove's legality check
-    const U64 capturable = pos->occupancy[!side] & ~(pos->bitboards[wK]|pos->bitboards[bK]);
+    const U64 occ = pos->byTypeBB[ALL_PIECES];
+    const U64 my_occ = pos->byColorBB[side];
+    const U64 capturable = pos->byColorBB[!side] & ~pos->byTypeBB[KING];
 
     int base = (side == WHITE) ? wP : bP;
 
-    for (int piece = base; piece <= base + 5; piece++)
+    for (int pt = PAWN; pt <= KING; pt++)
     {
-        bitboard = pos->bitboards[piece];
+        bitboard = my_occ & pos->byTypeBB[pt];
 
         if (side == WHITE)
         {
-            if (piece == wP)
+            if (pt == PAWN)
             {
                 //noisy pawns in bulk: promotion pushes + all captures + EP
-                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 empty   = ~occ;
                 const U64 pawnsBB = bitboard;
                 const U64 rank8   = RankBBMask[RANK_8];
                 U64 t;
@@ -528,10 +521,10 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
 
         else
         {
-            if (piece == bP)
+            if (pt == PAWN)
             {
                 //noisy pawns in bulk, black mirror (promotions land on rank 1)
-                const U64 empty   = ~pos->occupancy[BOTH];
+                const U64 empty   = ~occ;
                 const U64 pawnsBB = bitboard;
                 const U64 rank1   = RankBBMask[RANK_1];
                 U64 t;
@@ -598,10 +591,10 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             }
         }
 
-        //fix #4: noisy generation only ever wants captures, so mask attacks
+        //noisy generation only ever wants captures, so mask attacks
         //with the enemy occupancy directly instead of generating the full
         //pseudo-legal set (captures + quiets) and branch-filtering per move
-        if (piece == base + 1) //knights
+        if (pt == KNIGHT)
         {
             while (bitboard)
             {
@@ -620,13 +613,13 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             }
         }
 
-        if (piece == base + 2) //bishops
+        if (pt == BISHOP)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                attacks = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & capturable;
+                attacks = get_bishop_attacks(source_square, occ) & capturable;
 
                 while (attacks)
                 {
@@ -639,12 +632,12 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             }
         }
 
-        if (piece == base + 3) //rooks
+        if (pt == ROOK)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
-                attacks = get_rook_attacks(source_square, pos->occupancy[BOTH]) & capturable;
+                attacks = get_rook_attacks(source_square, occ) & capturable;
 
                 while (attacks)
                 {
@@ -657,12 +650,12 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             }
         }
 
-        if (piece == base + 4) //queens
+        if (pt == QUEEN)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
-                attacks = get_queen_attacks(source_square, pos->occupancy[BOTH]) & capturable;
+                attacks = get_queen_attacks(source_square, occ) & capturable;
 
                 while (attacks)
                 {
@@ -675,7 +668,7 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
             }
         }
 
-        if (piece == base + 5) //kings
+        if (pt == KING)
         {
             while (bitboard)
             {
@@ -709,32 +702,31 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
     int side = pos->side;
     int pce  = pos->pieces[from];
 
-    if(pce == EMPTY || pieceCol[pce] != side) return FALSE;
+    if(pce == EMPTY || COLOR_OF(pce) != side) return FALSE;
 
     int cap  = CAPTURED(move);
     int prom = PROMOTED(move);
     int targetPce = pos->pieces[to];
 
     //kings are never capturable - guards TT/PV junk moves from corrupting state
-    if(targetPce==wK || targetPce==bK) return FALSE;
+    if(targetPce != EMPTY && TYPE_OF(targetPce) == KING) return FALSE;
+
+    const U64 occ = pos->byTypeBB[ALL_PIECES];
 
     //-------- castling --------
     if(move & MVFLAGCA){
-        if(!pieceKing[pce] || cap != EMPTY || prom != EMPTY) return FALSE;
+        if(TYPE_OF(pce) != KING || cap != EMPTY || prom != EMPTY) return FALSE;
 
         if(side == WHITE){
             if(from != E1) return FALSE;
             if(to == G1)
                 return (pos->castleRights & WKCA)
-                    && !GETBIT(pos->occupancy[BOTH],F1)
-                    && !GETBIT(pos->occupancy[BOTH],G1)
+                    && !(occ & ((1ULL << F1) | (1ULL << G1)))
                     && !is_square_attacked_BB(E1,BLACK,pos)
                     && !is_square_attacked_BB(F1,BLACK,pos);
             if(to == C1)
                 return (pos->castleRights & WQCA)
-                    && !GETBIT(pos->occupancy[BOTH],D1)
-                    && !GETBIT(pos->occupancy[BOTH],C1)
-                    && !GETBIT(pos->occupancy[BOTH],B1)
+                    && !(occ & ((1ULL << D1) | (1ULL << C1) | (1ULL << B1)))
                     && !is_square_attacked_BB(E1,BLACK,pos)
                     && !is_square_attacked_BB(D1,BLACK,pos);
             return FALSE;
@@ -742,15 +734,12 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
             if(from != E8) return FALSE;
             if(to == G8)
                 return (pos->castleRights & BKCA)
-                    && !GETBIT(pos->occupancy[BOTH],F8)
-                    && !GETBIT(pos->occupancy[BOTH],G8)
+                    && !(occ & ((1ULL << F8) | (1ULL << G8)))
                     && !is_square_attacked_BB(E8,WHITE,pos)
                     && !is_square_attacked_BB(F8,WHITE,pos);
             if(to == C8)
                 return (pos->castleRights & BQCA)
-                    && !GETBIT(pos->occupancy[BOTH],D8)
-                    && !GETBIT(pos->occupancy[BOTH],C8)
-                    && !GETBIT(pos->occupancy[BOTH],B8)
+                    && !(occ & ((1ULL << D8) | (1ULL << C8) | (1ULL << B8)))
                     && !is_square_attacked_BB(E8,WHITE,pos)
                     && !is_square_attacked_BB(D8,WHITE,pos);
             return FALSE;
@@ -759,20 +748,20 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
 
     //-------- en passant --------
     if(move & MVFLAGEP){
-        if(!piecePawn[pce] || prom != EMPTY) return FALSE;
+        if(TYPE_OF(pce) != PAWN || prom != EMPTY) return FALSE;
         if(pos->enPas == NO_SQ || to != pos->enPas) return FALSE;
         if(targetPce != EMPTY) return FALSE;
-        return !!GETBIT(pawn_attacks[side][from], to);
+        return (pawn_attacks[side][from] & (1ULL << to)) != 0;
     }
 
     //-------- pawn pushes / captures --------
-    if(piecePawn[pce]){
+    if(TYPE_OF(pce) == PAWN){
         int promRank    = (side == WHITE) ? RANK_7 : RANK_2;
-        int mustPromote = (ranksBoard[from] == promRank);
+        int mustPromote = (RANK_OF(from) == promRank);
 
         if(mustPromote){
-            if(prom == EMPTY || pieceCol[prom] != side ||
-               pieceType[prom] == p_pawn || pieceType[prom] == p_king)
+            if(prom == EMPTY || COLOR_OF(prom) != side ||
+               TYPE_OF(prom) == PAWN || TYPE_OF(prom) == KING)
                 return FALSE;
         }else if(prom != EMPTY) return FALSE;
 
@@ -781,18 +770,18 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
         if(move & MVFLAGPS){
             int startRank = (side == WHITE) ? RANK_2 : RANK_7;
             int dbl       = (side == WHITE) ? from + 16 : from - 16;
-            if(cap != EMPTY || ranksBoard[from] != startRank || to != dbl) return FALSE;
-            return !GETBIT(pos->occupancy[BOTH], push) && !GETBIT(pos->occupancy[BOTH], to);
+            if(cap != EMPTY || RANK_OF(from) != startRank || to != dbl) return FALSE;
+            return !(occ & ((1ULL << push) | (1ULL << to)));
         }
 
         if(to == push){
             if(cap != EMPTY) return FALSE;
-            return !GETBIT(pos->occupancy[BOTH], to);
+            return !(occ & (1ULL << to));
         }
 
         //capture
-        if(!GETBIT(pawn_attacks[side][from], to)) return FALSE;
-        if(targetPce == EMPTY || pieceCol[targetPce] == side) return FALSE;
+        if(!(pawn_attacks[side][from] & (1ULL << to))) return FALSE;
+        if(targetPce == EMPTY || COLOR_OF(targetPce) == side) return FALSE;
         return cap == targetPce;
     }
 
@@ -800,17 +789,18 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
     if(prom != EMPTY) return FALSE;
 
     U64 attackSet;
-    if(pieceKnight[pce])          attackSet = knight_attacks[from];
-    else if(pieceKing[pce])       attackSet = king_attacks[from];
-    else if(pce==wB || pce==bB)   attackSet = get_bishop_attacks(from, pos->occupancy[BOTH]);
-    else if(pce==wR || pce==bR)   attackSet = get_rook_attacks(from, pos->occupancy[BOTH]);
-    else if(pce==wQ || pce==bQ)   attackSet = get_queen_attacks(from, pos->occupancy[BOTH]);
+    int pt = TYPE_OF(pce);
+    if(pt == KNIGHT)              attackSet = knight_attacks[from];
+    else if(pt == KING)           attackSet = king_attacks[from];
+    else if(pt == BISHOP)         attackSet = get_bishop_attacks(from, occ);
+    else if(pt == ROOK)           attackSet = get_rook_attacks(from, occ);
+    else if(pt == QUEEN)          attackSet = get_queen_attacks(from, occ);
     else return FALSE;
 
-    if(!GETBIT(attackSet, to)) return FALSE;
+    if(!(attackSet & (1ULL << to))) return FALSE;
 
     if(targetPce == EMPTY) return cap == EMPTY;
-    if(pieceCol[targetPce] == side) return FALSE;
+    if(COLOR_OF(targetPce) == side) return FALSE;
     return cap == targetPce;
 }
 
@@ -822,17 +812,18 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
     int source_square, target_square;
     U64 bitboard, quiets;
 
-    int base = (side == WHITE) ? wP : bP;
+    const U64 occ = pos->byTypeBB[ALL_PIECES];
+    const U64 my_occ = pos->byColorBB[side];
 
-    for (int piece = base; piece <= base + 5; piece++)
+    for (int pt = PAWN; pt <= KING; pt++)
     {
-        bitboard = pos->bitboards[piece];
+        bitboard = my_occ & pos->byTypeBB[pt];
 
-        if (side == WHITE && piece == wP)
+        if (side == WHITE && pt == PAWN)
         {
             //quiet pawns in bulk: non-promoting pushes + doubles only
             //(promotion pushes are noisy and generated elsewhere)
-            const U64 empty   = ~pos->occupancy[BOTH];
+            const U64 empty   = ~occ;
             const U64 pawnsBB = bitboard;
             U64 t;
 
@@ -854,9 +845,9 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
                 AddMovee(pos,MOVE(target_square-16,target_square,EMPTY,EMPTY,MVFLAGPS),list);
             }
         }
-        else if (side == BLACK && piece == bP)
+        else if (side == BLACK && pt == PAWN)
         {
-            const U64 empty   = ~pos->occupancy[BOTH];
+            const U64 empty   = ~occ;
             const U64 pawnsBB = bitboard;
             U64 t;
 
@@ -879,7 +870,7 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
             }
         }
 
-        if (side == WHITE && piece == wK)
+        if (side == WHITE && pt == KING)
         {
             if (pos->castleRights & (WKCA|WQCA))
             {
@@ -887,71 +878,71 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
                 const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
                 if ((pos->castleRights & WKCA) && kingSqSafe &&
-                    !(pos->occupancy[BOTH] & ((1ULL << F1) | (1ULL << G1))) &&
+                    !(occ & ((1ULL << F1) | (1ULL << G1))) &&
                     !is_square_attacked_BB(F1, BLACK, pos))
                     AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
 
                 if ((pos->castleRights & WQCA) && kingSqSafe &&
-                    !(pos->occupancy[BOTH] & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
+                    !(occ & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
                     !is_square_attacked_BB(D1, BLACK, pos))
                     AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
             }
         }
 
-        if (side == BLACK && piece == bK)
+        if (side == BLACK && pt == KING)
         {
             if (pos->castleRights & (BKCA|BQCA))
             {
                 const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
                 if ((pos->castleRights & BKCA) && kingSqSafe &&
-                    !(pos->occupancy[BOTH] & ((1ULL << F8) | (1ULL << G8))) &&
+                    !(occ & ((1ULL << F8) | (1ULL << G8))) &&
                     !is_square_attacked_BB(F8, WHITE, pos))
                     AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
 
                 if ((pos->castleRights & BQCA) && kingSqSafe &&
-                    !(pos->occupancy[BOTH] & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
+                    !(occ & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
                     !is_square_attacked_BB(D8, WHITE, pos))
                     AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
             }
         }
 
-        if (piece == base + 1){ //knights
+        if (pt == KNIGHT){ //knights
             while (bitboard){
                 source_square = LSBINDEX(bitboard);
-                quiets = knight_attacks[source_square] & ~pos->occupancy[BOTH];
+                quiets = knight_attacks[source_square] & ~occ;
                 while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
                 bitboard &= bitboard - 1;
             }
         }
-        if (piece == base + 2){ //bishops
+        if (pt == BISHOP){ //bishops
             while (bitboard){
                 source_square = LSBINDEX(bitboard);
-                quiets = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                quiets = get_bishop_attacks(source_square, occ) & ~occ;
                 while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
                 bitboard &= bitboard - 1;
             }
         }
-        if (piece == base + 3){ //rooks
+        if (pt == ROOK){ //rooks
             while (bitboard){
                 source_square = LSBINDEX(bitboard);
-                quiets = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                quiets = get_rook_attacks(source_square, occ) & ~occ;
                 while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
                 bitboard &= bitboard - 1;
             }
         }
-        if (piece == base + 4){ //queens
+        if (pt == QUEEN){ //queens
             while (bitboard){
                 source_square = LSBINDEX(bitboard);
-                quiets = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[BOTH];
+                quiets = get_queen_attacks(source_square, occ) & ~occ;
                 while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
                 bitboard &= bitboard - 1;
             }
         }
-        if (piece == base + 5){ //kings
+        if (pt == KING){ //kings
             while (bitboard){
                 source_square = LSBINDEX(bitboard);
-                quiets = king_attacks[source_square] & ~pos->occupancy[BOTH];
+                quiets = king_attacks[source_square] & ~occ;
                 while (quiets){ target_square = LSBINDEX(quiets); AddMovee(pos,MOVE(source_square,target_square,0,0,0),list); quiets &= quiets - 1; }
                 bitboard &= bitboard - 1;
             }

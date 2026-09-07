@@ -90,10 +90,10 @@ int pknet_eval(const S_BOARD *pos) {
 
     /* Piece-type bitboards give us exactly the sparse set of pieces the
        network cares about, mirroring Ethereal's king/pawn extraction. */
-    U64 wp = pos->bitboards[wP];
-    U64 bp = pos->bitboards[bP];
-    U64 wk = pos->bitboards[wK];
-    U64 bk = pos->bitboards[bK];
+    U64 wp = pieces_cp(pos, WHITE, PAWN);
+    U64 bp = pieces_cp(pos, BLACK, PAWN);
+    U64 wk = pieces_cp(pos, WHITE, KING);
+    U64 bk = pieces_cp(pos, BLACK, KING);
 
     if (wk) { int sq = poplsb(&wk); int idx = pkIndex(WHITE, KING, sq);
               for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }

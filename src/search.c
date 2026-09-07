@@ -822,10 +822,10 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
     balance -= SEEPieceValues[nextVictim];
     if(balance >= 0)return 1;
 
-    bishops = pos->bitboards[wB] | pos->bitboards[bB];
-    rooks   = pos->bitboards[wR] | pos->bitboards[bR];
+    bishops = pos->byTypeBB[BISHOP];
+    rooks   = pos->byTypeBB[ROOK];
 
-    occupied = pos->occupancy[BOTH];
+    occupied = pos->byTypeBB[ALL_PIECES];
     occupied = (occupied ^ (1ull << from)) | (1ull << to);
     if(isEnpassant) {
         int epCapSq = (pos->side == WHITE) ? to - 8 : to + 8;
@@ -838,21 +838,24 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 
     while(TRUE){
 
-        myAttackers = attackers & pos->occupancy[colour];
+        myAttackers = attackers & pos->byColorBB[colour];
         if (myAttackers == 0ull) break;
 
-        for (nextVictim = wP; nextVictim <= bK; nextVictim++){
-            if(nextVictim==wK || nextVictim==bK)continue;
-            if (myAttackers & pos->bitboards[nextVictim])break;
+        U64 bb = 0;
+        int pt = PAWN;
+        for (; pt <= KING; pt++){
+            bb = myAttackers & pos->byTypeBB[pt];
+            if (bb) break;
         }
 
-        occupied ^= (1ull << LSBINDEX(myAttackers & pos->bitboards[nextVictim]));
+        nextVictim = MAKE_PIECE(colour, pt);
+        occupied ^= (1ull << LSBINDEX(bb));
 
-        if (nextVictim == wP || nextVictim == bP || nextVictim == wB || nextVictim == bB || nextVictim == wQ || nextVictim == bQ){
+        if (pt == PAWN || pt == BISHOP || pt == QUEEN){
             attackers |= get_bishop_attacks(to,occupied) & bishops;
         }
 
-        if (nextVictim == wR || nextVictim == bR || nextVictim == wQ || nextVictim == bQ){
+        if (pt == ROOK || pt == QUEEN){
             attackers |=   get_rook_attacks(to, occupied) & rooks;
         }
 
@@ -863,7 +866,7 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
         balance = -balance - 1 - SEEPieceValues[nextVictim];
 
         if (balance >= 0) {
-            if ((nextVictim==wK || nextVictim==bK) && (attackers & pos->occupancy[colour])){
+            if (pt == KING && (attackers & pos->byColorBB[colour])){
                 colour = !colour;
             }
             break;

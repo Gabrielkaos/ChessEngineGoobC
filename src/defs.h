@@ -66,8 +66,8 @@ typedef int16_t ContCorrectionTable[6][64][6][64];
 
 #define TT_BUCKET_SIZE 4
 
-enum{p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king};
-enum{PAWN=1,KNIGHT,BISHOP,ROOK,QUEEN,KING};
+enum { ALL_PIECES = 0, PAWN = 1, KNIGHT, BISHOP, ROOK, QUEEN, KING, PIECE_TYPE_NB = 8 };
+enum { p_pawn = 0, p_knight, p_bishop, p_rook, p_queen, p_king };
 enum {  MAXDEPTH=128,
         MAXPOSMOVES=256,
         MAXGAMESMOVES=550,
@@ -79,10 +79,26 @@ enum {  MAXDEPTH=128,
 enum {pawnHashMB=16,evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
 enum {OPENING,ENDING};
-enum { EMPTY, wP, wN, wB, wR, wQ, wK, bP, bN, bB, bR, bQ, bK };
+enum {
+    EMPTY = 0,
+    wP = PAWN,     wN = KNIGHT,     wB = BISHOP,     wR = ROOK,     wQ = QUEEN,     wK = KING,
+    bP = PAWN + 8, bN = KNIGHT + 8, bB = BISHOP + 8, bR = ROOK + 8, bQ = QUEEN + 8, bK = KING + 8,
+    PIECE_NB = 16
+};
 enum {FILE_A,FILE_B,FILE_C,FILE_D,FILE_E,FILE_F,FILE_G,FILE_H,FILE_NONE};
 enum {RANK_1,RANK_2,RANK_3,RANK_4,RANK_5,RANK_6,RANK_7,RANK_8,RANK_NONE};
-enum {WHITE, BLACK, BOTH};
+enum {WHITE = 0, BLACK = 1, BOTH = 2, COLOR_NB = 2};
+
+#define COLOR_OF(p)          ((p) >> 3)
+#define TYPE_OF(p)           ((p) & 7)
+#define PTYPE_OF(p)          (TYPE_OF(p) - 1)
+#define MAKE_PIECE(c, pt)    (((c) << 3) | (pt))
+
+#define RANK_OF(sq)          ((sq) >> 3)
+#define FILE_OF(sq)          ((sq) & 7)
+#define MIRROR64(sq)         ((sq) ^ 56)
+#define RELATIVE_SQ(c, sq)   ((sq) ^ ((c) * 56))
+#define RELATIVE_RANK(c, sq) ((c) == WHITE ? RANK_OF(sq) : 7 - RANK_OF(sq))
 enum {UCIMODE,XBOARDMODE,CONSOLEMODE};
 enum {
     A1,B1,C1,D1,E1,F1,G1,H1,
@@ -290,30 +306,29 @@ typedef struct{
 #define GETBIT(bitboard,square) (bitboard & (1ULL << square))
 #define POPBIT(bb,sq) (GETBIT(bb,sq) ? bb ^= (1ULL << sq):0)
 #define SETBIT(bitboard,square) (bitboard |= (1ULL << square))
-#define ISBQ(p) (pieceBishopQueen[(p)])
-#define ISRQ(p) (pieceRookQueen[(p)])
-#define ISKni(p) (pieceKnight[(p)])
-#define MIRROR64(sq) (Mirror64[(sq)])
+#define ISBQ(p)  (TYPE_OF(p) == BISHOP || TYPE_OF(p) == QUEEN)
+#define ISRQ(p)  (TYPE_OF(p) == ROOK || TYPE_OF(p) == QUEEN)
+#define ISKni(p) (TYPE_OF(p) == KNIGHT)
 
 /*GLOBALS*/
 extern S_PVTABLE pvTable[1];
 extern U64 king_attacks[BOARD_NUMS_SQ];
 extern U64 knight_attacks[BOARD_NUMS_SQ];
 extern U64 pawn_attacks[BOTH][BOARD_NUMS_SQ];
-extern const int pieceKnight[13];
-extern const int pieceKing[13];
-extern const int pieceRookQueen[13];
-extern const int pieceBishopQueen[13];
+extern const int pieceKnight[16];
+extern const int pieceKing[16];
+extern const int pieceRookQueen[16];
+extern const int pieceBishopQueen[16];
 extern const char pieceChar[];
 extern const char sideChar[];
 extern const char fileChar[];
 extern const char rankChar[];
-extern const int pieceBig[13];
-extern const int pieceMin[13];
-extern const int pieceMaj[13];
-extern const int pieceCol[13];
-extern const int piecePawn[13];
-extern const int pieceType[13];
+extern const int pieceBig[16];
+extern const int pieceMin[16];
+extern const int pieceMaj[16];
+extern const int pieceCol[16];
+extern const int piecePawn[16];
+extern const int pieceType[16];
 extern const int filesBoard[BOARD_NUMS_SQ];
 extern const int ranksBoard[BOARD_NUMS_SQ];
 extern const int Mirror64[64];

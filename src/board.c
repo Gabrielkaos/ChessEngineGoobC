@@ -30,33 +30,32 @@ void initStacks(S_BOARD *pos){
 }
 
 int getGamePhase(const S_BOARD *pos){
-    int gamePhase = 24 - 4 * COUNTBIT(pos->bitboards[wQ] | pos->bitboards[bQ])
-                       - 2 * COUNTBIT(pos->bitboards[wR] | pos->bitboards[bR])
-                       - 1 * COUNTBIT(pos->bitboards[wN] | pos->bitboards[bN] |
-                                      pos->bitboards[wB] | pos->bitboards[bB]);
+    int gamePhase = 24 - 4 * COUNTBIT(pos->byTypeBB[QUEEN])
+                       - 2 * COUNTBIT(pos->byTypeBB[ROOK])
+                       - 1 * COUNTBIT(pos->byTypeBB[KNIGHT] | pos->byTypeBB[BISHOP]);
 
-    gamePhase = gamePhase < 0 ? 0:gamePhase;
-    return (gamePhase*256+12)/24;
+    gamePhase = gamePhase < 0 ? 0 : gamePhase;
+    return (gamePhase * 256 + 12) / 24;
 }
 
 int checkBoard(const S_BOARD *pos){
-    int t_piece;
+    int pt;
 
     //check number of pieces in arrays and bitboards
     int pce_count=0;
-    for (t_piece=wP;t_piece<=bK;++t_piece){
-        pce_count+=COUNTBIT(pos->bitboards[t_piece]);
+    for (pt = PAWN; pt <= KING; ++pt){
+        pce_count += COUNTBIT(pos->byTypeBB[pt]);
     }
-    ASSERT(COUNTBIT(pos->occupancy[BOTH])==pce_count);
+    ASSERT(COUNTBIT(pos->byTypeBB[ALL_PIECES]) == pce_count);
 
     //check bitboard occupancy
-    ASSERT((pos->occupancy[WHITE] & pos->occupancy[BLACK])==0);
-    ASSERT((pos->occupancy[WHITE] | pos->occupancy[BLACK])==pos->occupancy[BOTH]);
+    ASSERT((pos->byColorBB[WHITE] & pos->byColorBB[BLACK]) == 0);
+    ASSERT((pos->byColorBB[WHITE] | pos->byColorBB[BLACK]) == pos->byTypeBB[ALL_PIECES]);
 
     //check side
     ASSERT(pos->side >= WHITE && pos->side < BOTH);
     //check enPas
-    if (pos->enPas != NO_SQ) ASSERT(ranksBoard[pos->enPas]==RANK_3 || ranksBoard[pos->enPas]==RANK_6);
+    if (pos->enPas != NO_SQ) ASSERT(RANK_OF(pos->enPas)==RANK_3 || RANK_OF(pos->enPas)==RANK_6);
     //check castleRights
     ASSERT(pos->castleRights >= 0 && pos->castleRights <=15);
     //check posKey and pawnPosKey
@@ -68,28 +67,28 @@ int checkBoard(const S_BOARD *pos){
 
     //avoid variants make engine play chess960 or just standard chess
     //pawns
-    ASSERT(COUNTBIT(pos->bitboards[wP]) <= 8);
-    ASSERT(COUNTBIT(pos->bitboards[bP]) <= 8);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, PAWN)) <= 8);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, PAWN)) <= 8);
 
     //rooks
-    ASSERT(COUNTBIT(pos->bitboards[wR]) <=10);
-    ASSERT(COUNTBIT(pos->bitboards[bR]) <=10);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, ROOK)) <= 10);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, ROOK)) <= 10);
 
     //knights
-    ASSERT(COUNTBIT(pos->bitboards[wN]) <=10);
-    ASSERT(COUNTBIT(pos->bitboards[bN]) <=10);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, KNIGHT)) <= 10);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, KNIGHT)) <= 10);
 
     //bishops
-    ASSERT(COUNTBIT(pos->bitboards[wB]) <=10);
-    ASSERT(COUNTBIT(pos->bitboards[bB]) <=10);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, BISHOP)) <= 10);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, BISHOP)) <= 10);
 
     //queens
-    ASSERT(COUNTBIT(pos->bitboards[wQ]) <=9);
-    ASSERT(COUNTBIT(pos->bitboards[bQ]) <=9);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, QUEEN)) <= 9);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, QUEEN)) <= 9);
 
     //kings
-    ASSERT(COUNTBIT(pos->bitboards[wK])==1);
-    ASSERT(COUNTBIT(pos->bitboards[bK])==1);
+    ASSERT(COUNTBIT(pieces_cp(pos, WHITE, KING)) == 1);
+    ASSERT(COUNTBIT(pieces_cp(pos, BLACK, KING)) == 1);
 
     return TRUE;
 }
@@ -97,12 +96,10 @@ int checkBoard(const S_BOARD *pos){
 void MirrorBoard(S_BOARD *pos){
     int tempPiecesArray[64];
     int tempSide=pos->side^1;
-    int swapPieces[13]={EMPTY, bP, bN, bB, bR, bQ, bK,wP, wN, wB, wR, wQ, wK};
     int tempcasteRights=0;
     int tempEnPass=NO_SQ;
 
     int sq;
-    int tp;
 
     if(pos->castleRights & WKCA) tempcasteRights |= BKCA;
     if(pos->castleRights & WQCA) tempcasteRights |= BQCA;
@@ -110,20 +107,18 @@ void MirrorBoard(S_BOARD *pos){
     if(pos->castleRights & BQCA) tempcasteRights |= WQCA;
 
     if(pos->enPas != NO_SQ){
-        tempEnPass=Mirror64[pos->enPas];
+        tempEnPass=MIRROR64(pos->enPas);
     }
 
     for(sq=0;sq<64;sq++){
-        tempPiecesArray[sq]=pos->pieces[Mirror64[sq]];
+        tempPiecesArray[sq]=pos->pieces[MIRROR64(sq)];
     }
 
     ResetBoard(pos);
 
     for(sq=0;sq<64;sq++){
-
-        tp=swapPieces[tempPiecesArray[sq]];
-        pos->pieces[sq]=tp;
-
+        int pce = tempPiecesArray[sq];
+        pos->pieces[sq] = pce ? (pce ^ 8) : EMPTY;
     }
 
     pos->side=tempSide;
@@ -137,27 +132,28 @@ void MirrorBoard(S_BOARD *pos){
     pos->minorHash=GenerateMinorHash(pos);
 
     updateListMaterial(pos);
-
 }
 
 void updateListMaterial(S_BOARD *pos){
-    int piece,sq,index,color;
+    int piece,sq,index,color,pt;
 
     for(index=0;index<BOARD_NUMS_SQ;++index){
         sq=index;
         piece=pos->pieces[index];
         if(piece != EMPTY){
-            color=pieceCol[piece];
+            color=COLOR_OF(piece);
+            pt=TYPE_OF(piece);
 
             //psqtmat
             pos->psqtmat += PSQTMATTABLE[piece][sq];
 
-            SETBIT(pos->occupancy[color],sq);
-            SETBIT(pos->bitboards[piece],sq);
+            U64 mask = 1ULL << sq;
+            pos->byColorBB[color] |= mask;
+            pos->byTypeBB[pt] |= mask;
         }
     }
     //update occupancy for both
-    pos->occupancy[BOTH] = (pos->occupancy[WHITE] | pos->occupancy[BLACK]);
+    pos->byTypeBB[ALL_PIECES] = (pos->byColorBB[WHITE] | pos->byColorBB[BLACK]);
 
     if (!tuneMode) nnue_refresh_accumulator(pos);
 }
@@ -279,8 +275,8 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     for(i=0;i<64;i++){
         int pce=pos->pieces[i];
         if(pce==EMPTY) continue;
-        if(pieceKing[pce]) kings[pieceCol[pce]]++;
-        if(piecePawn[pce] && (ranksBoard[i]==RANK_1 || ranksBoard[i]==RANK_8)){
+        if(TYPE_OF(pce) == KING) kings[COLOR_OF(pce)]++;
+        if(TYPE_OF(pce) == PAWN && (RANK_OF(i)==RANK_1 || RANK_OF(i)==RANK_8)){
             printf("FEN Not Valid \n");
             return -1;
         }
@@ -301,9 +297,9 @@ void ResetBoard(S_BOARD *pos){
 
     pos->psqtmat = 0;
 
-     for(index=0;index<13;++index){
-         pos->bitboards[index]=0ULL;
-     }
+    for(index=0;index<PIECE_TYPE_NB;++index){
+        pos->byTypeBB[index]=0ULL;
+    }
 
     //making them empty in 64 board
     for(index=0;index<64;++index){
@@ -311,8 +307,8 @@ void ResetBoard(S_BOARD *pos){
     }
 
     //making the pieces value 0 in bitboards
-    for(index=0;index<3;++index){
-        pos->occupancy[index]=0ULL;
+    for(index=0;index<COLOR_NB;++index){
+        pos->byColorBB[index]=0ULL;
     }
 
     pos->side=BOTH;

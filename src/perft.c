@@ -35,7 +35,8 @@ const int castlePerms[64]={
 INLINE void ClearPieces(const int sq,S_BOARD *pos){
 
     int pce=pos->pieces[sq];
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
 
     ASSERT(SqOnBoard(sq));
     ASSERT(SideValid(col));
@@ -43,25 +44,29 @@ INLINE void ClearPieces(const int sq,S_BOARD *pos){
 
     pos->pieces[sq]=EMPTY;
 
-    CLRBIT(pos->occupancy[col],(sq));
-    CLRBIT(pos->occupancy[BOTH],(sq));
-    CLRBIT(pos->bitboards[pce],(sq));
+    U64 mask = 1ULL << sq;
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 INLINE void AddPieces(const int sq,S_BOARD *pos,const int pce){
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
     pos->pieces[sq]=pce;
 
     ASSERT(SqOnBoard(sq));
     ASSERT(SideValid(col));
     ASSERT(PieceValidEmpty(pce));
 
-    SETBIT(pos->occupancy[col],(sq));
-    SETBIT(pos->occupancy[BOTH],(sq));
-    SETBIT(pos->bitboards[pce],(sq));
+    U64 mask = 1ULL << sq;
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 INLINE void MovePieces(const int from,const int to,S_BOARD *pos){
     int pce=pos->pieces[from];
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
 
     ASSERT(SqOnBoard(to));
     ASSERT(SqOnBoard(from));
@@ -71,13 +76,10 @@ INLINE void MovePieces(const int from,const int to,S_BOARD *pos){
     pos->pieces[from]=EMPTY;
     pos->pieces[to]=pce;
 
-    CLRBIT(pos->occupancy[col],(from));
-    SETBIT(pos->occupancy[col],(to));
-    CLRBIT(pos->occupancy[BOTH],(from));
-    SETBIT(pos->occupancy[BOTH],(to));
-
-    CLRBIT(pos->bitboards[pce],(from));
-    SETBIT(pos->bitboards[pce],(to));
+    U64 mask = (1ULL << from) | (1ULL << to);
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 
 INLINE void takeMoves(S_BOARD *pos){
@@ -121,7 +123,7 @@ INLINE void takeMoves(S_BOARD *pos){
     int ptom=PROMOTED(move);
     if(ptom != EMPTY){
         ClearPieces(from,pos);
-        AddPieces(from,pos,(pieceCol[ptom]==WHITE ? wP:bP));
+        AddPieces(from,pos,MAKE_PIECE(COLOR_OF(ptom), PAWN));
     }
 }
 INLINE int makeMoves(S_BOARD *pos,int move){
@@ -171,7 +173,7 @@ INLINE int makeMoves(S_BOARD *pos,int move){
     pos->hisPly++;
     pos->ply++;
 
-    if(piecePawn[pos->pieces[from]]){
+    if(TYPE_OF(pos->pieces[from]) == PAWN){
         if(move & MVFLAGPS){
             if(side==WHITE){
                 pos->enPas=from+8;
@@ -207,7 +209,7 @@ INLINE void AddMove(const S_BOARD *pos, int move,S_MOVELIST *list){
 }
 INLINE void AddWhitePawnCaptureMoves(const S_BOARD *pos,const int from,const int to,const int cap,S_MOVELIST *list){
 
-    if(ranksBoard[from]==RANK_7){
+    if(RANK_OF(from)==RANK_7){
         AddMove(pos,MOVE(from,to,cap,wQ,0),list);
         AddMove(pos,MOVE(from,to,cap,wR,0),list);
         AddMove(pos,MOVE(from,to,cap,wB,0),list);
@@ -219,7 +221,7 @@ INLINE void AddWhitePawnCaptureMoves(const S_BOARD *pos,const int from,const int
 }
 INLINE void AddWhitePawnMoves(const S_BOARD *pos,const int from,const int to,S_MOVELIST *list){
 
-    if(ranksBoard[from]==RANK_7){
+    if(RANK_OF(from)==RANK_7){
         AddMove(pos,MOVE(from,to,EMPTY,wQ,0),list);
         AddMove(pos,MOVE(from,to,EMPTY,wR,0),list);
         AddMove(pos,MOVE(from,to,EMPTY,wB,0),list);
@@ -231,7 +233,7 @@ INLINE void AddWhitePawnMoves(const S_BOARD *pos,const int from,const int to,S_M
 }
 INLINE void AddBlackPawnCaptureMoves(const S_BOARD *pos,const int from,const int to,const int cap,S_MOVELIST *list){
 
-    if(ranksBoard[from]==RANK_2){
+    if(RANK_OF(from)==RANK_2){
         AddMove(pos,MOVE(from,to,cap,bQ,0),list);
         AddMove(pos,MOVE(from,to,cap,bR,0),list);
         AddMove(pos,MOVE(from,to,cap,bB,0),list);
@@ -244,7 +246,7 @@ INLINE void AddBlackPawnCaptureMoves(const S_BOARD *pos,const int from,const int
 INLINE void AddBlackPawnMoves(const S_BOARD *pos,const int from,const int to,S_MOVELIST *list){
 
 
-    if(ranksBoard[from]==RANK_2){
+    if(RANK_OF(from)==RANK_2){
         AddMove(pos,MOVE(from,to,EMPTY,bQ,0),list);
         AddMove(pos,MOVE(from,to,EMPTY,bR,0),list);
         AddMove(pos,MOVE(from,to,EMPTY,bB,0),list);
@@ -263,16 +265,17 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
     int source_square, target_square;
     U64 bitboard, attacks;
 
-    //fix #2: only walk the 6 piece types belonging to the side to move
-    int base = (side == WHITE) ? wP : bP;
+    const U64 occ = pos->byTypeBB[ALL_PIECES];
+    const U64 my_occ = pos->byColorBB[side];
+    const U64 opp_occ = pos->byColorBB[!side];
 
-    for (int piece = base; piece <= base + 5; piece++)
+    for (int pt = PAWN; pt <= KING; pt++)
     {
-        bitboard = pos->bitboards[piece];
+        bitboard = my_occ & pos->byTypeBB[pt];
 
         if (side == WHITE)
         {
-            if (piece == wP)
+            if (pt == PAWN)
             {
                 while (bitboard)
                 {
@@ -280,18 +283,18 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                     target_square = source_square + 8;
 
-                    // generate quite pawn moves
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                    // generate quiet pawn moves
+                    if (!(occ & (1ULL << target_square)))
                     {
                         AddWhitePawnMoves(pos,source_square,target_square,list);
 
                         // two squares ahead pawn move
-                        if ((source_square >= A2 && source_square <= H2) && !GETBIT(pos->occupancy[BOTH], (target_square + 8)))
+                        if ((source_square >= A2 && source_square <= H2) && !(occ & (1ULL << (target_square + 8))))
                             AddMove(pos,MOVE(source_square,(target_square+8),0,0,MVFLAGPS),list);
                     }
 
                     // init pawn attacks bitboard
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[BLACK];
+                    attacks = pawn_attacks[side][source_square] & pos->byColorBB[BLACK];
 
                     // generate pawn captures
                     while (attacks)
@@ -300,7 +303,6 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                         AddWhitePawnCaptureMoves(pos,source_square,target_square,pos->pieces[target_square],list);
 
-                        // fix #1: clear the lowest set bit directly, no need to re-test it
                         attacks &= attacks - 1;
                     }
 
@@ -311,7 +313,6 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                         if (enpassant_attacks)
                         {
-                            // init enpassant capture target square
                             int target_enpassant = LSBINDEX(enpassant_attacks);
                             AddMove(pos,MOVE(source_square,target_enpassant,0,0,MVFLAGEP),list);
                         }
@@ -321,11 +322,11 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                 }
             }
 
-            if (piece == wK)
+            if (pt == KING)
             {
                 if (pos->castleRights & WKCA)
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], F1) && !GETBIT(pos->occupancy[BOTH], G1))
+                    if (!(occ & ((1ULL << F1) | (1ULL << G1))))
                     {
                         if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(F1, BLACK,pos))
                             AddMove(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
@@ -334,7 +335,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                 if (pos->castleRights & WQCA)
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], D1) && !GETBIT(pos->occupancy[BOTH], C1) && !GETBIT(pos->occupancy[BOTH], B1))
+                    if (!(occ & ((1ULL << D1) | (1ULL << C1) | (1ULL << B1))))
                     {
                         if (!is_square_attacked_BB(E1, BLACK,pos) && !is_square_attacked_BB(D1, BLACK,pos))
                             AddMove(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
@@ -342,10 +343,9 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                 }
             }
         }
-
         else
         {
-            if (piece == bP)
+            if (pt == PAWN)
             {
                 while (bitboard)
                 {
@@ -353,15 +353,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                     target_square = source_square - 8;
 
-                    if ((!GETBIT(pos->occupancy[BOTH], target_square)))
+                    if (!(occ & (1ULL << target_square)))
                     {
                         AddBlackPawnMoves(pos,source_square,target_square,list);
 
-                        if ((source_square >= A7 && source_square <= H7) && !GETBIT(pos->occupancy[BOTH], (target_square - 8)))
+                        if ((source_square >= A7 && source_square <= H7) && !(occ & (1ULL << (target_square - 8))))
                             AddMove(pos,MOVE(source_square,(target_square-8),0,0,MVFLAGPS),list);
                     }
 
-                    attacks = pawn_attacks[side][source_square] & pos->occupancy[WHITE];
+                    attacks = pawn_attacks[side][source_square] & pos->byColorBB[WHITE];
 
                     while (attacks)
                     {
@@ -387,11 +387,11 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                 }
             }
 
-            if (piece == bK)
+            if (pt == KING)
             {
                 if (pos->castleRights & BKCA)
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], F8) && !GETBIT(pos->occupancy[BOTH], G8))
+                    if (!(occ & ((1ULL << F8) | (1ULL << G8))))
                     {
                         if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(F8, WHITE,pos))
                             AddMove(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
@@ -400,7 +400,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
                 if (pos->castleRights & BQCA)
                 {
-                    if (!GETBIT(pos->occupancy[BOTH], D8) && !GETBIT(pos->occupancy[BOTH], C8) && !GETBIT(pos->occupancy[BOTH], B8))
+                    if (!(occ & ((1ULL << D8) | (1ULL << C8) | (1ULL << B8))))
                     {
                         if (!is_square_attacked_BB(E8, WHITE,pos) && !is_square_attacked_BB(D8, WHITE,pos))
                             AddMove(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
@@ -410,17 +410,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //knights
-        if (piece == base + 1)
+        if (pt == KNIGHT)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                //fix #4: split into two branch-free loops instead of a
-                //per-move GETBIT test
-                U64 pseudo = knight_attacks[source_square] & ~pos->occupancy[side];
+                U64 pseudo = knight_attacks[source_square] & ~my_occ;
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & opp_occ;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -428,7 +426,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -441,15 +439,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //bishops
-        if (piece == base + 2)
+        if (pt == BISHOP)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_bishop_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_bishop_attacks(source_square, occ) & ~my_occ;
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & opp_occ;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -457,7 +455,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -470,15 +468,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //rooks
-        if (piece == base + 3)
+        if (pt == ROOK)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_rook_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_rook_attacks(source_square, occ) & ~my_occ;
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & opp_occ;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -486,7 +484,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -499,15 +497,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //queens
-        if (piece == base + 4)
+        if (pt == QUEEN)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = get_queen_attacks(source_square, pos->occupancy[BOTH]) & ~pos->occupancy[side];
+                U64 pseudo = get_queen_attacks(source_square, occ) & ~my_occ;
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & opp_occ;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -515,7 +513,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);
@@ -528,15 +526,15 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
         }
 
         //kings
-        if (piece == base + 5)
+        if (pt == KING)
         {
             while (bitboard)
             {
                 source_square = LSBINDEX(bitboard);
 
-                U64 pseudo = king_attacks[source_square] & ~pos->occupancy[side];
+                U64 pseudo = king_attacks[source_square] & ~my_occ;
 
-                U64 caps = pseudo & pos->occupancy[!side];
+                U64 caps = pseudo & opp_occ;
                 while (caps)
                 {
                     target_square = LSBINDEX(caps);
@@ -544,7 +542,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     caps &= caps - 1;
                 }
 
-                U64 quiets = pseudo & ~pos->occupancy[BOTH];
+                U64 quiets = pseudo & ~occ;
                 while (quiets)
                 {
                     target_square = LSBINDEX(quiets);

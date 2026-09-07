@@ -1,23 +1,32 @@
 #include "defs.h"
 
-const char pieceChar[]=" PNBRQKpnbrqk";
+const char pieceChar[]=" PNBRQK  pnbrqk ";
 const char sideChar[]="wb-";
 const char fileChar[]="abcdefgh";
 const char rankChar[]="12345678";
 
-//enum { EMPTY, wP, wN, wB, wR, wQ, wK, bP, bN, bB, bR, bQ, bK };
-const int pieceBig[13]={FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE };
-const int pieceMin[13]={FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE };
-const int pieceMaj[13]={FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE };
-const int pieceCol[13]={BOTH, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-	BLACK, BLACK, BLACK, BLACK, BLACK, BLACK};
+// Pieces: EMPTY=0, wP..wK=1..6, bP..bK=9..14, PIECE_NB=16
+const int pieceBig[16]={FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE,
+                        FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE};
+const int pieceMin[16]={FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE,
+                        FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE};
+const int pieceMaj[16]={FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE,
+                        FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE};
+const int pieceCol[16]={BOTH, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, BOTH,
+                        BOTH, BLACK, BLACK, BLACK, BLACK, BLACK, BLACK, BOTH};
 
-const int piecePawn[13]={FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE };
-const int pieceKnight[13]={FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE};
-const int pieceKing[13]={FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE};
-const int pieceRookQueen[13]={FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE };
-const int pieceBishopQueen[13]={FALSE, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE };
-const int pieceType[13] = {100,p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king,p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king};
+const int piecePawn[16]={FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+                         FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE};
+const int pieceKnight[16]={FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE,
+                          FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE};
+const int pieceKing[16]={FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE,
+                        FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE};
+const int pieceRookQueen[16]={FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE,
+                             FALSE, FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE};
+const int pieceBishopQueen[16]={FALSE, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE, FALSE,
+                               FALSE, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE, FALSE};
+const int pieceType[16] = {100,p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king,100,
+                           100,p_pawn,p_knight,p_bishop,p_rook,p_queen,p_king,100};
 
 const int filesBoard[BOARD_NUMS_SQ]={0,
     1,2,3,4,5,6,7,0,

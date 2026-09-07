@@ -1755,4 +1755,12 @@
     ->fixed pos->search memory leakage
     ->added safeguard to bestmove returns
 
+    ////////////////////////////////////////////////////
+    //                                                //
+    //          STOCKFISH STYLE BOARD REP             //
+    //                                                //
+    ////////////////////////////////////////////////////
+
+    ->
+    ->
 	*/

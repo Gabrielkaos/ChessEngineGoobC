@@ -145,11 +145,11 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 
                 U64 threatByLesser[6];
                 int enemy = pos->side ^ 1;
-                U64 enemyPawns   = (enemy == WHITE) ? pos->bitboards[wP] : pos->bitboards[bP];
-                U64 enemyKnights = (enemy == WHITE) ? pos->bitboards[wN] : pos->bitboards[bN];
-                U64 enemyBishops = (enemy == WHITE) ? pos->bitboards[wB] : pos->bitboards[bB];
-                U64 enemyRooks   = (enemy == WHITE) ? pos->bitboards[wR] : pos->bitboards[bR];
-                U64 occ = pos->occupancy[BOTH];
+                U64 enemyPawns   = pieces_cp(pos, enemy, PAWN);
+                U64 enemyKnights = pieces_cp(pos, enemy, KNIGHT);
+                U64 enemyBishops = pieces_cp(pos, enemy, BISHOP);
+                U64 enemyRooks   = pieces_cp(pos, enemy, ROOK);
+                U64 occ = pos->byTypeBB[ALL_PIECES];
 
                 U64 pawnAttacks = pawnRightAttacks(enemyPawns, ~0ULL, enemy) | pawnLeftAttacks(enemyPawns, ~0ULL, enemy);
                 

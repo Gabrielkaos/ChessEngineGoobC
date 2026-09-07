@@ -36,14 +36,14 @@ int drawByRepetitionEthereals(const S_BOARD *pos){
 }
 
 int drawByMaterial(const S_BOARD *pos){
-    U64 pawns=pos->bitboards[wP] | pos->bitboards[bP];
-    U64 rooks=pos->bitboards[wR] | pos->bitboards[bR];
-    U64 queens=pos->bitboards[wQ] | pos->bitboards[bQ];
-    U64 bishops=pos->bitboards[wB] | pos->bitboards[bB];
-    U64 knights=pos->bitboards[wN] | pos->bitboards[bN];
+    U64 pawns   = pos->byTypeBB[PAWN];
+    U64 rooks   = pos->byTypeBB[ROOK];
+    U64 queens  = pos->byTypeBB[QUEEN];
+    U64 bishops = pos->byTypeBB[BISHOP];
+    U64 knights = pos->byTypeBB[KNIGHT];
 
     return !(pawns | rooks | queens)
-        && (!several(pos->occupancy[WHITE]) || !several(pos->occupancy[BLACK]))
+        && (!several(pos->byColorBB[WHITE]) || !several(pos->byColorBB[BLACK]))
         && (!several(knights | bishops)
             || (!bishops && COUNTBIT(knights) <= 2));
 }

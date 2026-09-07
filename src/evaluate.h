@@ -56,7 +56,7 @@ enum {
 #define PHASE_ENDING 171
 #define PHASE_PAWN_ENDING 256
 extern int DistanceBetween[64][64];
-extern int PSQTMATTABLE[13][64];
+extern int PSQTMATTABLE[16][64];
 extern int tuneMode;
 
 // tunable evaluation weights (defined in evaluate.c)

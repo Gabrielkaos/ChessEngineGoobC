@@ -87,14 +87,14 @@ void TBInit(const char *path){
 //own per-piece bitboards.
 static inline void tbBitboards(const S_BOARD *pos,U64 *white,U64 *black,U64 *kings,
                                 U64 *queens,U64 *rooks,U64 *bishops,U64 *knights,U64 *pawns){
-    *white   = pos->occupancy[WHITE];
-    *black   = pos->occupancy[BLACK];
-    *kings   = pos->bitboards[wK] | pos->bitboards[bK];
-    *queens  = pos->bitboards[wQ] | pos->bitboards[bQ];
-    *rooks   = pos->bitboards[wR] | pos->bitboards[bR];
-    *bishops = pos->bitboards[wB] | pos->bitboards[bB];
-    *knights = pos->bitboards[wN] | pos->bitboards[bN];
-    *pawns   = pos->bitboards[wP] | pos->bitboards[bP];
+    *white   = pos->byColorBB[WHITE];
+    *black   = pos->byColorBB[BLACK];
+    *kings   = pos->byTypeBB[KING];
+    *queens  = pos->byTypeBB[QUEEN];
+    *rooks   = pos->byTypeBB[ROOK];
+    *bishops = pos->byTypeBB[BISHOP];
+    *knights = pos->byTypeBB[KNIGHT];
+    *pawns   = pos->byTypeBB[PAWN];
 }
 
 //Cheap eligibility check shared by both probe entry points: Syzygy
@@ -103,7 +103,7 @@ static inline void tbBitboards(const S_BOARD *pos,U64 *white,U64 *black,U64 *kin
 static inline int TBPositionOk(const S_BOARD *pos,int pieceLimit){
     if(!SyzygyEnabled)          return 0;
     if(pos->castleRights != 0)  return 0;
-    if(COUNTBIT(pos->occupancy[BOTH]) > pieceLimit) return 0;
+    if(COUNTBIT(pos->byTypeBB[ALL_PIECES]) > pieceLimit) return 0;
     return 1;
 }
 
@@ -111,11 +111,13 @@ static inline int TBPositionOk(const S_BOARD *pos,int pieceLimit){
 //to Fathom's TB_PROMOTES_* constant. Mirrors the exact same ISKni/ISRQ/
 //ISBQ pattern io.c's PrMove() already uses to print promotion letters.
 static inline int tbPromoFromPiece(int promoted){
-    if(!promoted)                        return TB_PROMOTES_NONE;
-    if(ISKni(promoted))                  return TB_PROMOTES_KNIGHT;
-    if(ISRQ(promoted) && ISBQ(promoted)) return TB_PROMOTES_QUEEN;
-    if(ISRQ(promoted))                   return TB_PROMOTES_ROOK;
-    return TB_PROMOTES_BISHOP;
+    switch (TYPE_OF(promoted)) {
+        case KNIGHT: return TB_PROMOTES_KNIGHT;
+        case BISHOP: return TB_PROMOTES_BISHOP;
+        case ROOK:   return TB_PROMOTES_ROOK;
+        case QUEEN:  return TB_PROMOTES_QUEEN;
+        default:     return TB_PROMOTES_NONE;
+    }
 }
 
 int TBProbeRoot(S_BOARD *pos){

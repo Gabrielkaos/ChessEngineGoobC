@@ -254,8 +254,8 @@ int nnue_loaded = 0;
 static inline size_t nnue_feature_index(int us, int kingSq, int pce, int sq) {
     int relKing  = (us == WHITE) ? kingSq : MIRROR64(kingSq);
     int relSq    = (us == WHITE) ? sq     : MIRROR64(sq);
-    int ptype    = pieceType[pce];                    /* 0..5 */
-    int relColor = (pieceCol[pce] == us) ? 0 : 1;          /* own=0 enemy=1 */
+    int ptype    = PTYPE_OF(pce);                    /* 0..5 */
+    int relColor = (COLOR_OF(pce) == us) ? 0 : 1;          /* own=0 enemy=1 */
     int ptc      = relColor * NNUE_PIECE_TYPES + ptype;    /* 0..11 */
     return ((size_t)relKing * NNUE_PTC_COUNT + ptc) * 64 + relSq;
 }
@@ -426,7 +426,7 @@ static void nnue_refresh_perspective_ks(S_BOARD *pos, int us, int kingSq) {
 }
 
 static inline int nnue_king_sq(const S_BOARD *pos, int us) {
-    return LSBINDEX(pos->bitboards[us == WHITE ? wK : bK]);
+    return LSBINDEX(pieces_cp(pos, us, KING));
 }
 
 void nnue_refresh_accumulator(S_BOARD *pos) {

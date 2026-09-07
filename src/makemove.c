@@ -27,22 +27,20 @@ int moveIsTactical(S_BOARD *pos,int move){
 int MoveBestCaseValue(S_BOARD *pos){
     ASSERT(checkBoard(pos));
 
-    U64 enemy = pos->occupancy[!pos->side];
+    U64 enemy = pos->byColorBB[!pos->side];
     int value = SEEPieceValues[wP];
 
     // Check from most valuable to least valuable piece type present
-    if ((pos->bitboards[wQ] | pos->bitboards[bQ]) & enemy){
+    if (pos->byTypeBB[QUEEN] & enemy){
         value = SEEPieceValues[wQ];
-    } else if ((pos->bitboards[wR] | pos->bitboards[bR]) & enemy){
+    } else if (pos->byTypeBB[ROOK] & enemy){
         value = SEEPieceValues[wR];
-    } else if ((pos->bitboards[wB] | pos->bitboards[bB] |
-                pos->bitboards[wN] | pos->bitboards[bN]) & enemy){
+    } else if ((pos->byTypeBB[BISHOP] | pos->byTypeBB[KNIGHT]) & enemy){
         value = SEEPieceValues[wB]; // bishop and knight share the same SEE value
     }
 
-    U64 pawns = pos->bitboards[wP] | pos->bitboards[bP];
-    if(pawns & pos->occupancy[pos->side] &
-       (pos->side==WHITE ? RankBBMask[RANK_7]:RankBBMask[RANK_2])){
+    U64 pawns = pos->byTypeBB[PAWN] & pos->byColorBB[pos->side];
+    if(pawns & (pos->side==WHITE ? RankBBMask[RANK_7]:RankBBMask[RANK_2])){
         value += SEEPieceValues[wQ] - SEEPieceValues[wP];
     }
 
@@ -105,7 +103,8 @@ const int castlePerm[64]={
 INLINE void ClearPiece(const int sq,S_BOARD *pos){
 
     int pce=pos->pieces[sq];
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
 
     ASSERT(SqOnBoard(sq));
     ASSERT(SideValid(col));
@@ -115,13 +114,13 @@ INLINE void ClearPiece(const int sq,S_BOARD *pos){
 
     pos->pieces[sq]=EMPTY;
 
-    if(piecePawn[pce] || pieceKing[pce]){
+    if(pt == PAWN || pt == KING){
         HASH_PK(pce,sq);
     }
 
-    if(!piecePawn[pce]){
+    if(pt != PAWN){
         HASH_NP(pce,sq,col);
-        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop)
+        if(pt == KNIGHT || pt == BISHOP)
             HASH_MINOR(pce,sq);
     }
 
@@ -129,13 +128,15 @@ INLINE void ClearPiece(const int sq,S_BOARD *pos){
     pos->psqtmat -= PSQTMATTABLE[pce][sq];
     nnue_update_remove(pos, pce, sq);
 
-    CLRBIT(pos->occupancy[col],(sq));
-    CLRBIT(pos->occupancy[BOTH],(sq));
-    CLRBIT(pos->bitboards[pce],(sq));
+    U64 mask = 1ULL << sq;
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 INLINE void AddPiece(const int sq,S_BOARD *pos,const int pce){
 
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
 
     ASSERT(SqOnBoard(sq));
     ASSERT(SideValid(col));
@@ -145,13 +146,13 @@ INLINE void AddPiece(const int sq,S_BOARD *pos,const int pce){
 
     pos->pieces[sq]=pce;
 
-    if(piecePawn[pce] || pieceKing[pce]){
+    if(pt == PAWN || pt == KING){
         HASH_PK(pce,sq);
     }
 
-    if(!piecePawn[pce]){
+    if(pt != PAWN){
         HASH_NP(pce,sq,col);
-        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop)
+        if(pt == KNIGHT || pt == BISHOP)
             HASH_MINOR(pce,sq);
     }
 
@@ -159,9 +160,10 @@ INLINE void AddPiece(const int sq,S_BOARD *pos,const int pce){
     pos->psqtmat+=PSQTMATTABLE[pce][sq];
     nnue_update_add(pos, pce, sq);
 
-    SETBIT(pos->occupancy[col],(sq));
-    SETBIT(pos->occupancy[BOTH],(sq));
-    SETBIT(pos->bitboards[pce],(sq));
+    U64 mask = 1ULL << sq;
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
 
@@ -169,7 +171,8 @@ INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
     ASSERT(SqOnBoard(to));
 
     int pce=pos->pieces[from];
-    int col=pieceCol[pce];
+    int col=COLOR_OF(pce);
+    int pt=TYPE_OF(pce);
     int to_pce = pos->pieces[to];
 
     ASSERT(SideValid(col));
@@ -182,15 +185,15 @@ INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
     pos->pieces[to]=pce;
 
 
-    if(piecePawn[pce] || pieceKing[pce]){
+    if(pt == PAWN || pt == KING){
         HASH_PK(pce,from);
         HASH_PK(pce,to);
     }
 
-    if(!piecePawn[pce]){
+    if(pt != PAWN){
         HASH_NP(pce,from,col);
         HASH_NP(pce,to,col);
-        if(pieceType[pce]==p_knight || pieceType[pce]==p_bishop){
+        if(pt == KNIGHT || pt == BISHOP){
             HASH_MINOR(pce,from);
             HASH_MINOR(pce,to);
         }
@@ -203,13 +206,10 @@ INLINE void MovePiece(const int from,const int to,S_BOARD *pos){
     nnue_update_move(pos, pce, from, to);
     if (to_pce != EMPTY) nnue_update_remove(pos, to_pce, to);
 
-    CLRBIT(pos->occupancy[col],(from));
-    SETBIT(pos->occupancy[col],(to));
-    CLRBIT(pos->occupancy[BOTH],(from));
-    SETBIT(pos->occupancy[BOTH],(to));
-
-    CLRBIT(pos->bitboards[pce],(from));
-    SETBIT(pos->bitboards[pce],(to));
+    U64 mask = (1ULL << from) | (1ULL << to);
+    pos->byColorBB[col] ^= mask;
+    pos->byTypeBB[pt] ^= mask;
+    pos->byTypeBB[ALL_PIECES] ^= mask;
 }
 
 int makeMove(S_BOARD *pos,int move){
@@ -224,12 +224,12 @@ int makeMove(S_BOARD *pos,int move){
     //the post-move legality check below loses its reference point and a bogus
     //"legal" move would send the search into a kingless position (empty king
     //bb -> ctzll(0) -> out-of-bounds table access). reject before mutating.
-    if(pos->pieces[to]==wK || pos->pieces[to]==bK){
+    if(TYPE_OF(pos->pieces[to]) == KING){
         return FALSE;
     }
 
     pos->search->moveStack[pos->ply] = move;
-    pos->search->pieceStack[pos->ply] = pieceType[pos->pieces[from]];
+    pos->search->pieceStack[pos->ply] = PTYPE_OF(pos->pieces[from]);
 
     pos->search->history[pos->hisPly].posKey=pos->posKey;
 
@@ -280,7 +280,7 @@ int makeMove(S_BOARD *pos,int move){
         pos->fiftyMove=0;
     }
 
-    if(piecePawn[pos->pieces[from]]){
+    if(TYPE_OF(pos->pieces[from]) == PAWN){
         pos->fiftyMove=0;
         if(move & MVFLAGPS){
             if(side==WHITE){
@@ -367,7 +367,7 @@ void takeMove(S_BOARD *pos){
 
     if(PROMOTED(move) != EMPTY){
         ClearPiece(from,pos);
-        AddPiece(from,pos,(pieceCol[PROMOTED(move)]==WHITE ? wP:bP));
+        AddPiece(from,pos,MAKE_PIECE(COLOR_OF(PROMOTED(move)), PAWN));
     }
 }
 
