@@ -333,6 +333,7 @@ void ResetBoard(S_BOARD *pos){
     pos->st->npHash[BLACK]=0ULL;
     pos->st->minorHash=0ULL;
     pos->st->psqtmat=0;
+    pos->st->repetition=0;
     pos->st->previous=NULL;
 }
 

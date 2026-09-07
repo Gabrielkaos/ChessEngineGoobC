@@ -30,74 +30,87 @@ extern const U64 BlackPassedMask[BOARD_NUMS_SQ];
 extern const U64 WhitePassedMark[BOARD_NUMS_SQ];
 extern const U64 IsolatedMask[BOARD_NUMS_SQ];
 extern const int PromoteSquare[BOTH][FILE_NONE];
+extern const int KingPawnFileDistance[FILE_NONE][1<<FILE_NONE];
 
-extern int boardHasNonPawnMaterial(S_BOARD *pos, int turn);
-extern int kingPawnFileDistance(U64 pawns, int ksq);
-extern int openFileCount(U64 pawns);
+INLINE int boardHasNonPawnMaterial(const S_BOARD *pos, int turn) {
+    ASSERT(SideValid(turn));
+    return (pos->byColorBB[turn] & ~(pos->byTypeBB[KING] | pos->byTypeBB[PAWN])) != 0;
+}
 
-static inline int poplsb(U64 *bb) {
+INLINE int openFileCount(U64 pawns) {
+    pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
+    return COUNTBIT(~pawns & 0xFF);
+}
+
+INLINE int kingPawnFileDistance(U64 pawns, int ksq) {
+    ASSERT(SqOnBoard(ksq));
+    pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
+    return KingPawnFileDistance[FILE_OF(ksq)][pawns & 0xFF];
+}
+
+INLINE int poplsb(U64 *bb) {
     int lsb = LSBINDEX(*bb);
     *bb &= *bb - 1;
     return lsb;
 }
 
-static inline bool several(U64 bb) {
+INLINE bool several(U64 bb) {
     return (bb & (bb - 1)) != 0;
 }
 
-static inline bool onlyOne(U64 bb) {
+INLINE bool onlyOne(U64 bb) {
     return bb && !several(bb);
 }
 
-static inline bool testBit(U64 bb, int i) {
+INLINE bool testBit(U64 bb, int i) {
     return (bb & (1ULL << i)) != 0;
 }
 
-static inline int getmsb(U64 bb) {
+INLINE int getmsb(U64 bb) {
     return __builtin_clzll(bb) ^ 63;
 }
 
-static inline int mirrorFile(int file) {
+INLINE int mirrorFile(int file) {
     return file < 4 ? file : 7 - file;
 }
 
-static inline int relativeRankOf(int colour, int sq) {
+INLINE int relativeRankOf(int colour, int sq) {
     return (sq >> 3) ^ (colour * 7);
 }
 
-static inline int relativeSquare32(int colour, int sq) {
+INLINE int relativeSquare32(int colour, int sq) {
     return 4 * relativeRankOf(colour, sq) + mirrorFile(FILE_OF(sq));
 }
 
-static inline int backmost(int colour, U64 bb) {
+INLINE int backmost(int colour, U64 bb) {
     return colour == WHITE ? LSBINDEX(bb) : getmsb(bb);
 }
 
-static inline U64 pawnAdvance(U64 pawns, U64 occupied, int colour) {
+INLINE U64 pawnAdvance(U64 pawns, U64 occupied, int colour) {
     return ~occupied & (colour == WHITE ? (pawns << 8) : (pawns >> 8));
 }
 
-static inline U64 squaresOfMatchingColour(int sq) {
+INLINE U64 squaresOfMatchingColour(int sq) {
     return testBit(lightsquaresBB, sq) ? lightsquaresBB : darksquaresBB;
 }
 
-static inline U64 pawnPassedMark(int color, int sq) {
+INLINE U64 pawnPassedMark(int color, int sq) {
     return color == WHITE ? WhitePassedMark[sq] : BlackPassedMask[sq];
 }
 
-static inline U64 getOutpostSquareMasks(int color, int sq) {
+INLINE U64 getOutpostSquareMasks(int color, int sq) {
     return OutpostSquareMasks[color][sq];
 }
 
-static inline U64 getOutpostRanksMasks(int color) {
+INLINE U64 getOutpostRanksMasks(int color) {
     return OutpostRanksMasks[color];
 }
 
-static inline U64 forwardRanksMasks(int color, int rank) {
+INLINE U64 forwardRanksMasks(int color, int rank) {
     return ForwardRanksMasks[color][rank];
 }
 
-static inline U64 KingAreaMasks(int color, int sq) {
+INLINE U64 KingAreaMasks(int color, int sq) {
     return KingAreasMask[color][sq];
 }
 

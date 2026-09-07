@@ -8,6 +8,7 @@
 #include "attacks.h"
 #include "validate.h"
 #include "nnue_loader.h"
+#include "some_maths.h"
 
 #define HASH_PCE(pce,sq) (pos->st->posKey ^= (pieceKeys[(pce)][(sq)]))
 #define HASH_SIDE (pos->st->posKey ^= (sideKey))
@@ -417,6 +418,20 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
     pos->side ^= 1;
     HASH_SIDE;
 
+    newSt->repetition = 0;
+    int end = MIN(newSt->fiftyMove, newSt->pliesFromNull);
+    if (end >= 4) {
+        StateInfo *stp = newSt->previous ? newSt->previous->previous : NULL;
+        for (int i = 4; i <= end; i += 2) {
+            if (!stp || !stp->previous || !stp->previous->previous) break;
+            stp = stp->previous->previous;
+            if (stp->posKey == newSt->posKey) {
+                newSt->repetition = stp->repetition ? -i : i;
+                break;
+            }
+        }
+    }
+
     int childPly = pos->ply;
     if (pos->search && childPly < MAXDEPTH) {
         pos->search->dirtyPieces[childPly] = newSt->dirtyPiece;
@@ -495,6 +510,8 @@ void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
     pos->side ^= 1;
     pos->hisPly++;
     HASH_SIDE;
+
+    newSt->repetition = 0;
 
     pos->st->checkersBB = 0ULL;
     update_slider_blockers(pos, pos->side);

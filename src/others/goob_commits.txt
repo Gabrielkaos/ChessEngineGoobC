@@ -1765,6 +1765,8 @@
     ->added LineBB[64][64] & BetweenBB[64][64] precomputed tables
     ->StateInfo Linked List Stack
     ->Stockfish-style NNUE Accumulator Invalidation & Lazy Evaluation
+    ->inline functions at attack and bitboards
+    ->implemented stockfish style repetition recognizer
     ->
 
 	*/

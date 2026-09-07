@@ -761,21 +761,3 @@ const int PromoteSquare[BOTH][FILE_NONE]={
 
 };
 
-
-/*FUNCTIONS*/
-int boardHasNonPawnMaterial(S_BOARD *pos, int turn) {
-    ASSERT(SideValid(turn));
-    return (pos->byColorBB[turn] & ~(pos->byTypeBB[KING] | pos->byTypeBB[PAWN])) != 0;
-}
-
-int kingPawnFileDistance(U64 pawns, int ksq) {
-    ASSERT(SqOnBoard(ksq));
-    pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
-    return KingPawnFileDistance[FILE_OF(ksq)][pawns & 0xFF];
-}
-
-int openFileCount(U64 pawns) {
-    pawns |= pawns >> 8; pawns |= pawns >> 16; pawns |= pawns >> 32;
-    return COUNTBIT(~pawns & 0xFF);
-}
-

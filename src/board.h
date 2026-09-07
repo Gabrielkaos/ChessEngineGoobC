@@ -81,6 +81,7 @@ typedef struct StateInfo {
     int pliesFromNull;
     int enPas;
     int psqtmat;
+    int repetition;
     U64 checkersBB;
     U64 blockersForKing[COLOR_NB];
     U64 pinners[COLOR_NB];

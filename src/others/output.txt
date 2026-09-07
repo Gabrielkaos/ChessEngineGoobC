@@ -8,5 +8,5 @@ info depth 20 seldepth 40 multipv 1 score cp 40 time 3429 nodes 5154693 hashfull
 bestmove e2e4
 
 fen - r2q1rk1/1bp1bpp1/p1n2n1p/1p2p3/4N3/1B1P1N2/PPPB1PPP/R2Q1RK1 w - - 1 12
-info depth 20 seldepth 37 multipv 1 score cp 35 time 3890 nodes 5893935 hashfull 354 tbhits 0 pv f1e1 f6e4 d3e4 d8d6 a2a4 b5b4 b3d5 a8b8 d2e3 a6a5 d1e2 c6d4 e3d4 e5d4 f3d4 b7d5 d4f5 d6f6 e4d5 f6f5 e2e7 f5c2 a1c1 c2b2
+info depth 20 seldepth 36 multipv 1 score cp 46 time 4990 nodes 7709479 hashfull 456 tbhits 0 pv f1e1 f6e4 d3e4 e7c5 b3d5 d8f6 b2b4 c5a7 a2a4 b5a4 c2c3 a8d8 d1a4 d8d6 a4c2 a7b6 h2h3 d6d7 c2b3 f8d8 d2e3 b6e3 e1e3 f6e7 e3d3 d7d6
 bestmove f1e1
