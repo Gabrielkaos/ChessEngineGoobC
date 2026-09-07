@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     AllInit();
 
     S_BOARD pos[1];
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pos->search = alloc_search_thread();
     S_SEARCHINFO info[1];
     info->quit=FALSE;
     info->threadNum = 1;

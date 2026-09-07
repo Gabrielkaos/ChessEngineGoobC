@@ -4,6 +4,7 @@
 
 #include "defs.h"
 #include "correction_types.h"
+#include <string.h>
 
 /* Must match the l1_size (per-perspective accumulator width) of the
    exported NNUE net. Update this to match whatever L1 size you train
@@ -12,6 +13,21 @@
 #define NNUE_ACC_SIZE 1024
 
 
+
+typedef struct {
+    int piece_remove[2];
+    int from[2];
+    int piece_add[2];
+    int to[2];
+    int remove_count;
+    int add_count;
+    int king_moved[COLOR_NB];
+} DirtyPiece;
+
+typedef struct {
+    ALIGN64 int32_t accumulation[COLOR_NB][NNUE_ACC_SIZE];
+    uint8_t computed[COLOR_NB];
+} NNUE_Accumulator;
 
 typedef struct {
     S_UNDO history[MAXGAMESMOVES]; //stores state of the board
@@ -30,8 +46,16 @@ typedef struct {
     int capturesTried[MAXDEPTH][MAXPOSMOVES];
     S_MOVEPICKER movePickers[MAXDEPTH];
     S_MOVEPICKER singularMovePickers[MAXDEPTH];
-    int32_t nnue_acc[2][NNUE_ACC_SIZE];
+    ALIGN64 NNUE_Accumulator nnue_accumulators[MAXDEPTH];
+    DirtyPiece dirtyPieces[MAXDEPTH];
 } S_SEARCH_THREAD;
+
+static inline S_SEARCH_THREAD* alloc_search_thread(void) {
+    size_t size = (sizeof(S_SEARCH_THREAD) + 63) & ~(size_t)63;
+    S_SEARCH_THREAD *ptr = (S_SEARCH_THREAD*) aligned_alloc(64, size);
+    if (ptr) memset(ptr, 0, sizeof(S_SEARCH_THREAD));
+    return ptr;
+}
 
 //Board structure
 typedef struct {
@@ -61,6 +85,7 @@ typedef struct StateInfo {
     U64 blockersForKing[COLOR_NB];
     U64 pinners[COLOR_NB];
     int capturedPiece;
+    DirtyPiece dirtyPiece;
     struct StateInfo *previous;
 } StateInfo;
 

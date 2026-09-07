@@ -25,6 +25,8 @@ void initStacks(S_BOARD *pos){
         pos->search->moveStack[index] =NOMOVE;
         pos->search->pieceStack[index]=0;
         pos->search->reduction_stack[index]=0;
+        pos->search->nnue_accumulators[index].computed[WHITE]=0;
+        pos->search->nnue_accumulators[index].computed[BLACK]=0;
     }
     pos->shared->ttMoveHistory = 0;
 }

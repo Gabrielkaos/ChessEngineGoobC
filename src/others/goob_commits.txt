@@ -1764,5 +1764,7 @@
     ->added Fast legal(pos, move) Function
     ->added LineBB[64][64] & BetweenBB[64][64] precomputed tables
     ->StateInfo Linked List Stack
+    ->Stockfish-style NNUE Accumulator Invalidation & Lazy Evaluation
     ->
+
 	*/

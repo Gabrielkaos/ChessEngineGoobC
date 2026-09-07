@@ -562,6 +562,8 @@ void parsePosition(char* lineIn,S_BOARD *pos){
             ptrChar++;
         }
     }
+    pos->ply = 0;
+    nnue_refresh_accumulator(pos);
 }
 void uciPrint(){
     printf("id name %s %s\n",NAME,VER);

@@ -22,6 +22,7 @@
 #include "tt_eval.h"
 #include "syzygy.h"
 #include "correction.h"
+#include "nnue_loader.h"
 
 //NOTE
 /*
@@ -899,7 +900,7 @@ int SearchPositionThread(void *data){
     }
     pos->st = &pos->stateTable[pos->hisPly];
 
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pos->search = alloc_search_thread();
     memcpy(pos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
 
     pos->eTable->evalTable = threadEvalTable[0].evalTable;
@@ -907,6 +908,9 @@ int SearchPositionThread(void *data){
 
     pos->pawnKingTable->paTable = threadPawnTable[0].paTable;
     pos->pawnKingTable->numEntries = threadPawnTable[0].numEntries;
+
+    pos->ply = 0;
+    nnue_refresh_accumulator(pos);
 
     SearchPosition(pos, thread_data->info, thread_data->ttable);
 
@@ -1181,6 +1185,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 //call when creating workers
 int startWorkerThreads(void *data){
     THREAD_SEARCH_WORKER *thread_data = (THREAD_SEARCH_WORKER*)data;
+    thread_data->originalPos->ply = 0;
+    nnue_refresh_accumulator(thread_data->originalPos);
     IterativeDeepening(thread_data);
 
     if (thread_data->threadNumber==0){
@@ -1213,6 +1219,7 @@ int startWorkerThreads(void *data){
         }
         fflush(stdout);
     }
+    free(thread_data->originalPos->search);
     free(thread_data->originalPos);
     free(thread_data);
 
@@ -1234,7 +1241,7 @@ void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINF
     }
     pThread->originalPos->st = &pThread->originalPos->stateTable[pos->hisPly];
 
-    pThread->originalPos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pThread->originalPos->search = alloc_search_thread();
     memcpy(pThread->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
 
     pThread->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
@@ -1262,6 +1269,7 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     //init search things
     InitSearcher(pos,info, table);
+    nnue_refresh_accumulator(pos);
 
     //Syzygy root probe
     TBProbeRoot(pos);

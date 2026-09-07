@@ -80,7 +80,6 @@ INLINE void putPiece(S_BOARD *pos, int pce, int sq) {
     pos->byColorBB[col] |= mask;
     pos->byTypeBB[pt] |= mask;
     pos->byTypeBB[ALL_PIECES] |= mask;
-    nnue_update_add(pos, pce, sq);
 }
 
 INLINE void removePiece(S_BOARD *pos, int sq) {
@@ -94,7 +93,6 @@ INLINE void removePiece(S_BOARD *pos, int sq) {
     pos->byColorBB[col] ^= mask;
     pos->byTypeBB[pt] ^= mask;
     pos->byTypeBB[ALL_PIECES] ^= mask;
-    nnue_update_remove(pos, pce, sq);
 }
 
 INLINE void movePiece(S_BOARD *pos, int from, int to) {
@@ -110,7 +108,6 @@ INLINE void movePiece(S_BOARD *pos, int from, int to) {
     pos->byColorBB[col] ^= mask;
     pos->byTypeBB[pt] ^= mask;
     pos->byTypeBB[ALL_PIECES] ^= mask;
-    nnue_update_move(pos, pce, from, to);
 }
 
 void update_slider_blockers(S_BOARD *pos, int c) {
@@ -256,6 +253,15 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
 
     pos->st->capturedPiece = captured;
 
+    DirtyPiece *dp = &newSt->dirtyPiece;
+    dp->remove_count = 0;
+    dp->add_count = 0;
+    dp->king_moved[WHITE] = 0;
+    dp->king_moved[BLACK] = 0;
+    if (pt == KING) {
+        dp->king_moved[side] = 1;
+    }
+
     pos->st->fiftyMove++;
     if (captured != EMPTY || pt == PAWN) {
         pos->st->fiftyMove = 0;
@@ -276,6 +282,16 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         int capPce = pos->pieces[capsq];
         pos->st->capturedPiece = capPce;
 
+        dp->piece_remove[0] = pce;
+        dp->from[0] = from;
+        dp->piece_remove[1] = capPce;
+        dp->from[1] = capsq;
+        dp->remove_count = 2;
+
+        dp->piece_add[0] = pce;
+        dp->to[0] = to;
+        dp->add_count = 1;
+
         HASH_PCE(capPce, capsq);
         HASH_PK(capPce, capsq);
         pos->st->psqtmat -= PSQTMATTABLE[capPce][capsq];
@@ -289,6 +305,11 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         movePiece(pos, from, to);
     }
     else if (move & MVFLAGCA) {
+        dp->piece_remove[0] = pce;
+        dp->from[0] = from;
+        dp->piece_add[0] = pce;
+        dp->to[0] = to;
+
         HASH_PCE(pce, from);
         HASH_PCE(pce, to);
         HASH_PK(pce, from);
@@ -306,6 +327,14 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
             case G8: rfrom = H8; rto = F8; break;
         }
         int rookPce = pos->pieces[rfrom];
+
+        dp->piece_remove[1] = rookPce;
+        dp->from[1] = rfrom;
+        dp->piece_add[1] = rookPce;
+        dp->to[1] = rto;
+        dp->remove_count = 2;
+        dp->add_count = 2;
+
         HASH_PCE(rookPce, rfrom);
         HASH_PCE(rookPce, rto);
         HASH_NP(rookPce, rfrom, side);
@@ -314,7 +343,20 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         movePiece(pos, rfrom, rto);
     }
     else {
+        int promotedPiece = PROMOTED(move);
+        int placedPiece = (promotedPiece != EMPTY) ? promotedPiece : pce;
+
+        dp->piece_remove[0] = pce;
+        dp->from[0] = from;
+        dp->piece_add[0] = placedPiece;
+        dp->to[0] = to;
+        dp->add_count = 1;
+
         if (captured != EMPTY) {
+            dp->piece_remove[1] = captured;
+            dp->from[1] = to;
+            dp->remove_count = 2;
+
             int capPt = TYPE_OF(captured);
             int them = side ^ 1;
             HASH_PCE(captured, to);
@@ -327,9 +369,10 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
             }
             pos->st->psqtmat -= PSQTMATTABLE[captured][to];
             removePiece(pos, to);
+        } else {
+            dp->remove_count = 1;
         }
 
-        int promotedPiece = PROMOTED(move);
         if (promotedPiece != EMPTY) {
             HASH_PCE(pce, from);
             HASH_PK(pce, from);
@@ -373,6 +416,13 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
     pos->ply++;
     pos->side ^= 1;
     HASH_SIDE;
+
+    int childPly = pos->ply;
+    if (pos->search && childPly < MAXDEPTH) {
+        pos->search->dirtyPieces[childPly] = newSt->dirtyPiece;
+        pos->search->nnue_accumulators[childPly].computed[WHITE] = 0;
+        pos->search->nnue_accumulators[childPly].computed[BLACK] = 0;
+    }
 
     pos->st->checkersBB = attackersToKingSq(pos, pos->side);
     update_slider_blockers(pos, pos->side);
@@ -427,6 +477,12 @@ void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
     newSt->previous = pos->st;
     pos->st = newSt;
 
+    DirtyPiece *dp = &newSt->dirtyPiece;
+    dp->remove_count = 0;
+    dp->add_count = 0;
+    dp->king_moved[WHITE] = 0;
+    dp->king_moved[BLACK] = 0;
+
     pos->search->moveStack[pos->ply] = NULLMOVE;
     pos->ply++;
 
@@ -442,6 +498,13 @@ void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
 
     pos->st->checkersBB = 0ULL;
     update_slider_blockers(pos, pos->side);
+
+    int childPly = pos->ply;
+    if (pos->search && childPly < MAXDEPTH) {
+        pos->search->dirtyPieces[childPly] = newSt->dirtyPiece;
+        pos->search->nnue_accumulators[childPly].computed[WHITE] = 0;
+        pos->search->nnue_accumulators[childPly].computed[BLACK] = 0;
+    }
 }
 
 void takeNullMove(S_BOARD *pos) {

@@ -169,7 +169,7 @@ void nnue_update_move(S_BOARD *pos, int piece, int from, int to);
  * be in sync — see above). Returns centipawns from the SIDE-TO-MOVE's
  * POV (matches how EvalPosition() in evaluate.c uses the result).
  * Requires nnue_init() to have been called first. */
-int nnue_eval(const S_BOARD *pos);
+int nnue_eval(S_BOARD *pos);
 
 /* True after successful nnue_init */
 extern int nnue_loaded;
@@ -402,19 +402,9 @@ int nnue_init(const char *path) {
 
 /* ── Incremental accumulator maintenance ───────────────────────────────── */
 
-/* Rebuilds pos->search->nnue_acc[us] from scratch using pos->pieces[], with an
- * EXPLICITLY supplied king square for `us` rather than reading it off
- * pos->bitboards. This matters in exactly one caller: the king-move
- * branch of nnue_update_move, where pos->pieces[] already reflects the
- * king's NEW square but pos->bitboards[wK/bK] has not been updated yet
- * (MovePiece updates the board array before the bitboard — see
- * makemove.c). Everywhere else (nnue_refresh_accumulator, called only
- * when the whole board — bitboards included — is already fully and
- * consistently set up) it's safe to pass the bitboard-derived king
- * square, and nnue_refresh_accumulator does exactly that. */
-static void nnue_refresh_perspective_ks(S_BOARD *pos, int us, int kingSq) {
+/* Rebuilds acc[0..l1-1] for perspective `us` from scratch using pos->pieces[] */
+static void nnue_refresh_perspective_ks(const S_BOARD *pos, int us, int kingSq, int32_t *acc) {
     int l1 = g_weights->l1_size;
-    int32_t *acc = pos->search->nnue_acc[us];
     for (int i = 0; i < l1; i++) acc[i] = g_weights->ft_b[i];
     for (int sq = 0; sq < 64; sq++) {
         int p = pos->pieces[sq];
@@ -430,90 +420,128 @@ static inline int nnue_king_sq(const S_BOARD *pos, int us) {
 }
 
 void nnue_refresh_accumulator(S_BOARD *pos) {
-    if (!nnue_loaded) return;
-    nnue_refresh_perspective_ks(pos, WHITE, nnue_king_sq(pos, WHITE));
-    nnue_refresh_perspective_ks(pos, BLACK, nnue_king_sq(pos, BLACK));
+    if (!nnue_loaded || !pos->search) return;
+    int wksq = nnue_king_sq(pos, WHITE);
+    int bksq = nnue_king_sq(pos, BLACK);
+    int ply = pos->ply;
+    if (ply >= MAXDEPTH) ply = MAXDEPTH - 1;
+    nnue_refresh_perspective_ks(pos, WHITE, wksq, pos->search->nnue_accumulators[ply].accumulation[WHITE]);
+    nnue_refresh_perspective_ks(pos, BLACK, bksq, pos->search->nnue_accumulators[ply].accumulation[BLACK]);
+    pos->search->nnue_accumulators[ply].computed[WHITE] = 1;
+    pos->search->nnue_accumulators[ply].computed[BLACK] = 1;
 }
 
-/* Single-perspective incremental add/remove/move, shared by the public
- * nnue_update_* functions below (each of which applies these to BOTH
- * perspectives — every piece is visible from both sides' feature
- * sets). `viewer`'s own king square is read from pos->bitboards, which
- * is always valid here: kings themselves are never passed to these
- * per-perspective helpers (add/remove never touch a king — see
- * nnue_update_add/remove's own-king note below — and the "other
- * perspective" call from nnue_update_move is for a piece that is NOT
- * `viewer`'s own king by construction). */
-static inline void nnue_add_one(S_BOARD *pos, int viewer, int pce, int sq) {
+/* Updates curr_acc from prev_acc using a single move's DirtyPiece delta */
+static void nnue_update_accumulator_step(int us, int kingSq,
+                                         const int32_t *prev_acc,
+                                         int32_t *curr_acc,
+                                         const DirtyPiece *dp) {
     int l1 = g_weights->l1_size;
-    int kingSq = nnue_king_sq(pos, viewer);
-    size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
-    const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
-    int32_t *acc = pos->search->nnue_acc[viewer];
-    for (int i = 0; i < l1; i++) acc[i] += (int32_t)row[i];
-}
+    if (dp->remove_count == 0 && dp->add_count == 0) {
+        memcpy(curr_acc, prev_acc, l1 * sizeof(int32_t));
+        return;
+    }
 
-static inline void nnue_remove_one(S_BOARD *pos, int viewer, int pce, int sq) {
-    int l1 = g_weights->l1_size;
-    int kingSq = nnue_king_sq(pos, viewer);
-    size_t idx = nnue_feature_index(viewer, kingSq, pce, sq);
-    const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
-    int32_t *acc = pos->search->nnue_acc[viewer];
-    for (int i = 0; i < l1; i++) acc[i] -= (int32_t)row[i];
-}
+    if (dp->remove_count == 1 && dp->add_count == 1) {
+        size_t idx_sub = nnue_feature_index(us, kingSq, dp->piece_remove[0], dp->from[0]);
+        size_t idx_add = nnue_feature_index(us, kingSq, dp->piece_add[0], dp->to[0]);
+        const int16_t *row_sub = g_weights->ft_w + idx_sub * (size_t)l1;
+        const int16_t *row_add = g_weights->ft_w + idx_add * (size_t)l1;
+        for (int i = 0; i < l1; i++) {
+            curr_acc[i] = prev_acc[i] + (int32_t)row_add[i] - (int32_t)row_sub[i];
+        }
+        return;
+    }
 
-static inline void nnue_move_one(S_BOARD *pos, int viewer, int pce, int from, int to) {
-    int l1 = g_weights->l1_size;
-    int kingSq = nnue_king_sq(pos, viewer);
-    size_t idx_from = nnue_feature_index(viewer, kingSq, pce, from);
-    size_t idx_to   = nnue_feature_index(viewer, kingSq, pce, to);
-    const int16_t *row_from = g_weights->ft_w + idx_from * (size_t)l1;
-    const int16_t *row_to   = g_weights->ft_w + idx_to   * (size_t)l1;
-    int32_t *acc = pos->search->nnue_acc[viewer];
-    for (int i = 0; i < l1; i++) acc[i] += (int32_t)row_to[i] - (int32_t)row_from[i];
-}
+    if (dp->remove_count == 2 && dp->add_count == 1) {
+        size_t idx_sub0 = nnue_feature_index(us, kingSq, dp->piece_remove[0], dp->from[0]);
+        size_t idx_sub1 = nnue_feature_index(us, kingSq, dp->piece_remove[1], dp->from[1]);
+        size_t idx_add0 = nnue_feature_index(us, kingSq, dp->piece_add[0], dp->to[0]);
+        const int16_t *row_sub0 = g_weights->ft_w + idx_sub0 * (size_t)l1;
+        const int16_t *row_sub1 = g_weights->ft_w + idx_sub1 * (size_t)l1;
+        const int16_t *row_add0 = g_weights->ft_w + idx_add0 * (size_t)l1;
+        for (int i = 0; i < l1; i++) {
+            curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+        }
+        return;
+    }
 
-void nnue_update_add(S_BOARD *pos, int piece, int sq) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    /* Kings are only ever placed via nnue_refresh_accumulator (board
-     * setup) in this engine — see makemove.c, kings always MOVE, never
-     * get individually cleared+re-added. Both perspectives' king
-     * squares are therefore always safely readable from bitboards
-     * here. */
-    nnue_add_one(pos, WHITE, piece, sq);
-    nnue_add_one(pos, BLACK, piece, sq);
-}
+    if (dp->remove_count == 2 && dp->add_count == 2) {
+        size_t idx_sub0 = nnue_feature_index(us, kingSq, dp->piece_remove[0], dp->from[0]);
+        size_t idx_sub1 = nnue_feature_index(us, kingSq, dp->piece_remove[1], dp->from[1]);
+        size_t idx_add0 = nnue_feature_index(us, kingSq, dp->piece_add[0], dp->to[0]);
+        size_t idx_add1 = nnue_feature_index(us, kingSq, dp->piece_add[1], dp->to[1]);
+        const int16_t *row_sub0 = g_weights->ft_w + idx_sub0 * (size_t)l1;
+        const int16_t *row_sub1 = g_weights->ft_w + idx_sub1 * (size_t)l1;
+        const int16_t *row_add0 = g_weights->ft_w + idx_add0 * (size_t)l1;
+        const int16_t *row_add1 = g_weights->ft_w + idx_add1 * (size_t)l1;
+        for (int i = 0; i < l1; i++) {
+            curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] + (int32_t)row_add1[i]
+                                      - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+        }
+        return;
+    }
 
-void nnue_update_remove(S_BOARD *pos, int piece, int sq) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    /* Kings are never captured/cleared in legal chess, so `piece` here
-     * is never a king — same reasoning as nnue_update_add. */
-    nnue_remove_one(pos, WHITE, piece, sq);
-    nnue_remove_one(pos, BLACK, piece, sq);
-}
-
-void nnue_update_move(S_BOARD *pos, int piece, int from, int to) {
-    if (!nnue_loaded || piece == EMPTY) return;
-    int us = pieceCol[piece];
-    int them = us ^ 1;
-
-    if (pieceKing[piece]) {
-        /* Own perspective: every feature depends on this king's square,
-         * so no incremental delta exists — full rebuild. pos->pieces[]
-         * already reflects the king at `to` (MovePiece updates it
-         * before calling here), so pass `to` explicitly instead of
-         * trusting pos->bitboards (still stale at this point — see
-         * nnue_refresh_perspective_ks's comment). */
-        nnue_refresh_perspective_ks(pos, us, to);
-        /* Other perspective: from their point of view their own king
-         * hasn't moved, so the enemy king moving is just an ordinary
-         * piece changing squares — incremental update is valid. */
-        nnue_move_one(pos, them, piece, from, to);
-    } else {
-        nnue_move_one(pos, us, piece, from, to);
-        nnue_move_one(pos, them, piece, from, to);
+    // General fallback
+    memcpy(curr_acc, prev_acc, l1 * sizeof(int32_t));
+    for (int r = 0; r < dp->remove_count; r++) {
+        size_t idx_sub = nnue_feature_index(us, kingSq, dp->piece_remove[r], dp->from[r]);
+        const int16_t *row_sub = g_weights->ft_w + idx_sub * (size_t)l1;
+        for (int i = 0; i < l1; i++) curr_acc[i] -= (int32_t)row_sub[i];
+    }
+    for (int a = 0; a < dp->add_count; a++) {
+        size_t idx_add = nnue_feature_index(us, kingSq, dp->piece_add[a], dp->to[a]);
+        const int16_t *row_add = g_weights->ft_w + idx_add * (size_t)l1;
+        for (int i = 0; i < l1; i++) curr_acc[i] += (int32_t)row_add[i];
     }
 }
+
+/* Lazy evaluation: brings perspective `us`'s accumulator up to target_ply */
+static void nnue_update_perspective_to_ply(S_BOARD *pos, int us, int target_ply) {
+    if (pos->search->nnue_accumulators[target_ply].computed[us]) return;
+
+    // Find latest computed ancestor for `us`
+    int ancestor = -1;
+    for (int p = target_ply - 1; p >= 0; p--) {
+        if (pos->search->nnue_accumulators[p].computed[us]) {
+            ancestor = p;
+            break;
+        }
+    }
+
+    int kingSq = nnue_king_sq(pos, us);
+
+    int king_moved = (ancestor < 0);
+    if (!king_moved) {
+        for (int p = ancestor + 1; p <= target_ply; p++) {
+            if (pos->search->dirtyPieces[p].king_moved[us]) {
+                king_moved = 1;
+                break;
+            }
+        }
+    }
+
+    if (king_moved || (target_ply - ancestor > 4)) {
+        nnue_refresh_perspective_ks(pos, us, kingSq, pos->search->nnue_accumulators[target_ply].accumulation[us]);
+        pos->search->nnue_accumulators[target_ply].computed[us] = 1;
+        return;
+    }
+
+    // Incremental forward update from ancestor to target_ply
+    for (int step = ancestor + 1; step <= target_ply; step++) {
+        if (!pos->search->nnue_accumulators[step].computed[us]) {
+            nnue_update_accumulator_step(us, kingSq,
+                                         pos->search->nnue_accumulators[step - 1].accumulation[us],
+                                         pos->search->nnue_accumulators[step].accumulation[us],
+                                         &pos->search->dirtyPieces[step]);
+            pos->search->nnue_accumulators[step].computed[us] = 1;
+        }
+    }
+}
+
+void nnue_update_add(S_BOARD *pos, int piece, int sq) { (void)pos; (void)piece; (void)sq; }
+void nnue_update_remove(S_BOARD *pos, int piece, int sq) { (void)pos; (void)piece; (void)sq; }
+void nnue_update_move(S_BOARD *pos, int piece, int from, int to) { (void)pos; (void)piece; (void)from; (void)to; }
 
 /* ── int8 dot product kernels, shared by L2/L3/output (unchanged from
  * before — see header comment) ────────────────────────────────────── */
@@ -585,12 +613,21 @@ static int32_t output_forward(const int8_t *in_i8, int in_size,
 }
 
 /* ── Eval ───────────────────────────────────────────────────────────────── */
-int nnue_eval(const S_BOARD *pos) {
+int nnue_eval(S_BOARD *pos) {
     if (!nnue_loaded) return 0;
+
+    int ply = pos->ply;
+    if (ply >= MAXDEPTH) ply = MAXDEPTH - 1;
+
+    nnue_update_perspective_to_ply(pos, WHITE, ply);
+    nnue_update_perspective_to_ply(pos, BLACK, ply);
 
     int stm = pos->side;
     int other = stm ^ 1;
     int l1 = g_weights->l1_size;
+
+    const int32_t *acc_stm = pos->search->nnue_accumulators[ply].accumulation[stm];
+    const int32_t *acc_other = pos->search->nnue_accumulators[ply].accumulation[other];
 
     /* Concatenate [stm's own view | other side's view], each clipped
      * ReLU'd and requantized to int8 [0,127]. Side-to-move first is
@@ -599,8 +636,8 @@ int nnue_eval(const S_BOARD *pos) {
      * absolute-feature version, which had to flip for Black). */
     int8_t in_i8[2 * NNUE_ACC_SIZE];
     for (int i = 0; i < l1; i++) {
-        in_i8[i]      = requantize_ft_i8(pos->search->nnue_acc[stm][i],   g_weights->qa_scale);
-        in_i8[l1 + i] = requantize_ft_i8(pos->search->nnue_acc[other][i], g_weights->qa_scale);
+        in_i8[i]      = requantize_ft_i8(acc_stm[i],   g_weights->qa_scale);
+        in_i8[l1 + i] = requantize_ft_i8(acc_other[i], g_weights->qa_scale);
     }
 
     int8_t h2_i8[NNUE_L2L3_MAX], h3_i8[NNUE_L2L3_MAX];

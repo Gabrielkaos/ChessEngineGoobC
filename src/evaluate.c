@@ -1279,7 +1279,7 @@ void initPQSTMAT(){
 #include "init.h"
 void eval_fen_c(const char* fen, int* mg, int* eg) {
     S_BOARD pos[1];
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pos->search = alloc_search_thread();
     ParseFEN((char*)fen, pos);
     pos->useNNUE = 0;
     pos->usePKNet = 0;
@@ -1291,4 +1291,5 @@ void eval_fen_c(const char* fen, int* mg, int* eg) {
     
     *mg = ScoreMG(eval);
     *eg = ScoreEG(eval);
+    free(pos->search);
 }

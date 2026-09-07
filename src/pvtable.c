@@ -30,7 +30,7 @@ void DataCheck(int move){
 
 void TestHASH(char *fen){
     S_BOARD pos[1];
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pos->search = alloc_search_thread();
     ParseFEN(fen, pos);
 
     S_MOVELIST list[1];
@@ -227,7 +227,7 @@ static int ttProbe(S_BOARD *pos, S_PVTABLE *table, U64 key){
 int runTTReplacementTests(void){
     S_PVTABLE table[1];
     S_BOARD pos[1];
-    pos->search = malloc(sizeof(S_SEARCH_THREAD));
+    pos->search = alloc_search_thread();
     memset(pos, 0, sizeof(S_BOARD));
     pos->ply = 0;
 
