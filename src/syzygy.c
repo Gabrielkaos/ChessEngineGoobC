@@ -102,7 +102,7 @@ static inline void tbBitboards(const S_BOARD *pos,U64 *white,U64 *black,U64 *kin
 //that still has castling rights available is simply out of scope.
 static inline int TBPositionOk(const S_BOARD *pos,int pieceLimit){
     if(!SyzygyEnabled)          return 0;
-    if(pos->castleRights != 0)  return 0;
+    if(pos->st->castleRights != 0)  return 0;
     if(COUNTBIT(pos->byTypeBB[ALL_PIECES]) > pieceLimit) return 0;
     return 1;
 }
@@ -130,21 +130,23 @@ int TBProbeRoot(S_BOARD *pos){
     U64 white,black,kings,queens,rooks,bishops,knights,pawns;
     tbBitboards(pos,&white,&black,&kings,&queens,&rooks,&bishops,&knights,&pawns);
 
-    unsigned ep = (pos->enPas != NO_SQ) ? (unsigned)pos->enPas : 0;
+    unsigned ep = (pos->st->enPas != NO_SQ) ? (unsigned)pos->st->enPas : 0;
 
     //Has the current position already occurred earlier in the game?
     //(only affects the DTZ/50-move-rule ranking, mirrors Stockfish's
     //"hasRepeated" root-probe argument.)
     int hasRepeated = FALSE;
-    for(int i = pos->hisPly - pos->fiftyMove; i < pos->hisPly - 1; ++i){
-        if(pos->posKey == pos->search->history[i].posKey){ hasRepeated = TRUE; break; }
+    const StateInfo *stp = pos->st;
+    for(int i = 0; i < pos->st->fiftyMove && stp && stp->previous; ++i){
+        stp = stp->previous;
+        if(pos->st->posKey == stp->posKey){ hasRepeated = TRUE; break; }
     }
 
     struct TbRootMoves rm;
     memset(&rm,0,sizeof(rm));
 
     int ok = tb_probe_root_dtz(white,black,kings,queens,rooks,bishops,knights,pawns,
-                                (unsigned)pos->fiftyMove,(unsigned)pos->castleRights,ep,
+                                (unsigned)pos->st->fiftyMove,(unsigned)pos->st->castleRights,ep,
                                 pos->side==WHITE,hasRepeated,Syzygy50MoveRule,&rm);
 
     if(!ok){
@@ -152,7 +154,7 @@ int TBProbeRoot(S_BOARD *pos){
         //ranking is still enough to guarantee correct (if not always
         //fastest) play.
         ok = tb_probe_root_wdl(white,black,kings,queens,rooks,bishops,knights,pawns,
-                                (unsigned)pos->fiftyMove,(unsigned)pos->castleRights,ep,
+                                (unsigned)pos->st->fiftyMove,(unsigned)pos->st->castleRights,ep,
                                 pos->side==WHITE,Syzygy50MoveRule,&rm);
     }
 
@@ -208,16 +210,16 @@ int TBProbeWDLSearch(S_BOARD *pos,int ply,int *scoreOut, int *boundOut){
     //WDL tables carry no fifty-move information, so (like Fathom's own
     //tb_probe_wdl() wrapper enforces) they're only meaningful exactly
     //when the counter is at zero.
-    if(pos->fiftyMove != 0) return 0;
+    if(pos->st->fiftyMove != 0) return 0;
     if(!TBPositionOk(pos,MIN(SyzygyProbeLimit,(int)TB_LARGEST))) return 0;
 
     U64 white,black,kings,queens,rooks,bishops,knights,pawns;
     tbBitboards(pos,&white,&black,&kings,&queens,&rooks,&bishops,&knights,&pawns);
 
-    unsigned ep = (pos->enPas != NO_SQ) ? (unsigned)pos->enPas : 0;
+    unsigned ep = (pos->st->enPas != NO_SQ) ? (unsigned)pos->st->enPas : 0;
 
     unsigned wdl = tb_probe_wdl(white,black,kings,queens,rooks,bishops,knights,pawns,
-                                (unsigned)pos->fiftyMove,(unsigned)pos->castleRights,ep,
+                                (unsigned)pos->st->fiftyMove,(unsigned)pos->st->castleRights,ep,
                                 pos->side==WHITE);
 
     if(wdl == TB_RESULT_FAILED) return 0;

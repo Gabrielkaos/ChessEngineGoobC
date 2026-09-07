@@ -5,14 +5,15 @@
 #include "bitboards.h"
 
 int drawFiftyMoveRule(const S_BOARD *pos){
-    return pos->useFiftyMoveRule ? pos->fiftyMove > 99 : FALSE;
+    return pos->useFiftyMoveRule ? pos->st->fiftyMove > 99 : FALSE;
 }
 
 int drawRepetition(const S_BOARD *pos){
-    int index=0;
-    for(index=(pos->hisPly-pos->fiftyMove);index<pos->hisPly-1;++index){
-
-        if(pos->posKey==pos->search->history[index].posKey){
+    int end = pos->st->fiftyMove;
+    if (end > pos->hisPly) end = pos->hisPly;
+    const StateInfo *stp = pos->st->previous;
+    for (int i = 1; i <= end && stp; ++i, stp = stp->previous) {
+        if (pos->st->posKey == stp->posKey) {
             return TRUE;
         }
     }
@@ -22,14 +23,17 @@ int drawRepetition(const S_BOARD *pos){
 
 int drawByRepetitionEthereals(const S_BOARD *pos){
     int reps = 0;
+    int end = pos->st->fiftyMove;
+    if (end > pos->hisPly) end = pos->hisPly;
+    if (end < 2 || !pos->st->previous || !pos->st->previous->previous) return 0;
 
-    for (int i = pos->hisPly - 2; i >= 0; i -= 2) {
-        if (i < pos->hisPly - pos->fiftyMove)
-            break;
-
-        if (    pos->search->history[i].posKey == pos->posKey
-            && (i > pos->hisPly - pos->ply || ++reps == 2))
+    const StateInfo *stp = pos->st->previous->previous;
+    for (int i = 2; i <= end; i += 2) {
+        if (stp->posKey == pos->st->posKey && (i <= pos->ply || ++reps == 2))
             return 1;
+
+        if (!stp->previous || !stp->previous->previous) break;
+        stp = stp->previous->previous;
     }
 
     return 0;

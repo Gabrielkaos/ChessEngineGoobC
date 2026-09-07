@@ -38,10 +38,11 @@ void TestHASH(char *fen){
 
     int moveNum;
     for(moveNum=0;moveNum<list->count;++moveNum){
-        if(!makeMove(pos,list->moves[moveNum].move)){
+        if(!legal(pos, list->moves[moveNum].move)){
             continue;
         }
-
+        StateInfo st;
+        makeMove(pos, list->moves[moveNum].move, &st);
         takeMove(pos);
         DataCheck(list->moves[moveNum].move);
     }
@@ -91,11 +92,12 @@ int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table){
     int move=ProbePvTable(pos, table);
     int count =0;
     int startPly = pos->ply;
+    StateInfo st[MAXDEPTH];
 
     while(move != NOMOVE && count <depth){
 
         if(MoveExists(pos,move)){
-            makeMove(pos,move);
+            makeMove(pos, move, &st[count]);
             pos->search->pvArray[count++]=move;
         }else{
             break;
@@ -135,19 +137,19 @@ void InitPvTable(S_PVTABLE *table,const int mb,int noisy){
 
 void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table,const int move, int score, const int flags, const int depth,const int eval){
 
-    int index = pos->posKey & (table->numEntries - 1);
+    int index = pos->st->posKey & (table->numEntries - 1);
     S_PVBUCKET *bucket = &table->pTable[index];
 
     score = valueToTT(score,pos->ply);
     U64 new_data = FOLD_DATA(score,depth,flags,move);
-    uint32_t new_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ new_data ^ (new_data >> 32));
+    uint32_t new_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ new_data ^ (new_data >> 32));
 
     // 1. Look for an existing entry with the same key (update in place)
     int replaceIdx = -1;
     int worstScore = INT32_MAX;
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
+        uint32_t test_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
 
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0){
             // same position — always allowed to overwrite, but keep your
@@ -182,11 +184,11 @@ void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table,const int move, int score, co
 }
 
 int ProbePvTable(const S_BOARD *pos, S_PVTABLE *table){
-    int index = pos->posKey & (table->numEntries - 1);
+    int index = pos->st->posKey & (table->numEntries - 1);
     S_PVBUCKET *bucket = &table->pTable[index];
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
+        uint32_t test_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0)
             return EXTRACT_MOVE(bucket->entries[i].smp_data);
     }
@@ -195,11 +197,11 @@ int ProbePvTable(const S_BOARD *pos, S_PVTABLE *table){
 
 int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *ttDepth,int *ttBound,int *ttEval) {
 
-    int index = pos->posKey & (table->numEntries - 1);
+    int index = pos->st->posKey & (table->numEntries - 1);
     S_PVBUCKET *bucket = &table->pTable[index];
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        uint32_t test_key = (uint32_t)(pos->posKey ^ (pos->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
+        uint32_t test_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
         if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0){
             bucket->entries[i].generation = table->generation;   // refresh on hit
             *ttEval  = bucket->entries[i].eval;
@@ -215,7 +217,7 @@ int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *tt
 
 //probe helper used by the TT replacement tests
 static int ttProbe(S_BOARD *pos, S_PVTABLE *table, U64 key){
-    pos->posKey = key;
+    pos->st->posKey = key;
     int move, score, depth, bound, eval;
     return ProbeHashEntry(pos, table, &move, &score, &depth, &bound, &eval);
 }
@@ -244,15 +246,15 @@ int runTTReplacementTests(void){
     printf("\n== TT bucket replacement tests ==\n");
 
     //Test 1: three distinct entries fit in a 3-slot bucket
-    pos->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 5, 40);
-    pos->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
-    pos->posKey = k2; StoreHashEntry(pos, table, 102, 70, HFEXACT, 3, 55);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 5, 40);
+    pos->st->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
+    pos->st->posKey = k2; StoreHashEntry(pos, table, 102, 70, HFEXACT, 3, 55);
     ok = ttProbe(pos, table, k0) && ttProbe(pos, table, k1) && ttProbe(pos, table, k2);
     printf("Test 1 (fill 3 slots): %s\n", ok ? "PASS" : "FAIL");
     fails += !ok;
 
     //Test 2: 4th distinct key evicts the shallowest (k2, depth 3)
-    pos->posKey = k3; StoreHashEntry(pos, table, 103, 80, HFEXACT, 10, 65);
+    pos->st->posKey = k3; StoreHashEntry(pos, table, 103, 80, HFEXACT, 10, 65);
     ok = ttProbe(pos, table, k0) && ttProbe(pos, table, k1)
          && !ttProbe(pos, table, k2) && ttProbe(pos, table, k3);
     printf("Test 2 (evict shallowest): %s\n", ok ? "PASS" : "FAIL");
@@ -260,10 +262,10 @@ int runTTReplacementTests(void){
 
     //Test 3: updating an existing key must never evict a different key
     clearPvTable(table);
-    pos->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 5, 40);
-    pos->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
-    pos->posKey = k0; StoreHashEntry(pos, table, 999, 55, HFEXACT, 6, 42);   // update k0, deeper
-    pos->posKey = k0;
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 5, 40);
+    pos->st->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 999, 55, HFEXACT, 6, 42);   // update k0, deeper
+    pos->st->posKey = k0;
     int move, score, depth, bound, eval;
     ok = ProbeHashEntry(pos, table, &move, &score, &depth, &bound, &eval);
     ok = ok && (move == 999);
@@ -275,11 +277,11 @@ int runTTReplacementTests(void){
     //k0(d10,stale) and k1(d8,stale) both score depth-1000; the shallower
     //stale entry (k1) is evicted first, so k0 must survive.
     clearPvTable(table);
-    pos->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 10, 40);
-    pos->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 10, 40);
+    pos->st->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
     updateAge(table);                                          // k0,k1 now stale
-    pos->posKey = k2; StoreHashEntry(pos, table, 102, 70, HFEXACT, 2, 55);  // fresh, shallow
-    pos->posKey = k3; StoreHashEntry(pos, table, 103, 80, HFEXACT, 3, 65);  // forces one eviction
+    pos->st->posKey = k2; StoreHashEntry(pos, table, 102, 70, HFEXACT, 2, 55);  // fresh, shallow
+    pos->st->posKey = k3; StoreHashEntry(pos, table, 103, 80, HFEXACT, 3, 65);  // forces one eviction
     ok = ttProbe(pos, table, k0) && !ttProbe(pos, table, k1)
          && ttProbe(pos, table, k2) && ttProbe(pos, table, k3);
     printf("Test 4 (stale evicted before fresh): %s\n", ok ? "PASS" : "FAIL");

@@ -556,7 +556,7 @@ void parsePosition(char* lineIn,S_BOARD *pos){
         while(*ptrChar){
             move=ParseMove(ptrChar,pos);
             if(move==NOMOVE) break;
-            makeMove(pos,move);
+            makeMove(pos, move, &pos->stateTable[pos->hisPly + 1]);
             pos->ply=0;
             while(*ptrChar && *ptrChar != ' ')ptrChar++;
             ptrChar++;

@@ -97,7 +97,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
 
 //protos
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode);
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt);
 int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 
 
@@ -110,13 +110,15 @@ int isExcludedRootMove(const S_BOARD *pos,int move){
 }
 
 void checkPvLegality(S_BOARD *pos, int *pvArray, int len) {
+    StateInfo st[MAXDEPTH];
     for (int i = 0; i < len; i++) {
         int move = pvArray[i];
-        if (!makeMove(pos, move)) {
+        if (!legal(pos, move)) {
             printf("ILLEGAL PV MOVE FOUND! move=%x\n", move);
             fflush(stdout);
             abort();
         }
+        makeMove(pos, move, &st[i]);
     }
     for (int i = 0; i < len; i++) {
         takeMove(pos);
@@ -125,8 +127,8 @@ void checkPvLegality(S_BOARD *pos, int *pvArray, int len) {
 
 
 static int isShuffling(S_BOARD *pos, int move){
-    if(moveIsTactical(pos,move) || pos->fiftyMove < 10) return FALSE;
-    if(pos->pliesFromNull < 6 || pos->ply < 20) return FALSE;
+    if(moveIsTactical(pos,move) || pos->st->fiftyMove < 10) return FALSE;
+    if(pos->st->pliesFromNull < 6 || pos->ply < 20) return FALSE;
     if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
 
     int m2 = pos->search->moveStack[pos->ply-2];
@@ -160,7 +162,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int ttMove=NOMOVE, ttValue=0, ttDepth=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit;
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval))){
         ttValue = valueFromTT(ttValue,pos->ply);
-        if(pos->fiftyMove < 96){
+        if(pos->st->fiftyMove < 96){
             if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
                 return ttValue;
             }
@@ -187,7 +189,9 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
-        if(!makeMove(pos,moveInLoop))continue;
+        if(!legal(pos, moveInLoop)) continue;
+        StateInfo st;
+        makeMove(pos, moveInLoop, &st);
         value=-Quiescence(-beta,-alpha,pos,info,table);
         takeMove(pos);
 
@@ -229,7 +233,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     S_PVLINE lpv;
     lpv.count = 0;
     if (pv != NULL) pv->count = 0;
-    int inCheck         =!!attackersToKingSq(pos,pos->side);
+    int inCheck         =(pos->st->checkersBB != 0);
     int ttDepth         =0;
     int ttBound         =HFNONE;
     int ttValue         =0;
@@ -277,7 +281,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         ttValue = valueFromTT(ttValue,pos->ply);
 
-        if(ttDepth >= depth && (depth==0 || !pvNode) && pos->fiftyMove < 96){
+        if(ttDepth >= depth && (depth==0 || !pvNode) && pos->st->fiftyMove < 96){
             if(    ttBound==HFEXACT
                || (ttBound==HFALPHA && ttValue <= alpha)
                || (ttBound==HFBETA  && ttValue >= beta)){
@@ -391,7 +395,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 (pos->ply < 2 || pos->search->moveStack[pos->ply-2] != NULLMOVE) &&
                 (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
 
-                makeNullMove(pos);
+                StateInfo nullSt;
+                makeNullMove(pos, &nullSt);
 
                 R = 4 + depth / 6 + MIN(3, (staticEval - beta) / 200);
 
@@ -449,7 +454,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             initNoisyMovePicker(probmp, rBeta - staticEval, NOMOVE);
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
-                if (!makeMove(pos,move_in_prob))continue;
+                if (!legal(pos, move_in_prob)) continue;
+                StateInfo probSt;
+                makeMove(pos, move_in_prob, &probSt);
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
@@ -550,7 +557,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
 
         U64 nodesBeforeMove = info->nodes;
-        if(!makeMove(pos,moveInLoop))continue;
+        if(!legal(pos, moveInLoop)) continue;
+        StateInfo st;
+        makeMove(pos, moveInLoop, &st);
         Legal++;
 
         //uci report the current move
@@ -570,7 +579,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      && !isShuffling(pos, moveInLoop);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
-            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode)
+            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, &st)
                         :(inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit));
 
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
@@ -727,7 +736,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //Singularity
 //checks if the move is truly singular or the only best move in the position
 //also checks if a stornger move if found(MULTICUT)
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode){
+int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt){
 
     int moveInLoop = NOMOVE;
     int skipQuiets = 0;
@@ -748,7 +757,9 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
 
         quietMove = !moveIsTactical(pos,moveInLoop);
 
-        if(!makeMove(pos,moveInLoop))continue;
+        if(!legal(pos, moveInLoop)) continue;
+        StateInfo singSt;
+        makeMove(pos, moveInLoop, &singSt);
         value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE, NULL);
         takeMove(pos);
         if(info->stopped==TRUE)break;
@@ -775,9 +786,7 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
     }
 
     //reapply
-    if(!makeMove(pos,ttMove)){
-        ASSERT(FALSE);
-    }
+    makeMove(pos, ttMove, ttSt);
 
     if(*multiCut==TRUE)return 1;
 
@@ -884,6 +893,12 @@ int SearchPositionThread(void *data){
     THREAD_DATA *thread_data = (THREAD_DATA*)data;
     S_BOARD *pos = malloc(sizeof(S_BOARD));
     memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
+    pos->stateTable[0].previous = NULL;
+    for (int i = 1; i <= pos->hisPly; i++) {
+        pos->stateTable[i].previous = &pos->stateTable[i-1];
+    }
+    pos->st = &pos->stateTable[pos->hisPly];
+
     pos->search = malloc(sizeof(S_SEARCH_THREAD));
     memcpy(pos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
 
@@ -906,15 +921,14 @@ int countLegalRootMoves(S_BOARD *pos){
     S_MOVELIST list[1];
     GenerateAllMoves(pos,list);
 
-    int legal=0, i;
+    int legalCount=0, i;
     for(i=0;i<list->count;++i){
         int move=list->moves[i].move;
         if(pos->tbHit && !TBRootMoveAllowed(pos,move))continue;
-        if(!makeMove(pos,move))continue;
-        takeMove(pos);
-        legal++;
+        if(!legal(pos,move))continue;
+        legalCount++;
     }
-    return legal;
+    return legalCount;
 }
 
 //passing threads
@@ -942,8 +956,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         int rmi;
         for(rmi=0;rmi<rootList->count;++rmi){
             int mv = rootList->moves[rmi].move;
-            if(makeMove(pos, mv)){
-                takeMove(pos);
+            if(legal(pos, mv)){
                 workerthread->bestMove = mv;
                 break;
             }
@@ -1181,8 +1194,7 @@ int startWorkerThreads(void *data){
             thread_data->bestMove = NOMOVE;
             thread_data->ponderMove = NOMOVE;
             for(int i=0; i<fallbackList->count; ++i){
-                if(makeMove(thread_data->originalPos, fallbackList->moves[i].move)){
-                    takeMove(thread_data->originalPos);
+                if(legal(thread_data->originalPos, fallbackList->moves[i].move)){
                     thread_data->bestMove = fallbackList->moves[i].move;
                     break;
                 }
@@ -1216,6 +1228,12 @@ void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINF
 
     pThread->originalPos = malloc(sizeof(S_BOARD));
     memcpy(pThread->originalPos, pos, sizeof(S_BOARD));
+    pThread->originalPos->stateTable[0].previous = NULL;
+    for (int i = 1; i <= pos->hisPly; i++) {
+        pThread->originalPos->stateTable[i].previous = &pThread->originalPos->stateTable[i-1];
+    }
+    pThread->originalPos->st = &pThread->originalPos->stateTable[pos->hisPly];
+
     pThread->originalPos->search = malloc(sizeof(S_SEARCH_THREAD));
     memcpy(pThread->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
 

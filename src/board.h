@@ -47,6 +47,23 @@ typedef struct {
     int ttMoveHistory;
 } S_SHARED_TABLES;
 
+typedef struct StateInfo {
+    U64 posKey;
+    U64 pkHash;
+    U64 npHash[COLOR_NB];
+    U64 minorHash;
+    int castleRights;
+    int fiftyMove;
+    int pliesFromNull;
+    int enPas;
+    int psqtmat;
+    U64 checkersBB;
+    U64 blockersForKing[COLOR_NB];
+    U64 pinners[COLOR_NB];
+    int capturedPiece;
+    struct StateInfo *previous;
+} StateInfo;
+
 //Board structure
 typedef struct {
     //important board things
@@ -54,16 +71,10 @@ typedef struct {
     U64 byTypeBB[PIECE_TYPE_NB];  // bitboards by piece type: ALL_PIECES=0, PAWN=1..KING=6
     U64 byColorBB[COLOR_NB];      // occupancy for WHITE=0, BLACK=1
     int side; //side to move
-    int enPas; //where the enpas in 64 square
-    int fiftyMove; //counter for fifty move
-    int castleRights; //castling rights
-    U64 posKey; //position key
-    U64 pkHash; //pawn king key
-    U64 npHash[2]; //non-pawn material keys, one per color (kings included)
-    U64 minorHash; //minor piece key (all knights + bishops, both colors)
+    StateInfo *st;
+    StateInfo stateTable[MAXGAMESMOVES];
     S_SEARCH_THREAD *search;
     int hisPly; //total number of moves played on the board
-    int psqtmat; //stores the score for the piece square table (updated while making move)
     int useFiftyMoveRule; //flag
     int contemptDrawPenalty; //penalty
     int contemptComplexity; //penalty
@@ -108,7 +119,6 @@ typedef struct {
 
 
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
-    int pliesFromNull;
 
 
     S_SHARED_TABLES *shared;
@@ -136,5 +146,7 @@ extern int ParseFEN(char *fen ,S_BOARD *pos);
 extern void PrintBoard(const S_BOARD *pos);
 extern void updateListMaterial(S_BOARD *pos);
 extern void MirrorBoard(S_BOARD *pos);
+extern void update_slider_blockers(S_BOARD *pos, int c);
+extern void set_check_info(S_BOARD *pos);
 
 #endif

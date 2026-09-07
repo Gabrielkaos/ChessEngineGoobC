@@ -92,8 +92,8 @@ INLINE void takeMoves(S_BOARD *pos){
     int from =FROMSQ(move);
     int to=TOSQ(move);
 
-    pos->castleRights=pos->search->history[pos->hisPly].castleRights;
-    pos->enPas=pos->search->history[pos->hisPly].enPas;
+    pos->st->castleRights=pos->search->history[pos->hisPly].castleRights;
+    pos->st->enPas=pos->search->history[pos->hisPly].enPas;
 
     pos->side ^= 1;
 
@@ -160,11 +160,11 @@ INLINE int makeMoves(S_BOARD *pos,int move){
 
     //the move lives in moveStack (indexed by ply), history stores the rest
     pos->search->moveStack[pos->ply]=move;
-    pos->search->history[pos->hisPly].enPas=pos->enPas;
-    pos->search->history[pos->hisPly].castleRights=pos->castleRights;
-    pos->castleRights &= castlePerms[from];
-    pos->castleRights &= castlePerms[to];
-    pos->enPas=NO_SQ;
+    pos->search->history[pos->hisPly].enPas=pos->st->enPas;
+    pos->search->history[pos->hisPly].castleRights=pos->st->castleRights;
+    pos->st->castleRights &= castlePerms[from];
+    pos->st->castleRights &= castlePerms[to];
+    pos->st->enPas=NO_SQ;
 
     if(CAPTURED(move) != EMPTY){
         ClearPieces(to,pos);
@@ -176,9 +176,9 @@ INLINE int makeMoves(S_BOARD *pos,int move){
     if(TYPE_OF(pos->pieces[from]) == PAWN){
         if(move & MVFLAGPS){
             if(side==WHITE){
-                pos->enPas=from+8;
+                pos->st->enPas=from+8;
             }else{
-                pos->enPas=from-8;
+                pos->st->enPas=from-8;
             }
         }
     }
@@ -307,9 +307,9 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     }
 
                     // generate enpassant captures
-                    if (pos->enPas != NO_SQ)
+                    if (pos->st->enPas != NO_SQ)
                     {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
+                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->st->enPas);
 
                         if (enpassant_attacks)
                         {
@@ -324,7 +324,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
             if (pt == KING)
             {
-                if (pos->castleRights & WKCA)
+                if (pos->st->castleRights & WKCA)
                 {
                     if (!(occ & ((1ULL << F1) | (1ULL << G1))))
                     {
@@ -333,7 +333,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     }
                 }
 
-                if (pos->castleRights & WQCA)
+                if (pos->st->castleRights & WQCA)
                 {
                     if (!(occ & ((1ULL << D1) | (1ULL << C1) | (1ULL << B1))))
                     {
@@ -372,9 +372,9 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                         attacks &= attacks - 1;
                     }
 
-                    if (pos->enPas != NO_SQ)
+                    if (pos->st->enPas != NO_SQ)
                     {
-                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->enPas);
+                        U64 enpassant_attacks = pawn_attacks[side][source_square] & (1ULL << pos->st->enPas);
 
                         if (enpassant_attacks)
                         {
@@ -389,7 +389,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
 
             if (pt == KING)
             {
-                if (pos->castleRights & BKCA)
+                if (pos->st->castleRights & BKCA)
                 {
                     if (!(occ & ((1ULL << F8) | (1ULL << G8))))
                     {
@@ -398,7 +398,7 @@ INLINE void GenerateAllMovess(const S_BOARD *pos,S_MOVELIST *list){
                     }
                 }
 
-                if (pos->castleRights & BQCA)
+                if (pos->st->castleRights & BQCA)
                 {
                     if (!(occ & ((1ULL << D8) | (1ULL << C8) | (1ULL << B8))))
                     {
@@ -570,12 +570,15 @@ void Perft(int depth,S_BOARD *pos){
 
     GenerateAllMoves(pos,list);
 
+    StateInfo st;
     int moveNum;
     for(moveNum=0;moveNum<list->count;++moveNum){
-        if(!makeMove(pos,list->moves[moveNum].move)){
+        int move = list->moves[moveNum].move;
+        if(!legal(pos, move)){
             continue;
         }
 
+        makeMove(pos, move, &st);
         Perft(depth-1,pos);
         takeMove(pos);
     }
@@ -601,13 +604,15 @@ void PerftTest(int depth,S_BOARD *pos){
     int move;
     int moveNum;
     int realNumMoves = 0;
+    StateInfo st;
     for(moveNum=0;moveNum<list->count;++moveNum){
         move=list->moves[moveNum].move;
-        if(!makeMove(pos,move)){
+        if(!legal(pos, move)){
             continue;
         }
 
         cumnodes=leafNodes;
+        makeMove(pos, move, &st);
         Perft(depth-1,pos);
 
         takeMove(pos);

@@ -131,33 +131,33 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
                 //en passant: computed once for the whole pawn set - a white
                 //pawn attacks the ep square iff it stands where a black pawn
                 //on the ep square would attack
-                if (pos->enPas != NO_SQ)
+                if (pos->st->enPas != NO_SQ)
                 {
-                    t = pawn_attacks[BLACK][pos->enPas] & pawnsBB;
+                    t = pawn_attacks[BLACK][pos->st->enPas] & pawnsBB;
 
                     while (t)
                     {
                         source_square = LSBINDEX(t);
                         t &= t - 1;
 
-                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
+                        AddMovee(pos,MOVE(source_square,pos->st->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
                 }
             }
 
             if (pt == KING)
             {
-                if (pos->castleRights & (WKCA|WQCA))
+                if (pos->st->castleRights & (WKCA|WQCA))
                 {
                     //E1 safety is shared by both castling sides - check it once
                     const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
-                    if ((pos->castleRights & WKCA) && kingSqSafe &&
+                    if ((pos->st->castleRights & WKCA) && kingSqSafe &&
                         !(occ & ((1ULL << F1) | (1ULL << G1))) &&
                         !is_square_attacked_BB(F1, BLACK, pos))
                         AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
 
-                    if ((pos->castleRights & WQCA) && kingSqSafe &&
+                    if ((pos->st->castleRights & WQCA) && kingSqSafe &&
                         !(occ & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
                         !is_square_attacked_BB(D1, BLACK, pos))
                         AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
@@ -246,32 +246,32 @@ void GenerateAllMoves(const S_BOARD *pos,S_MOVELIST *list){
 
                 //en passant: a black pawn attacks the ep square iff it stands
                 //where a white pawn on the ep square would attack
-                if (pos->enPas != NO_SQ)
+                if (pos->st->enPas != NO_SQ)
                 {
-                    t = pawn_attacks[WHITE][pos->enPas] & pawnsBB;
+                    t = pawn_attacks[WHITE][pos->st->enPas] & pawnsBB;
 
                     while (t)
                     {
                         source_square = LSBINDEX(t);
                         t &= t - 1;
 
-                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
+                        AddMovee(pos,MOVE(source_square,pos->st->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
                 }
             }
 
             if (pt == KING)
             {
-                if (pos->castleRights & (BKCA|BQCA))
+                if (pos->st->castleRights & (BKCA|BQCA))
                 {
                     const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
-                    if ((pos->castleRights & BKCA) && kingSqSafe &&
+                    if ((pos->st->castleRights & BKCA) && kingSqSafe &&
                         !(occ & ((1ULL << F8) | (1ULL << G8))) &&
                         !is_square_attacked_BB(F8, WHITE, pos))
                         AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
 
-                    if ((pos->castleRights & BQCA) && kingSqSafe &&
+                    if ((pos->st->castleRights & BQCA) && kingSqSafe &&
                         !(occ & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
                         !is_square_attacked_BB(D8, WHITE, pos))
                         AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);
@@ -504,16 +504,16 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
                     AddMovee(pos,MOVE(target_square-9,target_square,pos->pieces[target_square],EMPTY,0),list);
                 }
 
-                if (pos->enPas != NO_SQ)
+                if (pos->st->enPas != NO_SQ)
                 {
-                    t = pawn_attacks[BLACK][pos->enPas] & pawnsBB;
+                    t = pawn_attacks[BLACK][pos->st->enPas] & pawnsBB;
 
                     while (t)
                     {
                         source_square = LSBINDEX(t);
                         t &= t - 1;
 
-                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
+                        AddMovee(pos,MOVE(source_square,pos->st->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
                 }
             }
@@ -576,16 +576,16 @@ void GenerateAllNoisy(const S_BOARD *pos,S_MOVELIST *list){
                     AddMovee(pos,MOVE(target_square+7,target_square,pos->pieces[target_square],EMPTY,0),list);
                 }
 
-                if (pos->enPas != NO_SQ)
+                if (pos->st->enPas != NO_SQ)
                 {
-                    t = pawn_attacks[WHITE][pos->enPas] & pawnsBB;
+                    t = pawn_attacks[WHITE][pos->st->enPas] & pawnsBB;
 
                     while (t)
                     {
                         source_square = LSBINDEX(t);
                         t &= t - 1;
 
-                        AddMovee(pos,MOVE(source_square,pos->enPas,EMPTY,EMPTY,MVFLAGEP),list);
+                        AddMovee(pos,MOVE(source_square,pos->st->enPas,EMPTY,EMPTY,MVFLAGEP),list);
                     }
                 }
             }
@@ -720,12 +720,12 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
         if(side == WHITE){
             if(from != E1) return FALSE;
             if(to == G1)
-                return (pos->castleRights & WKCA)
+                return (pos->st->castleRights & WKCA)
                     && !(occ & ((1ULL << F1) | (1ULL << G1)))
                     && !is_square_attacked_BB(E1,BLACK,pos)
                     && !is_square_attacked_BB(F1,BLACK,pos);
             if(to == C1)
-                return (pos->castleRights & WQCA)
+                return (pos->st->castleRights & WQCA)
                     && !(occ & ((1ULL << D1) | (1ULL << C1) | (1ULL << B1)))
                     && !is_square_attacked_BB(E1,BLACK,pos)
                     && !is_square_attacked_BB(D1,BLACK,pos);
@@ -733,12 +733,12 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
         }else{
             if(from != E8) return FALSE;
             if(to == G8)
-                return (pos->castleRights & BKCA)
+                return (pos->st->castleRights & BKCA)
                     && !(occ & ((1ULL << F8) | (1ULL << G8)))
                     && !is_square_attacked_BB(E8,WHITE,pos)
                     && !is_square_attacked_BB(F8,WHITE,pos);
             if(to == C8)
-                return (pos->castleRights & BQCA)
+                return (pos->st->castleRights & BQCA)
                     && !(occ & ((1ULL << D8) | (1ULL << C8) | (1ULL << B8)))
                     && !is_square_attacked_BB(E8,WHITE,pos)
                     && !is_square_attacked_BB(D8,WHITE,pos);
@@ -749,7 +749,7 @@ int moveIsPseudoLegal(const S_BOARD *pos, int move){
     //-------- en passant --------
     if(move & MVFLAGEP){
         if(TYPE_OF(pce) != PAWN || prom != EMPTY) return FALSE;
-        if(pos->enPas == NO_SQ || to != pos->enPas) return FALSE;
+        if(pos->st->enPas == NO_SQ || to != pos->st->enPas) return FALSE;
         if(targetPce != EMPTY) return FALSE;
         return (pawn_attacks[side][from] & (1ULL << to)) != 0;
     }
@@ -872,17 +872,17 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
 
         if (side == WHITE && pt == KING)
         {
-            if (pos->castleRights & (WKCA|WQCA))
+            if (pos->st->castleRights & (WKCA|WQCA))
             {
                 //E1 safety is shared by both castling sides - check it once
                 const int kingSqSafe = !is_square_attacked_BB(E1, BLACK, pos);
 
-                if ((pos->castleRights & WKCA) && kingSqSafe &&
+                if ((pos->st->castleRights & WKCA) && kingSqSafe &&
                     !(occ & ((1ULL << F1) | (1ULL << G1))) &&
                     !is_square_attacked_BB(F1, BLACK, pos))
                     AddMovee(pos,MOVE(E1,G1,0,0,MVFLAGCA),list);
 
-                if ((pos->castleRights & WQCA) && kingSqSafe &&
+                if ((pos->st->castleRights & WQCA) && kingSqSafe &&
                     !(occ & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) &&
                     !is_square_attacked_BB(D1, BLACK, pos))
                     AddMovee(pos,MOVE(E1,C1,0,0,MVFLAGCA),list);
@@ -891,16 +891,16 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
 
         if (side == BLACK && pt == KING)
         {
-            if (pos->castleRights & (BKCA|BQCA))
+            if (pos->st->castleRights & (BKCA|BQCA))
             {
                 const int kingSqSafe = !is_square_attacked_BB(E8, WHITE, pos);
 
-                if ((pos->castleRights & BKCA) && kingSqSafe &&
+                if ((pos->st->castleRights & BKCA) && kingSqSafe &&
                     !(occ & ((1ULL << F8) | (1ULL << G8))) &&
                     !is_square_attacked_BB(F8, WHITE, pos))
                     AddMovee(pos,MOVE(E8,G8,0,0,MVFLAGCA),list);
 
-                if ((pos->castleRights & BQCA) && kingSqSafe &&
+                if ((pos->st->castleRights & BQCA) && kingSqSafe &&
                     !(occ & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) &&
                     !is_square_attacked_BB(D8, WHITE, pos))
                     AddMovee(pos,MOVE(E8,C8,0,0,MVFLAGCA),list);

@@ -455,30 +455,45 @@ void initLeaperAttacks(){
         pawn_attacks[BLACK][sq]=pawn_attack_mask(sq,BLACK);
     }
 }
+
+U64 LineBB[BOARD_NUMS_SQ][BOARD_NUMS_SQ];
+U64 BetweenBB[BOARD_NUMS_SQ][BOARD_NUMS_SQ];
+
 void InitAttacks(){
     initLeaperAttacks();
     initSliderPiecesAttacks(1);
     initSliderPiecesAttacks(0);
+
+    for (int s1 = 0; s1 < 64; s1++) {
+        for (int s2 = 0; s2 < 64; s2++) {
+            LineBB[s1][s2] = 0ULL;
+            BetweenBB[s1][s2] = 0ULL;
+            if (s1 == s2) continue;
+            // Rook rays
+            if (get_rook_attacks(s1, 0ULL) & (1ULL << s2)) {
+                LineBB[s1][s2] = (get_rook_attacks(s1, 0ULL) & get_rook_attacks(s2, 0ULL)) | (1ULL << s1) | (1ULL << s2);
+                BetweenBB[s1][s2] = get_rook_attacks(s1, 1ULL << s2) & get_rook_attacks(s2, 1ULL << s1);
+            }
+            // Bishop rays
+            else if (get_bishop_attacks(s1, 0ULL) & (1ULL << s2)) {
+                LineBB[s1][s2] = (get_bishop_attacks(s1, 0ULL) & get_bishop_attacks(s2, 0ULL)) | (1ULL << s1) | (1ULL << s2);
+                BetweenBB[s1][s2] = get_bishop_attacks(s1, 1ULL << s2) & get_bishop_attacks(s2, 1ULL << s1);
+            }
+        }
+    }
 }
 
-//CMK
-int is_square_attacked_BB(const int square,const int side,const S_BOARD *state){
-
+// Attacks to a square given an explicit occupancy mask
+int is_square_attacked_occ(const int square, const int side, const S_BOARD *state, U64 occ) {
     ASSERT(SqOnBoard(square));
     ASSERT(SideValid(side));
-    ASSERT(checkBoard(state));
 
-    const U64 occ = state->byTypeBB[ALL_PIECES];
     const U64 colorBB = state->byColorBB[side];
 
     if (pawn_attacks[side ^ 1][square] & state->byTypeBB[PAWN] & colorBB) return 1;
 
     if (knight_attacks[square] & state->byTypeBB[KNIGHT] & colorBB) return 1;
 
-    //each slider attack set is computed once and tested against bishops AND
-    //queens / rooks AND queens OF THE ATTACKING SIDE (the old code called
-    //get_queen_attacks here, re-running both magic lookups). the emptiness
-    //guards skip the lookups entirely in slider-less positions.
     const U64 diag = (state->byTypeBB[BISHOP] | state->byTypeBB[QUEEN]) & colorBB;
     if (diag && (get_bishop_attacks(square, occ) & diag)) return 1;
 
@@ -488,6 +503,15 @@ int is_square_attacked_BB(const int square,const int side,const S_BOARD *state){
     if (king_attacks[square] & state->byTypeBB[KING] & colorBB) return 1;
 
     return 0;
+}
+
+//CMK
+int is_square_attacked_BB(const int square,const int side,const S_BOARD *state){
+    ASSERT(SqOnBoard(square));
+    ASSERT(SideValid(side));
+    ASSERT(checkBoard(state));
+
+    return is_square_attacked_occ(square, side, state, state->byTypeBB[ALL_PIECES]);
 }
 
 U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {

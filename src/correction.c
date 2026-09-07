@@ -42,10 +42,10 @@ static void updateEntry(int16_t *entry, int depth, int diff, int weight){
 
 int correctedStaticEval(const S_BOARD *pos, int rawEval){
     int us     = pos->side;
-    int idxPwn = pos->pkHash       & (CORR_HIST_SIZE - 1);
-    int idxMin = pos->minorHash    & (CORR_HIST_SIZE - 1);
-    int idxWnp = pos->npHash[WHITE] & (CORR_HIST_SIZE - 1);
-    int idxBnp = pos->npHash[BLACK] & (CORR_HIST_SIZE - 1);
+    int idxPwn = pos->st->pkHash       & (CORR_HIST_SIZE - 1);
+    int idxMin = pos->st->minorHash    & (CORR_HIST_SIZE - 1);
+    int idxWnp = pos->st->npHash[WHITE] & (CORR_HIST_SIZE - 1);
+    int idxBnp = pos->st->npHash[BLACK] & (CORR_HIST_SIZE - 1);
 
     int pawnCorr = pos->shared->pawnCorrHist[us][idxPwn];
     int minorCorr = pos->shared->minorCorrHist[us][idxMin];
@@ -95,10 +95,10 @@ int correctedStaticEval(const S_BOARD *pos, int rawEval){
 
 void updateCorrectionHistory(S_BOARD *pos, int depth, int diff){
     int us     = pos->side;
-    int idxPwn = pos->pkHash       & (CORR_HIST_SIZE - 1);
-    int idxMin = pos->minorHash    & (CORR_HIST_SIZE - 1);
-    int idxWnp = pos->npHash[WHITE] & (CORR_HIST_SIZE - 1);
-    int idxBnp = pos->npHash[BLACK] & (CORR_HIST_SIZE - 1);
+    int idxPwn = pos->st->pkHash       & (CORR_HIST_SIZE - 1);
+    int idxMin = pos->st->minorHash    & (CORR_HIST_SIZE - 1);
+    int idxWnp = pos->st->npHash[WHITE] & (CORR_HIST_SIZE - 1);
+    int idxBnp = pos->st->npHash[BLACK] & (CORR_HIST_SIZE - 1);
 
     updateEntry(&pos->shared->pawnCorrHist[us][idxPwn], depth, diff, CORR_UP_PAWN_W);
     updateEntry(&pos->shared->minorCorrHist[us][idxMin], depth, diff, CORR_UP_MINOR_W);

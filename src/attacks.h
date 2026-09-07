@@ -51,6 +51,9 @@ INLINE U64 get_queen_attacks(int square, U64 occupancy){
     return get_bishop_attacks(square, occupancy) | get_rook_attacks(square, occupancy);
 }
 
+extern U64 LineBB[BOARD_NUMS_SQ][BOARD_NUMS_SQ];
+extern U64 BetweenBB[BOARD_NUMS_SQ][BOARD_NUMS_SQ];
+
 //attacks.c
 extern U64 pawnRightAttacks(U64 pawns, U64 targets, int colour);
 extern U64 pawnLeftAttacks(U64 pawns, U64 targets, int colour);
@@ -63,5 +66,6 @@ extern U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq);
 extern U64 allAttackedSquares(const S_BOARD *pos, int side);
 extern void InitAttacks();
 extern int is_square_attacked_BB(const int square, const int side,const S_BOARD *pos);
+extern int is_square_attacked_occ(const int square, const int side, const S_BOARD *state, U64 occ);
 
 #endif

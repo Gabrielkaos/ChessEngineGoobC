@@ -13,7 +13,7 @@ INLINE void histGravityUpdate(int16_t *entry,int bonus,int D){
 int getPawnHistory(S_BOARD *pos,int move){
     const int to    = TOSQ(move);
     const int piece = pieceType[pos->pieces[FROMSQ(move)]];
-    const int idx   = pos->pkHash & (PAWN_HIST_SIZE - 1);
+    const int idx   = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
 
     return pos->shared->pawnHist[idx][piece][to];
 }
@@ -172,7 +172,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             //pawn history: keyed by pawn structure, so it transfers across
             //the whole game (Stockfish: << bonus * (bonus > -4 ? 1104 : 459) / 1024)
             {
-                const int pIdx = pos->pkHash & (PAWN_HIST_SIZE - 1);
+                const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
                 const int pBonus = delta * (delta > -4 ? 1104 : 459) / 1024;
                 histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
                                   pBonus, PAWN_HIST_MAX);

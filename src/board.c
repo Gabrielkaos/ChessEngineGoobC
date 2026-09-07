@@ -55,15 +55,15 @@ int checkBoard(const S_BOARD *pos){
     //check side
     ASSERT(pos->side >= WHITE && pos->side < BOTH);
     //check enPas
-    if (pos->enPas != NO_SQ) ASSERT(RANK_OF(pos->enPas)==RANK_3 || RANK_OF(pos->enPas)==RANK_6);
+    if (pos->st->enPas != NO_SQ) ASSERT(RANK_OF(pos->st->enPas)==RANK_3 || RANK_OF(pos->st->enPas)==RANK_6);
     //check castleRights
-    ASSERT(pos->castleRights >= 0 && pos->castleRights <=15);
+    ASSERT(pos->st->castleRights >= 0 && pos->st->castleRights <=15);
     //check posKey and pawnPosKey
-    ASSERT(pos->posKey==GeneratePosKey(pos));
-    ASSERT(pos->pkHash==GeneratePKHash(pos));
-    ASSERT(pos->npHash[WHITE]==GenerateNonPawnHash(pos,WHITE));
-    ASSERT(pos->npHash[BLACK]==GenerateNonPawnHash(pos,BLACK));
-    ASSERT(pos->minorHash==GenerateMinorHash(pos));
+    ASSERT(pos->st->posKey==GeneratePosKey(pos));
+    ASSERT(pos->st->pkHash==GeneratePKHash(pos));
+    ASSERT(pos->st->npHash[WHITE]==GenerateNonPawnHash(pos,WHITE));
+    ASSERT(pos->st->npHash[BLACK]==GenerateNonPawnHash(pos,BLACK));
+    ASSERT(pos->st->minorHash==GenerateMinorHash(pos));
 
     //avoid variants make engine play chess960 or just standard chess
     //pawns
@@ -101,13 +101,13 @@ void MirrorBoard(S_BOARD *pos){
 
     int sq;
 
-    if(pos->castleRights & WKCA) tempcasteRights |= BKCA;
-    if(pos->castleRights & WQCA) tempcasteRights |= BQCA;
-    if(pos->castleRights & BKCA) tempcasteRights |= WKCA;
-    if(pos->castleRights & BQCA) tempcasteRights |= WQCA;
+    if(pos->st->castleRights & WKCA) tempcasteRights |= BKCA;
+    if(pos->st->castleRights & WQCA) tempcasteRights |= BQCA;
+    if(pos->st->castleRights & BKCA) tempcasteRights |= WKCA;
+    if(pos->st->castleRights & BQCA) tempcasteRights |= WQCA;
 
-    if(pos->enPas != NO_SQ){
-        tempEnPass=MIRROR64(pos->enPas);
+    if(pos->st->enPas != NO_SQ){
+        tempEnPass=MIRROR64(pos->st->enPas);
     }
 
     for(sq=0;sq<64;sq++){
@@ -122,20 +122,23 @@ void MirrorBoard(S_BOARD *pos){
     }
 
     pos->side=tempSide;
-    pos->castleRights=tempcasteRights;
-    pos->enPas=tempEnPass;
+    pos->st->castleRights=tempcasteRights;
+    pos->st->enPas=tempEnPass;
 
-    pos->posKey=GeneratePosKey(pos);
-    pos->pkHash=GeneratePKHash(pos);
-    pos->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
-    pos->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
-    pos->minorHash=GenerateMinorHash(pos);
+    pos->st->posKey=GeneratePosKey(pos);
+    pos->st->pkHash=GeneratePKHash(pos);
+    pos->st->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
+    pos->st->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
+    pos->st->minorHash=GenerateMinorHash(pos);
 
     updateListMaterial(pos);
+    set_check_info(pos);
 }
 
 void updateListMaterial(S_BOARD *pos){
     int piece,sq,index,color,pt;
+
+    pos->st->psqtmat = 0;
 
     for(index=0;index<BOARD_NUMS_SQ;++index){
         sq=index;
@@ -145,7 +148,7 @@ void updateListMaterial(S_BOARD *pos){
             pt=TYPE_OF(piece);
 
             //psqtmat
-            pos->psqtmat += PSQTMATTABLE[piece][sq];
+            pos->st->psqtmat += PSQTMATTABLE[piece][sq];
 
             U64 mask = 1ULL << sq;
             pos->byColorBB[color] |= mask;
@@ -235,10 +238,10 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     while(*fen==' ') fen++;
     while(*fen && *fen != ' '){
         switch(*fen){
-            case 'K':pos->castleRights |= WKCA;break;
-            case 'Q':pos->castleRights |= WQCA;break;
-            case 'k':pos->castleRights |= BKCA;break;
-            case 'q':pos->castleRights |= BQCA;break;
+            case 'K':pos->st->castleRights |= WKCA;break;
+            case 'Q':pos->st->castleRights |= WQCA;break;
+            case 'k':pos->st->castleRights |= BKCA;break;
+            case 'q':pos->st->castleRights |= BQCA;break;
             default:
                 break;
         }
@@ -255,18 +258,18 @@ int ParseFEN(char *fen ,S_BOARD *pos){
             printf("FEN Not Valid \n");
             return -1;
         }
-        pos->enPas=FRtoSQ(epFile,epRank);
+        pos->st->enPas=FRtoSQ(epFile,epRank);
         fen+=2;
     }else{
-        pos->enPas=NO_SQ;
+        pos->st->enPas=NO_SQ;
         if(*fen=='-') fen++;
     }
 
     //-------- fifty move counter / fullmove number --------
-    pos->fiftyMove=0;
+    pos->st->fiftyMove=0;
     int fullmove=0;
-    sscanf(fen, " %d %d", &pos->fiftyMove, &fullmove);
-    if(pos->fiftyMove < 0) pos->fiftyMove=0;
+    sscanf(fen, " %d %d", &pos->st->fiftyMove, &fullmove);
+    if(pos->st->fiftyMove < 0) pos->st->fiftyMove=0;
 
     updateListMaterial(pos);
 
@@ -283,19 +286,21 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     }
     if(kings[WHITE]!=1 || kings[BLACK]!=1){ printf("FEN Not Valid \n"); return -1; }
 
-    pos->pkHash=GeneratePKHash(pos);
-    pos->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
-    pos->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
-    pos->minorHash=GenerateMinorHash(pos);
-    pos->posKey=GeneratePosKey(pos);
+    pos->st->pkHash=GeneratePKHash(pos);
+    pos->st->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
+    pos->st->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
+    pos->st->minorHash=GenerateMinorHash(pos);
+    pos->st->posKey=GeneratePosKey(pos);
+    set_check_info(pos);
 
     return 0;
 }
 
 void ResetBoard(S_BOARD *pos){
-    int index=0;
+    pos->st = &pos->stateTable[0];
+    memset(pos->st, 0, sizeof(StateInfo));
 
-    pos->psqtmat = 0;
+    int index=0;
 
     for(index=0;index<PIECE_TYPE_NB;++index){
         pos->byTypeBB[index]=0ULL;
@@ -312,19 +317,21 @@ void ResetBoard(S_BOARD *pos){
     }
 
     pos->side=BOTH;
-    pos->enPas=NO_SQ;
-    pos->fiftyMove=0;
-    pos->pliesFromNull=0;
+    pos->st->enPas=NO_SQ;
+    pos->st->fiftyMove=0;
+    pos->st->pliesFromNull=0;
 
-    pos->castleRights=0;
+    pos->st->castleRights=0;
     pos->ply=0;
     pos->hisPly=0;
 
-    pos->posKey=0ULL;
-    pos->pkHash=0ULL;
-    pos->npHash[WHITE]=0ULL;
-    pos->npHash[BLACK]=0ULL;
-    pos->minorHash=0ULL;
+    pos->st->posKey=0ULL;
+    pos->st->pkHash=0ULL;
+    pos->st->npHash[WHITE]=0ULL;
+    pos->st->npHash[BLACK]=0ULL;
+    pos->st->minorHash=0ULL;
+    pos->st->psqtmat=0;
+    pos->st->previous=NULL;
 }
 
 void PrintBoard(const S_BOARD *pos){
@@ -347,7 +354,7 @@ void PrintBoard(const S_BOARD *pos){
         printf(" | %d\n +---+---+---+---+---+---+---+---+\n",rank+1);
     }
     printf("   a   b   c   d   e   f   g   h\n\n Fen: %s\n",fen);
-    printf(" Key: %"PRIu64"\n",pos->posKey);
+    printf(" Key: %"PRIu64"\n",pos->st->posKey);
 
     U64 checkers=attackersToKingSq(pos,pos->side);
 

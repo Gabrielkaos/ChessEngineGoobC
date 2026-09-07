@@ -73,7 +73,7 @@ void printFen(const S_BOARD *pos,char *fen){
     *fen++ = pos->side == WHITE ? 'w' : 'b';
     *fen++ = ' ';
 
-    int cr=pos->castleRights;
+    int cr=pos->st->castleRights;
 
     if(cr & WKCA) *fen++='K';
     if(cr & WQCA) *fen++='Q';
@@ -85,15 +85,15 @@ void printFen(const S_BOARD *pos,char *fen){
     }
     *fen++ = ' ';
 
-    if(pos->enPas != NO_SQ){
-        *fen++='a'+FILE_OF(pos->enPas);
-        *fen++='1'+RANK_OF(pos->enPas);
+    if(pos->st->enPas != NO_SQ){
+        *fen++='a'+FILE_OF(pos->st->enPas);
+        *fen++='1'+RANK_OF(pos->st->enPas);
     }else{
         *fen++='-';
     }
 
 
-    sprintf(fen," %d %d",pos->fiftyMove,1+(pos->hisPly-(pos->side==BLACK))/2);
+    sprintf(fen," %d %d",pos->st->fiftyMove,1+(pos->hisPly-(pos->side==BLACK))/2);
 }
 
 void printBitBoard(U64 bb) {

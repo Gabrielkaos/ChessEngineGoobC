@@ -21,11 +21,11 @@ U64 GeneratePosKey(const S_BOARD *pos){
         finalKey ^=sideKey;
     }
 
-    if(pos->enPas != NO_SQ){
-        finalKey^=pieceKeys[EMPTY][pos->enPas];
+    if(pos->st->enPas != NO_SQ){
+        finalKey^=pieceKeys[EMPTY][pos->st->enPas];
     }
 
-    finalKey^= castleKeys[pos->castleRights];
+    finalKey^= castleKeys[pos->st->castleRights];
 
     return finalKey;
 

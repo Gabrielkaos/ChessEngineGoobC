@@ -41,19 +41,19 @@ void InitEvalTable(EVAL_TABLE *table,const int mb,int noisy){
 
 void StoreTTEval(S_BOARD *pos,int Eval){
 
-    int index=pos->posKey & (pos->eTable->numEntries - 1);
+    int index=pos->st->posKey & (pos->eTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->eTable->numEntries-1);
 
 	pos->eTable->evalTable[index].EvalScore=Eval;
-	pos->eTable->evalTable[index].posKey=pos->posKey;
+	pos->eTable->evalTable[index].posKey=pos->st->posKey;
 }
 
 int ProbeTTEval(const S_BOARD *pos){
 
-    int index=pos->posKey & (pos->eTable->numEntries - 1);
+    int index=pos->st->posKey & (pos->eTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->eTable->numEntries-1);
 
-    if(pos->eTable->evalTable[index].posKey==pos->posKey){
+    if(pos->eTable->evalTable[index].posKey==pos->st->posKey){
         ASSERT(pos->eTable->evalTable[index].EvalScore != VALUE_NONE);
         return pos->eTable->evalTable[index].EvalScore;
     }
@@ -105,22 +105,22 @@ void InitPawnKingTable(PAWNKING_TABLE *table,const int mb,int noisy){
 
 void StorePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
-    int index=pos->pkHash & (pos->pawnKingTable->numEntries - 1);
+    int index=pos->st->pkHash & (pos->pawnKingTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
 	pos->pawnKingTable->paTable[index].whiteScore=eval_info->pawnEval[WHITE];
 	pos->pawnKingTable->paTable[index].blackScore=eval_info->pawnEval[BLACK];
-	pos->pawnKingTable->paTable[index].pawnPosKey=pos->pkHash;
+	pos->pawnKingTable->paTable[index].pawnPosKey=pos->st->pkHash;
 	pos->pawnKingTable->paTable[index].passed[BLACK]=eval_info->passers[BLACK];
 	pos->pawnKingTable->paTable[index].passed[WHITE]=eval_info->passers[WHITE];
 }
 
 int ProbePawnKingEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
-    int index=pos->pkHash & (pos->pawnKingTable->numEntries - 1);
+    int index=pos->st->pkHash & (pos->pawnKingTable->numEntries - 1);
     ASSERT(index>=0 && index <= pos->pawnKingTable->numEntries-1);
 
-    if(pos->pawnKingTable->paTable[index].pawnPosKey==pos->pkHash){
+    if(pos->pawnKingTable->paTable[index].pawnPosKey==pos->st->pkHash){
         eval_info->pawnEval[WHITE]=pos->pawnKingTable->paTable[index].whiteScore;
         eval_info->pawnEval[BLACK]=pos->pawnKingTable->paTable[index].blackScore;
         eval_info->passers[WHITE] =pos->pawnKingTable->paTable[index].passed[WHITE];
