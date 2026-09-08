@@ -1780,5 +1780,6 @@
     ->added Persistent Thread Pool 
     ->added Corrected Eval in Quiescence
     ->fixed pondering code
+    ->added scaling draw when KRvKB/KN
 
 	*/

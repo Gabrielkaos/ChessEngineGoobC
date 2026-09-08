@@ -953,6 +953,15 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
     if ((strong & minors) && COUNTBIT(strong) == 2)
         return SCALE_DRAW;
 
+    // King + Rook vs King + Bishop or King + Knight
+    if (   !eval_info->pawnsBB
+        && !eval_info->queensBB
+        && onlyOne(eval_info->rooksBB)
+        && onlyOne(minors)
+        && COUNTBIT(white) == 2
+        && COUNTBIT(black) == 2)
+        return SCALE_DRAW;
+
     // Scale up lone pieces with massive pawn advantages
     if (   !eval_info->queensBB
         && !several(pieces & white)
