@@ -482,7 +482,7 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
     bitboard=friendlyPawn;
     while(bitboard){
 
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
         file=FILE_OF(sq);
         rank=RANK_OF(sq);
 
@@ -528,7 +528,6 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
         else if(PawnConnectedMasks[WHITE][sq] & friendlyPawn){
             eval_info->pawnEval[WHITE]+=PawnConnected32[relativeSquare32(WHITE,sq)];
         }
-        POPBIT(bitboard,sq);
     }
 
     enemyPawns=pieces_cp(pos, WHITE, PAWN);
@@ -539,7 +538,7 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
     bitboard=friendlyPawn;
     while(bitboard){
 
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
         file=FILE_OF(sq);
         rank=RANK_OF(sq);
 
@@ -585,7 +584,6 @@ INLINE void EvalPawn(S_BOARD *pos, EVAL_INFO *eval_info){
         else if(PawnConnectedMasks[BLACK][sq] & friendlyPawn){
             eval_info->pawnEval[BLACK]+=PawnConnected32[relativeSquare32(BLACK,sq)];
         }
-        POPBIT(bitboard,sq);
     }
 }
 
@@ -604,7 +602,7 @@ INLINE int evalKnights(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     while(bitboard){
 
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
 
         //knight outposts
         if(testBit(getOutpostRanksMasks(color),sq) &&
@@ -641,8 +639,6 @@ INLINE int evalKnights(S_BOARD *pos, EVAL_INFO *eval_info,int color){
             eval_info->attCnt[!side]+=1;
             eval_info->attWeight[!side]+=SafetyKnightWeight;
         }
-
-        POPBIT(bitboard,sq);
     }
     return eval;
 }
@@ -664,7 +660,7 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     }
 
     while(bitboard){
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
 
         //rammed pawns of same color
         count=COUNTBIT(eval_info->rammedPawns[color] & squaresOfMatchingColour(sq));
@@ -705,8 +701,6 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
             eval_info->attCnt[!side]+=1;
             eval_info->attWeight[!side]+=SafetyBishopWeight;
         }
-
-        POPBIT(bitboard,sq);
     }
 
     return eval;
@@ -786,7 +780,7 @@ INLINE int evalQueens(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     while(bitboard){
 
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
 
         //pin risk
         if (discoveredAttacks(pos, sq, color)) {
@@ -808,8 +802,6 @@ INLINE int evalQueens(S_BOARD *pos, EVAL_INFO *eval_info,int color){
             eval_info->attCnt[!side]+=1;
             eval_info->attWeight[!side]+=SafetyQueenWeight;
         }
-
-        POPBIT(bitboard,sq);
     }
     return eval;
 }
@@ -829,7 +821,7 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     while(bitboard){
 
-        sq=LSBINDEX(bitboard);
+        sq = poplsb(&bitboard);
 
 
         //open files
@@ -859,8 +851,6 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
             eval_info->attCnt[!side]+=1;
             eval_info->attWeight[!side]+=SafetyRookWeight;
         }
-
-        POPBIT(bitboard,sq);
     }
     return eval;
 }
@@ -989,8 +979,7 @@ INLINE int evaluatePassed(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
 
     while (tempPawns) {
 
-        sq = LSBINDEX(tempPawns);
-        POPBIT(tempPawns,sq);
+        sq = poplsb(&tempPawns);
         rank = relativeRankOf(US, sq);
         bitboard = pawnAdvance(1ull << sq, 0ull, US);
 
