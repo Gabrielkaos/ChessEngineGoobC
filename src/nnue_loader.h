@@ -188,8 +188,7 @@ extern int nnue_loaded;
 #include <string.h>
 #include <math.h>
 
-/* ── SIMD platform detection for the int8 dot product (unchanged from
- * before — see header comment) ────────────────────────────────────── */
+/* ── SIMD platform detection and dispatch helpers ────────────────────────── */
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #define NNUE_ARCH_X86 1
 #endif
@@ -198,6 +197,36 @@ extern int nnue_loaded;
 #include <immintrin.h>
 #define NNUE_HAVE_AVX2_DISPATCH 1
 #endif
+
+static inline int cpu_supports_avx2(void) {
+#if defined(__AVX2__)
+    return 1;
+#elif defined(NNUE_HAVE_AVX2_DISPATCH)
+    static int cached = -1;
+    if (cached < 0) {
+        __builtin_cpu_init();
+        cached = __builtin_cpu_supports("avx2") ? 1 : 0;
+    }
+    return cached;
+#else
+    return 0;
+#endif
+}
+
+static inline int cpu_supports_ssse3(void) {
+#if defined(__SSSE3__)
+    return 1;
+#elif defined(NNUE_HAVE_AVX2_DISPATCH)
+    static int cached = -1;
+    if (cached < 0) {
+        __builtin_cpu_init();
+        cached = __builtin_cpu_supports("ssse3") ? 1 : 0;
+    }
+    return cached;
+#else
+    return 0;
+#endif
+}
 
 /* ── Feature-space constants ───────────────────────────────────────── */
 #define NNUE_KING_SQUARES   64
@@ -220,6 +249,7 @@ typedef struct {
     int qb_scale;
     int qc_scale;
     int qd_scale;
+    int16_t qa_mult;    /* Fixed-point multiplier for pmulhrsw requantization */
 
     int16_t *ft_w; /* [NNUE_NUM_FEATURES][l1_size], feature-major, quantized.
                        Shared by both perspectives — see header comment.
@@ -277,6 +307,90 @@ static inline int8_t requantize_ft_i8(int32_t acc, int qa_scale) {
     if (v > 127.0f) v = 127.0f;
     return (int8_t)(v + 0.5f);
 }
+
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+__attribute__((target("avx2")))
+static void nnue_requantize_ft_slice_avx2(const int32_t *in, int8_t *out, int n, int qa_scale, int16_t qa_mult) {
+    __m256i v_mult = _mm256_set1_epi16(qa_mult);
+    __m256i zero = _mm256_setzero_si256();
+    __m256i max127 = _mm256_set1_epi8(127);
+    __m256i perm_idx = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+
+    int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        __m256i a0 = _mm256_loadu_si256((const __m256i *)(in + i + 0));
+        __m256i a1 = _mm256_loadu_si256((const __m256i *)(in + i + 8));
+        __m256i a2 = _mm256_loadu_si256((const __m256i *)(in + i + 16));
+        __m256i a3 = _mm256_loadu_si256((const __m256i *)(in + i + 24));
+
+        __m256i p01 = _mm256_packs_epi32(a0, a1);
+        __m256i p23 = _mm256_packs_epi32(a2, a3);
+
+        __m256i s01 = _mm256_mulhrs_epi16(p01, v_mult);
+        __m256i s23 = _mm256_mulhrs_epi16(p23, v_mult);
+
+        __m256i bytes = _mm256_packs_epi16(s01, s23);
+        __m256i ordered = _mm256_permutevar8x32_epi32(bytes, perm_idx);
+
+        ordered = _mm256_max_epi8(ordered, zero);
+        ordered = _mm256_min_epi8(ordered, max127);
+
+        _mm256_storeu_si256((__m256i *)(out + i), ordered);
+    }
+    for (; i < n; i++) {
+        out[i] = requantize_ft_i8(in[i], qa_scale);
+    }
+}
+
+__attribute__((target("ssse3")))
+static void nnue_requantize_ft_slice_ssse3(const int32_t *in, int8_t *out, int n, int qa_scale, int16_t qa_mult) {
+    __m128i v_mult = _mm_set1_epi16(qa_mult);
+    __m128i max127 = _mm_set1_epi8(127);
+
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m128i a0 = _mm_loadu_si128((const __m128i *)(in + i + 0));
+        __m128i a1 = _mm_loadu_si128((const __m128i *)(in + i + 4));
+        __m128i a2 = _mm_loadu_si128((const __m128i *)(in + i + 8));
+        __m128i a3 = _mm_loadu_si128((const __m128i *)(in + i + 12));
+
+        __m128i p01 = _mm_packs_epi32(a0, a1);
+        __m128i p23 = _mm_packs_epi32(a2, a3);
+
+        __m128i s01 = _mm_mulhrs_epi16(p01, v_mult);
+        __m128i s23 = _mm_mulhrs_epi16(p23, v_mult);
+
+        __m128i bytes = _mm_packus_epi16(s01, s23);
+        bytes = _mm_min_epu8(bytes, max127);
+
+        _mm_storeu_si128((__m128i *)(out + i), bytes);
+    }
+    for (; i < n; i++) {
+        out[i] = requantize_ft_i8(in[i], qa_scale);
+    }
+}
+#endif
+
+static inline void nnue_requantize_ft_slice_scalar(const int32_t *in, int8_t *out, int n, int qa_scale) {
+    for (int i = 0; i < n; i++) {
+        out[i] = requantize_ft_i8(in[i], qa_scale);
+    }
+}
+
+static inline void nnue_requantize_ft_slice(const int32_t *in, int8_t *out, int n, int qa_scale, int16_t qa_mult) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_requantize_ft_slice_avx2(in, out, n, qa_scale, qa_mult);
+        return;
+    }
+    if (cpu_supports_ssse3()) {
+        nnue_requantize_ft_slice_ssse3(in, out, n, qa_scale, qa_mult);
+        return;
+    }
+#endif
+    nnue_requantize_ft_slice_scalar(in, out, n, qa_scale);
+}
+
 
 static void *read_bytes(FILE *f, size_t nbytes, int *ok) {
     void *buf = malloc(nbytes);
@@ -373,6 +487,10 @@ int nnue_init(const char *path) {
     g_weights->qc_scale = qc_scale;
     g_weights->qd_scale = qd_scale;
 
+    int mult = (int)((127.0 / (double)qa_scale) * 32768.0 + 0.5);
+    if (mult > 32767) mult = 32767;
+    g_weights->qa_mult = (int16_t)mult;
+
     g_weights->ft_w = (int16_t *)read_bytes(f, sizeof(int16_t) * NNUE_NUM_FEATURES * (size_t)l1, &ok);
     g_weights->ft_b = (int32_t *)read_bytes(f, sizeof(int32_t) * (size_t)l1, &ok);
     g_weights->l2_w = (int8_t *)read_bytes(f, sizeof(int8_t) * (size_t)l2 * (size_t)(2 * l1), &ok);
@@ -400,18 +518,346 @@ int nnue_init(const char *path) {
     return 1;
 }
 
+/* ── Incremental accumulator maintenance kernels ───────────────────────── */
+
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+__attribute__((target("avx2")))
+static void nnue_acc_update_1add_1sub_avx2(int32_t *curr_acc, const int32_t *prev_acc,
+                                           const int16_t *row_add, const int16_t *row_sub, int n) {
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i p0 = _mm256_loadu_si256((const __m256i *)(prev_acc + i));
+        __m256i p1 = _mm256_loadu_si256((const __m256i *)(prev_acc + i + 8));
+        __m256i a0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add + i)));
+        __m256i a1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add + i + 8)));
+        __m256i s0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub + i)));
+        __m256i s1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub + i + 8)));
+        _mm256_storeu_si256((__m256i *)(curr_acc + i),     _mm256_sub_epi32(_mm256_add_epi32(p0, a0), s0));
+        _mm256_storeu_si256((__m256i *)(curr_acc + i + 8), _mm256_sub_epi32(_mm256_add_epi32(p1, a1), s1));
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add[i] - (int32_t)row_sub[i];
+    }
+}
+
+__attribute__((target("avx2")))
+static void nnue_acc_update_1add_2sub_avx2(int32_t *curr_acc, const int32_t *prev_acc,
+                                           const int16_t *row_add0,
+                                           const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i p0 = _mm256_loadu_si256((const __m256i *)(prev_acc + i));
+        __m256i p1 = _mm256_loadu_si256((const __m256i *)(prev_acc + i + 8));
+        __m256i a0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add0 + i)));
+        __m256i a1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add0 + i + 8)));
+        __m256i s0_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub0 + i)));
+        __m256i s0_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub0 + i + 8)));
+        __m256i s1_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub1 + i)));
+        __m256i s1_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub1 + i + 8)));
+        __m256i res0 = _mm256_sub_epi32(_mm256_sub_epi32(_mm256_add_epi32(p0, a0), s0_0), s1_0);
+        __m256i res1 = _mm256_sub_epi32(_mm256_sub_epi32(_mm256_add_epi32(p1, a1), s0_1), s1_1);
+        _mm256_storeu_si256((__m256i *)(curr_acc + i),     res0);
+        _mm256_storeu_si256((__m256i *)(curr_acc + i + 8), res1);
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+__attribute__((target("avx2")))
+static void nnue_acc_update_2add_2sub_avx2(int32_t *curr_acc, const int32_t *prev_acc,
+                                           const int16_t *row_add0, const int16_t *row_add1,
+                                           const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i p0 = _mm256_loadu_si256((const __m256i *)(prev_acc + i));
+        __m256i p1 = _mm256_loadu_si256((const __m256i *)(prev_acc + i + 8));
+        __m256i a0_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add0 + i)));
+        __m256i a0_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add0 + i + 8)));
+        __m256i a1_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add1 + i)));
+        __m256i a1_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_add1 + i + 8)));
+        __m256i s0_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub0 + i)));
+        __m256i s0_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub0 + i + 8)));
+        __m256i s1_0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub1 + i)));
+        __m256i s1_1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row_sub1 + i + 8)));
+        __m256i res0 = _mm256_sub_epi32(_mm256_sub_epi32(_mm256_add_epi32(_mm256_add_epi32(p0, a0_0), a1_0), s0_0), s1_0);
+        __m256i res1 = _mm256_sub_epi32(_mm256_sub_epi32(_mm256_add_epi32(_mm256_add_epi32(p1, a0_1), a1_1), s0_1), s1_1);
+        _mm256_storeu_si256((__m256i *)(curr_acc + i),     res0);
+        _mm256_storeu_si256((__m256i *)(curr_acc + i + 8), res1);
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] + (int32_t)row_add1[i]
+                                  - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+__attribute__((target("avx2")))
+static void nnue_acc_add_row_avx2(int32_t *acc, const int16_t *row, int n) {
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i a0 = _mm256_loadu_si256((const __m256i *)(acc + i));
+        __m256i a1 = _mm256_loadu_si256((const __m256i *)(acc + i + 8));
+        __m256i w0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row + i)));
+        __m256i w1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row + i + 8)));
+        _mm256_storeu_si256((__m256i *)(acc + i),     _mm256_add_epi32(a0, w0));
+        _mm256_storeu_si256((__m256i *)(acc + i + 8), _mm256_add_epi32(a1, w1));
+    }
+    for (; i < n; i++) {
+        acc[i] += (int32_t)row[i];
+    }
+}
+
+__attribute__((target("avx2")))
+static void nnue_acc_sub_row_avx2(int32_t *acc, const int16_t *row, int n) {
+    int i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i a0 = _mm256_loadu_si256((const __m256i *)(acc + i));
+        __m256i a1 = _mm256_loadu_si256((const __m256i *)(acc + i + 8));
+        __m256i w0 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row + i)));
+        __m256i w1 = _mm256_cvtepi16_epi32(_mm_loadu_si128((const __m128i *)(row + i + 8)));
+        _mm256_storeu_si256((__m256i *)(acc + i),     _mm256_sub_epi32(a0, w0));
+        _mm256_storeu_si256((__m256i *)(acc + i + 8), _mm256_sub_epi32(a1, w1));
+    }
+    for (; i < n; i++) {
+        acc[i] -= (int32_t)row[i];
+    }
+}
+#endif /* NNUE_HAVE_AVX2_DISPATCH */
+
+#ifdef NNUE_ARCH_X86
+static inline void nnue_acc_update_1add_1sub_sse2(int32_t *curr_acc, const int32_t *prev_acc,
+                                                  const int16_t *row_add, const int16_t *row_sub, int n) {
+    int i = 0;
+    const __m128i zero = _mm_setzero_si128();
+    for (; i + 8 <= n; i += 8) {
+        __m128i r_add = _mm_loadu_si128((const __m128i *)(row_add + i));
+        __m128i r_sub = _mm_loadu_si128((const __m128i *)(row_sub + i));
+        __m128i a_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_add), 16);
+        __m128i a_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_add), 16);
+        __m128i s_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_sub), 16);
+        __m128i s_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_sub), 16);
+        __m128i p_lo = _mm_loadu_si128((const __m128i *)(prev_acc + i));
+        __m128i p_hi = _mm_loadu_si128((const __m128i *)(prev_acc + i + 4));
+        _mm_storeu_si128((__m128i *)(curr_acc + i),     _mm_sub_epi32(_mm_add_epi32(p_lo, a_lo), s_lo));
+        _mm_storeu_si128((__m128i *)(curr_acc + i + 4), _mm_sub_epi32(_mm_add_epi32(p_hi, a_hi), s_hi));
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add[i] - (int32_t)row_sub[i];
+    }
+}
+
+static inline void nnue_acc_update_1add_2sub_sse2(int32_t *curr_acc, const int32_t *prev_acc,
+                                                  const int16_t *row_add0,
+                                                  const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    int i = 0;
+    const __m128i zero = _mm_setzero_si128();
+    for (; i + 8 <= n; i += 8) {
+        __m128i r_add = _mm_loadu_si128((const __m128i *)(row_add0 + i));
+        __m128i r_sub0 = _mm_loadu_si128((const __m128i *)(row_sub0 + i));
+        __m128i r_sub1 = _mm_loadu_si128((const __m128i *)(row_sub1 + i));
+        __m128i a_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_add), 16);
+        __m128i a_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_add), 16);
+        __m128i s0_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_sub0), 16);
+        __m128i s0_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_sub0), 16);
+        __m128i s1_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_sub1), 16);
+        __m128i s1_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_sub1), 16);
+        __m128i p_lo = _mm_loadu_si128((const __m128i *)(prev_acc + i));
+        __m128i p_hi = _mm_loadu_si128((const __m128i *)(prev_acc + i + 4));
+        _mm_storeu_si128((__m128i *)(curr_acc + i),     _mm_sub_epi32(_mm_sub_epi32(_mm_add_epi32(p_lo, a_lo), s0_lo), s1_lo));
+        _mm_storeu_si128((__m128i *)(curr_acc + i + 4), _mm_sub_epi32(_mm_sub_epi32(_mm_add_epi32(p_hi, a_hi), s0_hi), s1_hi));
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+static inline void nnue_acc_update_2add_2sub_sse2(int32_t *curr_acc, const int32_t *prev_acc,
+                                                  const int16_t *row_add0, const int16_t *row_add1,
+                                                  const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    int i = 0;
+    const __m128i zero = _mm_setzero_si128();
+    for (; i + 8 <= n; i += 8) {
+        __m128i r_add0 = _mm_loadu_si128((const __m128i *)(row_add0 + i));
+        __m128i r_add1 = _mm_loadu_si128((const __m128i *)(row_add1 + i));
+        __m128i r_sub0 = _mm_loadu_si128((const __m128i *)(row_sub0 + i));
+        __m128i r_sub1 = _mm_loadu_si128((const __m128i *)(row_sub1 + i));
+        __m128i a0_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_add0), 16);
+        __m128i a0_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_add0), 16);
+        __m128i a1_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_add1), 16);
+        __m128i a1_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_add1), 16);
+        __m128i s0_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_sub0), 16);
+        __m128i s0_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_sub0), 16);
+        __m128i s1_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r_sub1), 16);
+        __m128i s1_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r_sub1), 16);
+        __m128i p_lo = _mm_loadu_si128((const __m128i *)(prev_acc + i));
+        __m128i p_hi = _mm_loadu_si128((const __m128i *)(prev_acc + i + 4));
+        _mm_storeu_si128((__m128i *)(curr_acc + i),     _mm_sub_epi32(_mm_sub_epi32(_mm_add_epi32(_mm_add_epi32(p_lo, a0_lo), a1_lo), s0_lo), s1_lo));
+        _mm_storeu_si128((__m128i *)(curr_acc + i + 4), _mm_sub_epi32(_mm_sub_epi32(_mm_add_epi32(_mm_add_epi32(p_hi, a0_hi), a1_hi), s0_hi), s1_hi));
+    }
+    for (; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] + (int32_t)row_add1[i]
+                                  - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+static inline void nnue_acc_add_row_sse2(int32_t *acc, const int16_t *row, int n) {
+    int i = 0;
+    const __m128i zero = _mm_setzero_si128();
+    for (; i + 8 <= n; i += 8) {
+        __m128i r = _mm_loadu_si128((const __m128i *)(row + i));
+        __m128i w_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r), 16);
+        __m128i w_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r), 16);
+        __m128i a_lo = _mm_loadu_si128((const __m128i *)(acc + i));
+        __m128i a_hi = _mm_loadu_si128((const __m128i *)(acc + i + 4));
+        _mm_storeu_si128((__m128i *)(acc + i),     _mm_add_epi32(a_lo, w_lo));
+        _mm_storeu_si128((__m128i *)(acc + i + 4), _mm_add_epi32(a_hi, w_hi));
+    }
+    for (; i < n; i++) {
+        acc[i] += (int32_t)row[i];
+    }
+}
+
+static inline void nnue_acc_sub_row_sse2(int32_t *acc, const int16_t *row, int n) {
+    int i = 0;
+    const __m128i zero = _mm_setzero_si128();
+    for (; i + 8 <= n; i += 8) {
+        __m128i r = _mm_loadu_si128((const __m128i *)(row + i));
+        __m128i w_lo = _mm_srai_epi32(_mm_unpacklo_epi16(zero, r), 16);
+        __m128i w_hi = _mm_srai_epi32(_mm_unpackhi_epi16(zero, r), 16);
+        __m128i a_lo = _mm_loadu_si128((const __m128i *)(acc + i));
+        __m128i a_hi = _mm_loadu_si128((const __m128i *)(acc + i + 4));
+        _mm_storeu_si128((__m128i *)(acc + i),     _mm_sub_epi32(a_lo, w_lo));
+        _mm_storeu_si128((__m128i *)(acc + i + 4), _mm_sub_epi32(a_hi, w_hi));
+    }
+    for (; i < n; i++) {
+        acc[i] -= (int32_t)row[i];
+    }
+}
+#endif /* NNUE_ARCH_X86 */
+
+static inline void nnue_acc_update_1add_1sub_scalar(int32_t *curr_acc, const int32_t *prev_acc,
+                                                    const int16_t *row_add, const int16_t *row_sub, int n) {
+    for (int i = 0; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add[i] - (int32_t)row_sub[i];
+    }
+}
+
+static inline void nnue_acc_update_1add_2sub_scalar(int32_t *curr_acc, const int32_t *prev_acc,
+                                                    const int16_t *row_add0,
+                                                    const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    for (int i = 0; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+static inline void nnue_acc_update_2add_2sub_scalar(int32_t *curr_acc, const int32_t *prev_acc,
+                                                    const int16_t *row_add0, const int16_t *row_add1,
+                                                    const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+    for (int i = 0; i < n; i++) {
+        curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] + (int32_t)row_add1[i]
+                                  - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
+    }
+}
+
+static inline void nnue_acc_add_row_scalar(int32_t *acc, const int16_t *row, int n) {
+    for (int i = 0; i < n; i++) {
+        acc[i] += (int32_t)row[i];
+    }
+}
+
+static inline void nnue_acc_sub_row_scalar(int32_t *acc, const int16_t *row, int n) {
+    for (int i = 0; i < n; i++) {
+        acc[i] -= (int32_t)row[i];
+    }
+}
+
+static inline void nnue_acc_update_1add_1sub(int32_t *curr_acc, const int32_t *prev_acc,
+                                             const int16_t *row_add, const int16_t *row_sub, int n) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_acc_update_1add_1sub_avx2(curr_acc, prev_acc, row_add, row_sub, n);
+        return;
+    }
+#endif
+#ifdef NNUE_ARCH_X86
+    nnue_acc_update_1add_1sub_sse2(curr_acc, prev_acc, row_add, row_sub, n);
+#else
+    nnue_acc_update_1add_1sub_scalar(curr_acc, prev_acc, row_add, row_sub, n);
+#endif
+}
+
+static inline void nnue_acc_update_1add_2sub(int32_t *curr_acc, const int32_t *prev_acc,
+                                             const int16_t *row_add0,
+                                             const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_acc_update_1add_2sub_avx2(curr_acc, prev_acc, row_add0, row_sub0, row_sub1, n);
+        return;
+    }
+#endif
+#ifdef NNUE_ARCH_X86
+    nnue_acc_update_1add_2sub_sse2(curr_acc, prev_acc, row_add0, row_sub0, row_sub1, n);
+#else
+    nnue_acc_update_1add_2sub_scalar(curr_acc, prev_acc, row_add0, row_sub0, row_sub1, n);
+#endif
+}
+
+static inline void nnue_acc_update_2add_2sub(int32_t *curr_acc, const int32_t *prev_acc,
+                                             const int16_t *row_add0, const int16_t *row_add1,
+                                             const int16_t *row_sub0, const int16_t *row_sub1, int n) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_acc_update_2add_2sub_avx2(curr_acc, prev_acc, row_add0, row_add1, row_sub0, row_sub1, n);
+        return;
+    }
+#endif
+#ifdef NNUE_ARCH_X86
+    nnue_acc_update_2add_2sub_sse2(curr_acc, prev_acc, row_add0, row_add1, row_sub0, row_sub1, n);
+#else
+    nnue_acc_update_2add_2sub_scalar(curr_acc, prev_acc, row_add0, row_add1, row_sub0, row_sub1, n);
+#endif
+}
+
+static inline void nnue_acc_add_row(int32_t *acc, const int16_t *row, int n) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_acc_add_row_avx2(acc, row, n);
+        return;
+    }
+#endif
+#ifdef NNUE_ARCH_X86
+    nnue_acc_add_row_sse2(acc, row, n);
+#else
+    nnue_acc_add_row_scalar(acc, row, n);
+#endif
+}
+
+static inline void nnue_acc_sub_row(int32_t *acc, const int16_t *row, int n) {
+#ifdef NNUE_HAVE_AVX2_DISPATCH
+    if (cpu_supports_avx2()) {
+        nnue_acc_sub_row_avx2(acc, row, n);
+        return;
+    }
+#endif
+#ifdef NNUE_ARCH_X86
+    nnue_acc_sub_row_sse2(acc, row, n);
+#else
+    nnue_acc_sub_row_scalar(acc, row, n);
+#endif
+}
+
 /* ── Incremental accumulator maintenance ───────────────────────────────── */
 
 /* Rebuilds acc[0..l1-1] for perspective `us` from scratch using pos->pieces[] */
 static void nnue_refresh_perspective_ks(const S_BOARD *pos, int us, int kingSq, int32_t *acc) {
     int l1 = g_weights->l1_size;
-    for (int i = 0; i < l1; i++) acc[i] = g_weights->ft_b[i];
+    memcpy(acc, g_weights->ft_b, (size_t)l1 * sizeof(int32_t));
     for (int sq = 0; sq < 64; sq++) {
         int p = pos->pieces[sq];
         if (p == EMPTY) continue;
         size_t idx = nnue_feature_index(us, kingSq, p, sq);
         const int16_t *row = g_weights->ft_w + idx * (size_t)l1;
-        for (int i = 0; i < l1; i++) acc[i] += (int32_t)row[i];
+        nnue_acc_add_row(acc, row, l1);
     }
 }
 
@@ -447,9 +893,7 @@ static void nnue_update_accumulator_step(int us, int kingSq,
         size_t idx_add = nnue_feature_index(us, kingSq, dp->piece_add[0], dp->to[0]);
         const int16_t *row_sub = g_weights->ft_w + idx_sub * (size_t)l1;
         const int16_t *row_add = g_weights->ft_w + idx_add * (size_t)l1;
-        for (int i = 0; i < l1; i++) {
-            curr_acc[i] = prev_acc[i] + (int32_t)row_add[i] - (int32_t)row_sub[i];
-        }
+        nnue_acc_update_1add_1sub(curr_acc, prev_acc, row_add, row_sub, l1);
         return;
     }
 
@@ -460,9 +904,7 @@ static void nnue_update_accumulator_step(int us, int kingSq,
         const int16_t *row_sub0 = g_weights->ft_w + idx_sub0 * (size_t)l1;
         const int16_t *row_sub1 = g_weights->ft_w + idx_sub1 * (size_t)l1;
         const int16_t *row_add0 = g_weights->ft_w + idx_add0 * (size_t)l1;
-        for (int i = 0; i < l1; i++) {
-            curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
-        }
+        nnue_acc_update_1add_2sub(curr_acc, prev_acc, row_add0, row_sub0, row_sub1, l1);
         return;
     }
 
@@ -475,10 +917,7 @@ static void nnue_update_accumulator_step(int us, int kingSq,
         const int16_t *row_sub1 = g_weights->ft_w + idx_sub1 * (size_t)l1;
         const int16_t *row_add0 = g_weights->ft_w + idx_add0 * (size_t)l1;
         const int16_t *row_add1 = g_weights->ft_w + idx_add1 * (size_t)l1;
-        for (int i = 0; i < l1; i++) {
-            curr_acc[i] = prev_acc[i] + (int32_t)row_add0[i] + (int32_t)row_add1[i]
-                                      - (int32_t)row_sub0[i] - (int32_t)row_sub1[i];
-        }
+        nnue_acc_update_2add_2sub(curr_acc, prev_acc, row_add0, row_add1, row_sub0, row_sub1, l1);
         return;
     }
 
@@ -487,12 +926,12 @@ static void nnue_update_accumulator_step(int us, int kingSq,
     for (int r = 0; r < dp->remove_count; r++) {
         size_t idx_sub = nnue_feature_index(us, kingSq, dp->piece_remove[r], dp->from[r]);
         const int16_t *row_sub = g_weights->ft_w + idx_sub * (size_t)l1;
-        for (int i = 0; i < l1; i++) curr_acc[i] -= (int32_t)row_sub[i];
+        nnue_acc_sub_row(curr_acc, row_sub, l1);
     }
     for (int a = 0; a < dp->add_count; a++) {
         size_t idx_add = nnue_feature_index(us, kingSq, dp->piece_add[a], dp->to[a]);
         const int16_t *row_add = g_weights->ft_w + idx_add * (size_t)l1;
-        for (int i = 0; i < l1; i++) curr_acc[i] += (int32_t)row_add[i];
+        nnue_acc_add_row(curr_acc, row_add, l1);
     }
 }
 
@@ -576,15 +1015,6 @@ static int32_t nnue_dot_i8_avx2(const int8_t *a, const int8_t *b, int n) {
     sum += nnue_dot_i8_scalar(a + i, b + i, n - i);
     return sum;
 }
-
-static int cpu_supports_avx2(void) {
-    static int cached = -1;
-    if (cached < 0) {
-        __builtin_cpu_init();
-        cached = __builtin_cpu_supports("avx2") ? 1 : 0;
-    }
-    return cached;
-}
 #endif /* NNUE_HAVE_AVX2_DISPATCH */
 
 static inline int32_t nnue_dot_i8(const int8_t *a, const int8_t *b, int n) {
@@ -630,15 +1060,13 @@ int nnue_eval(S_BOARD *pos) {
     const int32_t *acc_other = pos->search->nnue_accumulators[ply].accumulation[other];
 
     /* Concatenate [stm's own view | other side's view], each clipped
-     * ReLU'd and requantized to int8 [0,127]. Side-to-move first is
-     * what makes the network's raw output already side-to-move-
+     * ReLU'd and requantized to int8 [0,127] via integer SIMD. Side-to-move
+     * first is what makes the network's raw output already side-to-move-
      * relative — no sign flip needed afterward (contrast with the old
      * absolute-feature version, which had to flip for Black). */
     int8_t in_i8[2 * NNUE_ACC_SIZE];
-    for (int i = 0; i < l1; i++) {
-        in_i8[i]      = requantize_ft_i8(acc_stm[i],   g_weights->qa_scale);
-        in_i8[l1 + i] = requantize_ft_i8(acc_other[i], g_weights->qa_scale);
-    }
+    nnue_requantize_ft_slice(acc_stm, in_i8, l1, g_weights->qa_scale, g_weights->qa_mult);
+    nnue_requantize_ft_slice(acc_other, in_i8 + l1, l1, g_weights->qa_scale, g_weights->qa_mult);
 
     int8_t h2_i8[NNUE_L2L3_MAX], h3_i8[NNUE_L2L3_MAX];
     int8_layer_forward(in_i8, 2 * l1, g_weights->l2_w, g_weights->l2_b,
