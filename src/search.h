@@ -73,6 +73,25 @@ static const int WindowDepth = 5;
 #define TTMoveHistoryMax 8192   // tunable
 #define TTMoveHistoryScale 40   // tunable
 
+// Surprise-SRD (Sibling Refutation Density with Search Surprise)
+#ifndef USE_SURPRISE_SRD
+#define USE_SURPRISE_SRD 1
+#endif
+
+#ifndef USE_SURPRISE_SRD_LEVEL2
+#define USE_SURPRISE_SRD_LEVEL2 1
+#endif
+
+#define SURPRISE_MARGIN        50
+#define EARLY_MOVE_LIMIT       2
+#define SURPRISE_THRESHOLD_1   200
+#define SURPRISE_THRESHOLD_2   500
+#define SURPRISE_MAX           1000
+
+extern int SurpriseSRDEnabled;
+extern int SurpriseSRDLevel2Enabled;
+extern void printSurpriseSRDStats(const SurpriseSRDStats *stats);
+
 //FUNCTIONS
 extern void initLMRTable();
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
