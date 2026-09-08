@@ -168,7 +168,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     }
 
     //standing pat: save the static eval, then use it as our floor
-    int eval = pos->search->eval_stack[pos->ply] = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int eval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
     best = eval;
     alpha = MAX(alpha, eval);
     if(alpha >= beta) return eval;

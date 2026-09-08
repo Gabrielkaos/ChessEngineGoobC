@@ -1776,6 +1776,8 @@
     ->added pawnHist for LMR reduction
     ->added more granular LMR for non quiet moves
     ->added more smooth PreviousAverageScore for time management
-    ->
+    ->made NNUE FASTER
+    ->added Persistent Thread Pool 
+    ->added Corrected Eval in Quiescence
 
 	*/
