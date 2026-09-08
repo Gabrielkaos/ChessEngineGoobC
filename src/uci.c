@@ -416,11 +416,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         SurpriseSRDEnabled = (ptrTrue != NULL);
         printf("info string Surprise_SRD set to %s\n", SurpriseSRDEnabled ? "true" : "false");
     }
-    else if (!strncmp(line, "setoption name Surprise_SRD_Level2 value ", 41)) {
-        char *ptrTrue = strstr(line, "true");
-        SurpriseSRDLevel2Enabled = (ptrTrue != NULL);
-        printf("info string Surprise_SRD_Level2 set to %s\n", SurpriseSRDLevel2Enabled ? "true" : "false");
-    }
 #endif
 
 }
@@ -652,7 +647,6 @@ void uciPrint(){
     printf("option name UCI_ShowWDL type check default false\n");
 #if USE_SURPRISE_SRD
     printf("option name Surprise_SRD type check default true\n");
-    printf("option name Surprise_SRD_Level2 type check default false\n");
 #endif
     printf("uciok\n");
 }
