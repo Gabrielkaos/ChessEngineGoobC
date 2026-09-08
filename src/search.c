@@ -29,9 +29,6 @@
     Some Search code are based on Ethereal 12.75, big thanks credit to Andrew Grant
 */
 
-//for threading
-thrd_t workerThreads[MAXTHREADS];
-
 
 int LMRTable[64][64];
 void initLMRTable(){
@@ -902,32 +899,37 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 
 
 
+static S_BOARD *launcherPos = NULL;
+
 int SearchPositionThread(void *data){
     THREAD_DATA *thread_data = (THREAD_DATA*)data;
-    S_BOARD *pos = malloc(sizeof(S_BOARD));
-    memcpy(pos, thread_data->originalPos, sizeof(S_BOARD));
-    pos->stateTable[0].previous = NULL;
-    for (int i = 1; i <= pos->hisPly; i++) {
-        pos->stateTable[i].previous = &pos->stateTable[i-1];
+    if (!launcherPos) {
+        launcherPos = malloc(sizeof(S_BOARD));
+        launcherPos->search = alloc_search_thread();
     }
-    pos->st = &pos->stateTable[pos->hisPly];
+    S_SEARCH_THREAD *saved_search = launcherPos->search;
+    memcpy(launcherPos, thread_data->originalPos, sizeof(S_BOARD));
+    launcherPos->search = saved_search;
 
-    pos->search = alloc_search_thread();
-    memcpy(pos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
+    launcherPos->stateTable[0].previous = NULL;
+    for (int i = 1; i <= launcherPos->hisPly; i++) {
+        launcherPos->stateTable[i].previous = &launcherPos->stateTable[i-1];
+    }
+    launcherPos->st = &launcherPos->stateTable[launcherPos->hisPly];
 
-    pos->eTable->evalTable = threadEvalTable[0].evalTable;
-    pos->eTable->numEntries = threadEvalTable[0].numEntries;
+    memcpy(launcherPos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
 
-    pos->pawnKingTable->paTable = threadPawnTable[0].paTable;
-    pos->pawnKingTable->numEntries = threadPawnTable[0].numEntries;
+    launcherPos->eTable->evalTable = threadEvalTable[0].evalTable;
+    launcherPos->eTable->numEntries = threadEvalTable[0].numEntries;
 
-    pos->ply = 0;
-    nnue_refresh_accumulator(pos);
+    launcherPos->pawnKingTable->paTable = threadPawnTable[0].paTable;
+    launcherPos->pawnKingTable->numEntries = threadPawnTable[0].numEntries;
 
-    SearchPosition(pos, thread_data->info, thread_data->ttable);
+    launcherPos->ply = 0;
+    nnue_refresh_accumulator(launcherPos);
 
-    free(pos->search);
-    free(pos);
+    SearchPosition(launcherPos, thread_data->info, thread_data->ttable);
+
     free(thread_data);
     return 0;
 }
@@ -1199,93 +1201,204 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 }
 
 
-//call when creating workers
-int startWorkerThreads(void *data){
-    THREAD_SEARCH_WORKER *thread_data = (THREAD_SEARCH_WORKER*)data;
-    thread_data->originalPos->ply = 0;
-    nnue_refresh_accumulator(thread_data->originalPos);
-    IterativeDeepening(thread_data);
+// Persistent Thread Pool
+typedef struct {
+    thrd_t handle;
+    mtx_t mutex;
+    cnd_t cv_start;
+    cnd_t cv_done;
+    int threadNumber;
+    volatile int searching;
+    volatile int exit;
+    S_BOARD *originalPos;
+    THREAD_SEARCH_WORKER workerData;
+} POOL_WORKER;
 
-    if (thread_data->threadNumber==0){
-        //safety net: verify the bestmove is actually legal before sending it
-        //to the GUI — a TT collision or threading issue could leave a stale
-        //move that passed makeMove in a different internal state
-        if(thread_data->bestMove != NOMOVE &&
-           !MoveExists(thread_data->originalPos, thread_data->bestMove)){
-            S_MOVELIST fallbackList[1];
-            GenerateAllMoves(thread_data->originalPos, fallbackList);
-            thread_data->bestMove = NOMOVE;
-            thread_data->ponderMove = NOMOVE;
-            for(int i=0; i<fallbackList->count; ++i){
-                if(legal(thread_data->originalPos, fallbackList->moves[i].move)){
-                    thread_data->bestMove = fallbackList->moves[i].move;
-                    break;
+static POOL_WORKER threadPool[MAXTHREADS];
+static int poolSize = 0;
+
+static int workerLoop(void *data) {
+    POOL_WORKER *worker = (POOL_WORKER*)data;
+
+    mtx_lock(&worker->mutex);
+    while (1) {
+        while (!worker->searching && !worker->exit) {
+            cnd_wait(&worker->cv_start, &worker->mutex);
+        }
+        if (worker->exit) {
+            break;
+        }
+
+        mtx_unlock(&worker->mutex);
+
+        worker->originalPos->ply = 0;
+        nnue_refresh_accumulator(worker->originalPos);
+        IterativeDeepening(&worker->workerData);
+
+        if (worker->threadNumber == 0) {
+            worker->workerData.info->stopped = TRUE;
+
+            //safety net: verify the bestmove is actually legal before sending it
+            //to the GUI — a TT collision or threading issue could leave a stale
+            //move that passed makeMove in a different internal state
+            if (worker->workerData.bestMove != NOMOVE &&
+                !MoveExists(worker->originalPos, worker->workerData.bestMove)) {
+                S_MOVELIST fallbackList[1];
+                GenerateAllMoves(worker->originalPos, fallbackList);
+                worker->workerData.bestMove = NOMOVE;
+                worker->workerData.ponderMove = NOMOVE;
+                for (int i = 0; i < fallbackList->count; ++i) {
+                    if (legal(worker->originalPos, fallbackList->moves[i].move)) {
+                        worker->workerData.bestMove = fallbackList->moves[i].move;
+                        break;
+                    }
                 }
             }
-        }
 
-        if(thread_data->info->setOptionPonder){
-            if(thread_data->ponderMove != NOMOVE){
-                printf("bestmove %s ",PrMove(thread_data->bestMove));
-                printf("ponder %s\n",PrMove(thread_data->ponderMove));
-            }else{
-                printf("bestmove %s\n",PrMove(thread_data->bestMove));
+            if (worker->workerData.info->setOptionPonder) {
+                if (worker->workerData.ponderMove != NOMOVE) {
+                    printf("bestmove %s ", PrMove(worker->workerData.bestMove));
+                    printf("ponder %s\n", PrMove(worker->workerData.ponderMove));
+                } else {
+                    printf("bestmove %s\n", PrMove(worker->workerData.bestMove));
+                }
+            } else {
+                printf("bestmove %s\n", PrMove(worker->workerData.bestMove));
             }
-        }else{
-            printf("bestmove %s\n",PrMove(thread_data->bestMove));
+            fflush(stdout);
         }
-        fflush(stdout);
-    }
-    free(thread_data->originalPos->search);
-    free(thread_data->originalPos);
-    free(thread_data);
 
-    return 0; 
+        mtx_lock(&worker->mutex);
+        worker->searching = 0;
+        cnd_signal(&worker->cv_done);
+    }
+    mtx_unlock(&worker->mutex);
+
+    return 0;
 }
 
+void EnsureThreadPool(int numThreads) {
+    if (numThreads <= 0) return;
+    if (numThreads > MAXTHREADS) numThreads = MAXTHREADS;
+    if (numThreads <= poolSize) return;
 
-//creates a data for the thread
-//then starts the searching
-void setupWorkers(int threadNum, thrd_t *workerthread, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table){
+    for (int i = poolSize; i < numThreads; i++) {
+        POOL_WORKER *w = &threadPool[i];
+        w->threadNumber = i;
+        w->searching = 0;
+        w->exit = 0;
+        mtx_init(&w->mutex, mtx_plain);
+        cnd_init(&w->cv_start);
+        cnd_init(&w->cv_done);
 
-    THREAD_SEARCH_WORKER *pThread = malloc(sizeof(THREAD_SEARCH_WORKER));
+        w->originalPos = malloc(sizeof(S_BOARD));
+        if (!w->originalPos) {
+            fprintf(stderr, "Error: failed to allocate board for thread %d\n", i);
+            break;
+        }
+        w->originalPos->search = alloc_search_thread();
+        if (!w->originalPos->search) {
+            fprintf(stderr, "Error: failed to allocate search thread for thread %d\n", i);
+            free(w->originalPos);
+            w->originalPos = NULL;
+            break;
+        }
 
-    pThread->originalPos = malloc(sizeof(S_BOARD));
-    memcpy(pThread->originalPos, pos, sizeof(S_BOARD));
-    pThread->originalPos->stateTable[0].previous = NULL;
+        thrd_create(&w->handle, &workerLoop, (void*)w);
+        poolSize++;
+    }
+}
+
+static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
+    POOL_WORKER *w = &threadPool[threadNum];
+
+    S_SEARCH_THREAD *saved_search = w->originalPos->search;
+    memcpy(w->originalPos, pos, sizeof(S_BOARD));
+    w->originalPos->search = saved_search;
+
+    w->originalPos->stateTable[0].previous = NULL;
     for (int i = 1; i <= pos->hisPly; i++) {
-        pThread->originalPos->stateTable[i].previous = &pThread->originalPos->stateTable[i-1];
+        w->originalPos->stateTable[i].previous = &w->originalPos->stateTable[i-1];
     }
-    pThread->originalPos->st = &pThread->originalPos->stateTable[pos->hisPly];
+    w->originalPos->st = &w->originalPos->stateTable[pos->hisPly];
 
-    pThread->originalPos->search = alloc_search_thread();
-    memcpy(pThread->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
+    memcpy(w->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
 
-    pThread->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
-    pThread->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;
+    w->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
+    w->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;
 
-    pThread->originalPos->pawnKingTable->paTable = threadPawnTable[threadNum].paTable;
-    pThread->originalPos->pawnKingTable->numEntries = threadPawnTable[threadNum].numEntries;
+    w->originalPos->pawnKingTable->paTable = threadPawnTable[threadNum].paTable;
+    w->originalPos->pawnKingTable->numEntries = threadPawnTable[threadNum].numEntries;
 
-    pThread->info         = info;
-    pThread->ttable       = table;
-    pThread->threadNumber = threadNum;
-
-    thrd_create(workerthread, &startWorkerThreads, (void*)pThread);
+    w->workerData.originalPos  = w->originalPos;
+    w->workerData.info         = info;
+    w->workerData.ttable       = table;
+    w->workerData.threadNumber = threadNum;
+    w->workerData.bestMove     = NOMOVE;
+    w->workerData.ponderMove   = NOMOVE;
 }
 
+static void startWorkerSearch(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
+    POOL_WORKER *w = &threadPool[threadNum];
+    mtx_lock(&w->mutex);
+    setupWorkerData(threadNum, pos, info, table);
+    w->searching = 1;
+    cnd_signal(&w->cv_start);
+    mtx_unlock(&w->mutex);
+}
 
+static void waitWorkerSearch(int threadNum) {
+    POOL_WORKER *w = &threadPool[threadNum];
+    mtx_lock(&w->mutex);
+    while (w->searching) {
+        cnd_wait(&w->cv_done, &w->mutex);
+    }
+    mtx_unlock(&w->mutex);
+}
 
-void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
+void FreeThreadPool(void) {
+    for (int i = 0; i < poolSize; i++) {
+        POOL_WORKER *w = &threadPool[i];
+        mtx_lock(&w->mutex);
+        w->exit = 1;
+        cnd_signal(&w->cv_start);
+        mtx_unlock(&w->mutex);
 
+        thrd_join(w->handle, NULL);
+
+        cnd_destroy(&w->cv_start);
+        cnd_destroy(&w->cv_done);
+        mtx_destroy(&w->mutex);
+
+        if (w->originalPos) {
+            if (w->originalPos->search) {
+                free(w->originalPos->search);
+                w->originalPos->search = NULL;
+            }
+            free(w->originalPos);
+            w->originalPos = NULL;
+        }
+    }
+    poolSize = 0;
+
+    if (launcherPos) {
+        if (launcherPos->search) {
+            free(launcherPos->search);
+            launcherPos->search = NULL;
+        }
+        free(launcherPos);
+        launcherPos = NULL;
+    }
+}
+
+void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     ASSERT(checkBoard(pos));
 
-    int bestMove       = NOMOVE;
-    int ponderMove     = NOMOVE;
-
+    int bestMove   = NOMOVE;
+    int ponderMove = NOMOVE;
 
     //init search things
-    InitSearcher(pos,info, table);
+    InitSearcher(pos, info, table);
     nnue_refresh_accumulator(pos);
 
     //Syzygy root probe
@@ -1294,20 +1407,16 @@ void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     //ensure persistent per-thread tables are allocated
     EnsureThreadTables(info->threadNum);
 
-    //setup the workers
-    //create worker threads
-    //then start
-    for(int i=0;i<info->threadNum;++i){
-        setupWorkers(i,&workerThreads[i],pos,info,table);
-    }
-    //setupWorkers(0,&workerThreads[0],pos,info,table);
+    //ensure persistent thread pool has enough workers
+    EnsureThreadPool(info->threadNum);
 
-    //if we finish
-    
-    for(int i=0;i<info->threadNum;++i){
-        thrd_join(workerThreads[i],NULL);
+    //start workers
+    for (int i = 0; i < info->threadNum; ++i) {
+        startWorkerSearch(i, pos, info, table);
     }
 
-    
-   
+    //wait for all workers to complete
+    for (int i = 0; i < info->threadNum; ++i) {
+        waitWorkerSearch(i);
+    }
 }

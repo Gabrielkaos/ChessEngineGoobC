@@ -24,23 +24,31 @@
 #define INPUTBUFFER 400*6
 #define Euler 2.8
 
+static int searchThreadValid = 0;
 thrd_t mainSearchThread;
+void joinSearchThread(S_SEARCHINFO *info);
 
 thrd_t LaunchSearchThread(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table){
+    if (searchThreadValid) {
+        joinSearchThread(info);
+    }
     THREAD_DATA *thread_data = malloc(sizeof(THREAD_DATA));
 
     thread_data->info=info;
     thread_data->originalPos=pos;
     thread_data->ttable=table;
 
-    thrd_t th;
-    thrd_create(&th,&SearchPositionThread,(void*)thread_data);
-    return th;
+    thrd_create(&mainSearchThread,&SearchPositionThread,(void*)thread_data);
+    searchThreadValid = 1;
+    return mainSearchThread;
 }
 
 void joinSearchThread(S_SEARCHINFO *info){
-    info->stopped=TRUE;
-    thrd_join(mainSearchThread,NULL);
+    if (searchThreadValid) {
+        info->stopped=TRUE;
+        thrd_join(mainSearchThread,NULL);
+        searchThreadValid = 0;
+    }
 }
 
 U64 nodesLimitForUci(int elo){
@@ -674,6 +682,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         else if(strEquals(str,"ucinewgame")){
+            if (searchThreadValid) joinSearchThread(info);
             parsePosition("position startpos\n",pos);
             clearPvTable(pvTable);
             clearEvalTable(pos->eTable);
@@ -685,11 +694,13 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         else if (strStartsWith(str, "setoption")) {
+            if (searchThreadValid) joinSearchThread(info);
             UciSetOption(str,pos,info);
             fflush(stdout);
         }
 
         else if (strStartsWith(str, "position")) {
+            if (searchThreadValid) joinSearchThread(info);
             parsePosition(str,pos);
         }
 

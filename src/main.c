@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
 
 		fflush(stdout);
 		if (!fgets(line, 256, stdin))
-			continue;
+			break;
 		if (line[0] == '\n')
 			continue;
 		if (!strncmp(line, "uci",3)) {
@@ -90,6 +90,7 @@ int main(int argc, char *argv[])
 	free(pos->eTable->evalTable);
 	free(pos->pawnKingTable->paTable);
 	FreeAllThreadTables();
+	FreeThreadPool();
     free(pos->shared);
 	TBFree();
 

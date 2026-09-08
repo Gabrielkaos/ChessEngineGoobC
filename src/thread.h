@@ -23,4 +23,7 @@ typedef struct{
 } THREAD_SEARCH_WORKER;
 
 
+extern void EnsureThreadPool(int numThreads);
+extern void FreeThreadPool(void);
+
 #endif
