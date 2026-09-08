@@ -557,6 +557,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
     //init things
     info->ponder        = ponder;
+    info->stopOnPonderhit = FALSE;
     int contempt        = MakeScore(pos->contemptDrawPenalty + pos->contemptComplexity, pos->contemptDrawPenalty);
     pos->contempt       = pos->side==WHITE ? contempt:-contempt;
 
@@ -658,6 +659,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     info->moveOverhead = 50;
     info->previousTimeReduction = 1.0;   // SF starts this at 1
     info->bestPreviousScore = INFINITE_BOUND; // SF starts this effectively "infinite" so first move isn't treated as a falling eval
+    info->bestPreviousAverageScore = INFINITE_BOUND;
     pos->usePKNet                =FALSE;
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
@@ -691,6 +693,9 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             resetContinuationTable(pos);
             clearCorrectionHistory(pos);
             info->originalTimeAdjust = -1.0;
+            info->previousTimeReduction = 1.0;
+            info->bestPreviousScore = INFINITE_BOUND;
+            info->bestPreviousAverageScore = INFINITE_BOUND;
         }
 
         else if (strStartsWith(str, "setoption")) {
@@ -716,13 +721,12 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         }
 
         else if (strEquals(str, "stop")){
+            if (searchThreadValid) joinSearchThread(info);
             info->ponder=FALSE;
-            joinSearchThread(info);
         }
 
         else if (strEquals(str, "ponderhit")){
             info->ponder = FALSE;
-            joinSearchThread(info);
         }
 
         else if(strEquals(str,"print")){

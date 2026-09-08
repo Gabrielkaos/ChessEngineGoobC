@@ -44,6 +44,7 @@ void initLMRTable(){
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
         int hitLimit = (!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
+                       info->stopOnPonderhit                                       ||
                        (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
                        (info->nodeSet==TRUE && info->nodes>=info->nodeLimit);
         if(!hitLimit)return;
@@ -79,6 +80,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     pos->seldepth=0;
 
     info->stopped=0;
+    info->stopOnPonderhit=0;
     info->nodes=0ULL;
     info->tbhits=0ULL;
     pos->search->rootEffortCount = 0;
@@ -1071,6 +1073,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     beta        = (alpha+beta)/2;
                     alpha       = MAX(-INFINITE_BOUND, alpha-delta);
                     searchDepth = currentDepth;
+                    if(threadNum==0) info->stopOnPonderhit = FALSE;
                 }
                 //fail high: widen upward, allow a shallow depth trim
                 else if(bestScore>=beta){
@@ -1120,11 +1123,11 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         if(info->stopped==TRUE)break;
 
         //limits -- based on the best (PV line 1) result only, same as before
-        if(!info->ponder && !info->UciInfinite){
+        if(!info->UciInfinite){
             //limited by depth
             if(info->depthSet && currentDepth>=info->depth)break;
 
-            if(threadNum==0 && info->softTimeSet && currentDepth > 4){
+            if(threadNum==0 && info->softTimeSet && currentDepth > 4 && !info->stopOnPonderhit){
                 
                 if(prevBestMove == NOMOVE || workerthread->bestMove != prevBestMove)
                     info->lastBestMoveDepth = currentDepth;
@@ -1163,14 +1166,18 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 int nodesEffort = (bestFi>=0 && info->nodes>0)
                                  ? (int)((pos->search->rootEffortNodes[bestFi]*100000ULL)/info->nodes) : 0;
                 
-                if(currentDepth>=10 && nodesEffort>=97000 && elapsed>totalTime*0.6539){
-                    info->stopped = TRUE;
-                    break;
-                }
-                
-                if(elapsed > totalTime){
-                    info->stopped = TRUE;
-                    break;
+                int maxElapsed = info->timeSet ? (info->stoptime - info->starttime) : (int)totalTime;
+                int shouldStop = (currentDepth>=10 && nodesEffort>=97000 && elapsed>totalTime*0.6539) ||
+                                 (elapsed > totalTime) ||
+                                 (elapsed > maxElapsed);
+
+                if(shouldStop){
+                    if(info->ponder){
+                        info->stopOnPonderhit = TRUE;
+                    } else {
+                        info->stopped = TRUE;
+                        break;
+                    }
                 }
                 
                 info->previousTimeReduction = timeReduction;
@@ -1180,24 +1187,36 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             if(abs(pvScore[0]) > ISMATE && workerthread->bestMove != NOMOVE){
                 int mateIn  = (AB_BOUND - abs(pvScore[0]) + 1) / 2;
                 if(info->mateLimit != -1){
-                    if(mateIn <= info->mateLimit)break;
+                    if(mateIn <= info->mateLimit){
+                        if(info->ponder){
+                            info->stopOnPonderhit = TRUE;
+                        } else {
+                            break;
+                        }
+                    }
                 }else{
                     //mate break to avoid losing time
                     if(currentDepth >= (mateIn*2) + 10){
-                        break;
+                        if(info->ponder){
+                            info->stopOnPonderhit = TRUE;
+                        } else {
+                            break;
+                        }
                     }
                 }
             }
         }
     }
     if (threadNum == 0) {
-        info->bestPreviousScore = pvScore[0];
-        //running average: smooth the fallingEval TM signal across moves
-        //to prevent overreaction to single-depth score fluctuations
-        info->bestPreviousAverageScore =
-            (info->bestPreviousAverageScore != INFINITE_BOUND)
-            ? (info->bestPreviousAverageScore + pvScore[0]) / 2
-            : pvScore[0];
+        if (!info->ponder) {
+            info->bestPreviousScore = pvScore[0];
+            //running average: smooth the fallingEval TM signal across moves
+            //to prevent overreaction to single-depth score fluctuations
+            info->bestPreviousAverageScore =
+                (info->bestPreviousAverageScore != INFINITE_BOUND)
+                ? (info->bestPreviousAverageScore + pvScore[0]) / 2
+                : pvScore[0];
+        }
     }
 }
 
@@ -1237,6 +1256,13 @@ static int workerLoop(void *data) {
         IterativeDeepening(&worker->workerData);
 
         if (worker->threadNumber == 0) {
+            // When pondering or in infinite search, wait until GUI sends "ponderhit" or "stop"
+            while (!worker->workerData.info->stopped && 
+                   (worker->workerData.info->ponder || worker->workerData.info->UciInfinite)) {
+                struct timespec ts = { .tv_sec = 0, .tv_nsec = 1000000 };
+                thrd_sleep(&ts, NULL);
+            }
+
             worker->workerData.info->stopped = TRUE;
 
             //safety net: verify the bestmove is actually legal before sending it
@@ -1256,7 +1282,18 @@ static int workerLoop(void *data) {
                 }
             }
 
-            if (worker->workerData.info->setOptionPonder) {
+            if (worker->workerData.info->setOptionPonder && worker->workerData.bestMove != NOMOVE) {
+                if (worker->workerData.ponderMove == NOMOVE) {
+                    StateInfo st;
+                    if (legal(worker->originalPos, worker->workerData.bestMove)) {
+                        makeMove(worker->originalPos, worker->workerData.bestMove, &st);
+                        int pMove = ProbePvTable(worker->originalPos, worker->workerData.ttable);
+                        if (pMove != NOMOVE && MoveExists(worker->originalPos, pMove) && legal(worker->originalPos, pMove)) {
+                            worker->workerData.ponderMove = pMove;
+                        }
+                        takeMove(worker->originalPos);
+                    }
+                }
                 if (worker->workerData.ponderMove != NOMOVE) {
                     printf("bestmove %s ", PrMove(worker->workerData.bestMove));
                     printf("ponder %s\n", PrMove(worker->workerData.ponderMove));

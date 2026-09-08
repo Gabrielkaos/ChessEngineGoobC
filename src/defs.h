@@ -242,7 +242,7 @@ typedef struct {
 typedef struct {
     int starttime;
     int stoptime;
-    int stopped;
+    volatile int stopped;
     U64 nodes;
     U64 tbhits;
     int depth;
@@ -261,10 +261,11 @@ typedef struct {
 
     //options for uci
     int analyzeMode;
-    int ponder;
+    volatile int ponder;
     int bruteForceMode;
     int setOptionPonder;
     int multiPV;
+    volatile int stopOnPonderhit;
 
     //soft time management
     int optimumTime;
