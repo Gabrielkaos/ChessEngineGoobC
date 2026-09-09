@@ -3,10 +3,12 @@
 info depth 20 seldepth 31 score cp 18 time 2228 nodes 3338259 hashfull 258 pv e2e4 e7e6 d2d4 d7d5 b1c3 f8b4 e4e5 g8e7 d1g4 e8g8 g1f3 e7g6 f1d3 c7c5 c1g5 d8c7 e1g1 c5d4 f3d4 g6e5
 bestmove e2e4
 
-## Output of current code GOOB - startpos
-info depth 20 seldepth 31 multipv 1 score cp 31 time 2419 nodes 4621370 hashfull 305 tbhits 0 pv e2e4 e7e5 g1f3 g8f6 d2d4 f6e4 f1d3 d7d5 e1g1 e5d4 b1d2 c7c5 d2e4 d5e4 d3e4 f8e7 c2c3 e8g8 c3d4 b8c6
-bestmove e2e4
+## Output of current code GOOB at depth 20 - startpos
+info depth 20 seldepth 37 multipv 1 score cp 19 time 2045 nodes 3972080 hashfull 247 tbhits 0 pv d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 e2e3 e8g8 g1f3 b8c6 f1e2 d5c4 e1g1 h7h6 g5f6 e7f6 e2c4 b7b6 a1c1 f8e8 f1e1 c8b7
+info string Surprise-SRD: quiet_lmr=964759 inc_R=48774 (5.1%) dec_R=57505 (6.0%) surprises=21450
+bestmove d2d4
 
-fen - r2q1rk1/1bp1bpp1/p1n2n1p/1p2p3/4N3/1B1P1N2/PPPB1PPP/R2Q1RK1 w - - 1 12
-info depth 20 seldepth 40 multipv 1 score cp 29 time 3557 nodes 6831801 hashfull 420 tbhits 0 pv f1e1 e7d6 e4f6 d8f6 b3d5 a8b8 a2a3 c6d4 d5b7 b8b7 f3d4 e5d4 d1g4 c7c5 e1e4 c5c4 a1c1 c4c3 b2c3 d4c3 d2e3 b7e7 e4e7 f6e7 e3d4 f7f5 g4g6 d6a3 c1a1
-bestmove f1e1
+## Output of current code GOOB at depth 20 - r2q1rk1/1bp1bpp1/p1n2n1p/1p2p3/4N3/1B1P1N2/PPPB1PPP/R2Q1RK1 w - - 1 12
+info depth 20 seldepth 44 multipv 1 score cp -1 time 3592 nodes 6797643 hashfull 414 tbhits 0 pv e4g3 f8e8 f1e1 e7c5 d2e3 c6d4 e3d4 e5d4 f3e5 b7d5 d1d2 d5b3 a2b3 d8d5 e5f3 c5d6 e1e8 f6e8 a1e1 c7c5 g3e4 e8c7 c2c4 d4c3 b2c3 c7e6 c3c4 d5c6 e4g3 a8e8 g3f5 d6c7 b3b4 c7f4 d2c3
+info string Surprise-SRD: quiet_lmr=1567937 inc_R=187060 (11.9%) dec_R=156123 (10.0%) surprises=50180
+bestmove e4g3
