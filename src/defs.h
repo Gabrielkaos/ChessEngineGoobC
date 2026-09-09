@@ -240,24 +240,10 @@ typedef struct {
 
 //Surprise-SRD (Sibling Refutation Density with Search Surprise)
 typedef struct {
-    int surprise_sum;
-    int surprise_count;
-    int max_surprise;
-    int near_alpha_count;
-    int fail_low_count;
-} SurpriseSRDState;
-
-typedef struct {
     uint64_t srd_nodes;
-    uint64_t srd_surprising_moves;
     uint64_t srd_triggered;
     uint64_t srd_reduction_minus_1;
-    uint64_t srd_reduction_minus_2;
-    uint64_t srd_total_surprise;
-    uint64_t srd_max_surprise;
-    uint64_t srd_sum_move_index;
-    uint64_t srd_sum_lmr_reduction;
-    uint64_t srd_sum_deficit;
+    uint64_t srd_surprising_moves;
 } SurpriseSRDStats;
 
 //Search Details

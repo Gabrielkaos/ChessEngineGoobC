@@ -40,13 +40,17 @@ void initLMRTable(){
     }
 }
 
-int SurpriseSRDEnabled = 1;       // Option B: Hopeless Sibling LMR (default enabled)
+int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
 
 void printSurpriseSRDStats(const SurpriseSRDStats *stats){
     if(!stats || stats->srd_nodes == 0) return;
-    printf("info string Hopeless-Sibling-SRD: nodes=%" PRIu64 " triggered=%" PRIu64 " (%.1f%%)\n",
-           stats->srd_nodes, stats->srd_triggered,
-           (double)stats->srd_triggered * 100.0 / (stats->srd_nodes ? stats->srd_nodes : 1));
+    printf("info string Surprise-SRD: quiet_lmr=%" PRIu64 " inc_R=%" PRIu64 " (%.1f%%) dec_R=%" PRIu64 " (%.1f%%) surprises=%" PRIu64 "\n",
+           stats->srd_nodes,
+           stats->srd_triggered,
+           (double)stats->srd_triggered * 100.0 / stats->srd_nodes,
+           stats->srd_reduction_minus_1,
+           (double)stats->srd_reduction_minus_1 * 100.0 / stats->srd_nodes,
+           stats->srd_surprising_moves);
 }
 
 //function for checking if we should stop early the search
@@ -274,11 +278,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     pos->seldepth=rootNode ? 0 : MAX(pos->seldepth,pos->ply);
     info->nodes++;
 
-#if USE_SURPRISE_SRD
-    if (!rootNode && depth >= 3) {
-        pos->search->srd_stats.srd_nodes++;
-    }
-#endif
 
     //if not rootNode check some things
     if(!rootNode){
@@ -500,6 +499,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     Score = -AB_BOUND;
     int skipQuiets = 0;
+#if USE_SURPRISE_SRD
+    int siblingSurprise = 0;
+#endif
 
     //main move loop
     while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
@@ -637,21 +639,32 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R -= MAX(-2, MIN(2, (hist + pawnHist) / 5000));
 
+#if USE_SURPRISE_SRD
+            // Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation Deficit
+            // 1. Sibling Surprise: If an earlier reduced sibling scored > alpha, move ordering
+            //    at this node is volatile; damp reduction on subsequent siblings (R -= 1).
+            // 2. Deficit: When severely behind (evalDiff > EVAL_DEFICIT_MARGIN), reduce
+            //    late quiet moves (Legal >= EVAL_MOVE_LIMIT) by +1, while protecting early quiets.
+            // 3. Surplus: When statically winning/ahead of alpha, reduce promising quiets less.
+            if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
+                pos->search->srd_stats.srd_nodes++;
+                int evalDiff = alpha - staticEval;
+                if (siblingSurprise) {
+                    R -= 1;
+                    pos->search->srd_stats.srd_reduction_minus_1++;
+                } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
+                    R += 1;
+                    pos->search->srd_stats.srd_triggered++;
+                } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
+                    R -= 1;
+                    pos->search->srd_stats.srd_reduction_minus_1++;
+                }
+            }
+#endif
+
             //scale up reduction further at expected all-nodes, proportional to
             //existing R rather than a flat bump, so it doesn't dominate at low depth
             if(allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);
-
-#if USE_SURPRISE_SRD
-            // Option B: Hopeless Sibling LMR (Inverted SRD)
-            // If moves 1..3 have already failed badly below alpha (bestScore <= alpha - HOPELESS_MARGIN),
-            // this node is proven to be an All-Node; increase reduction on subsequent quiet moves.
-            if (SurpriseSRDEnabled && !rootNode && !inCheck && Legal >= HOPELESS_MOVE_LIMIT &&
-                abs(alpha) < ISMATE && abs(beta) < ISMATE && bestScore > -ISMATE &&
-                bestScore <= alpha - HOPELESS_MARGIN) {
-                R += 1;
-                pos->search->srd_stats.srd_triggered++;
-            }
-#endif
 
             R = MIN(depth - 1, MAX(R, 1));
         }
@@ -677,6 +690,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
+#if USE_SURPRISE_SRD
+            if (SurpriseSRDEnabled && R > 1) {
+                siblingSurprise = 1;
+                pos->search->srd_stats.srd_surprising_moves++;
+            }
+#endif
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
         }
 

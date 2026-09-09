@@ -73,13 +73,14 @@ static const int WindowDepth = 5;
 #define TTMoveHistoryMax 8192   // tunable
 #define TTMoveHistoryScale 40   // tunable
 
-// Surprise-SRD Option B (Hopeless Sibling LMR / Inverted SRD)
+// Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation
 #ifndef USE_SURPRISE_SRD
 #define USE_SURPRISE_SRD 1
 #endif
 
-#define HOPELESS_MARGIN        150
-#define HOPELESS_MOVE_LIMIT    4
+#define EVAL_DEFICIT_MARGIN    120
+#define EVAL_SURPLUS_MARGIN    100
+#define EVAL_MOVE_LIMIT        4
 
 extern int SurpriseSRDEnabled;
 extern void printSurpriseSRDStats(const SurpriseSRDStats *stats);
