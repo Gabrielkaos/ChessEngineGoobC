@@ -1,3 +1,20 @@
+# Surprise-SRD 
+
+Status: Experimental
+
+Surprise-SRD is an experimental adaptive search heuristic for
+alpha-beta/PVS chess engines.
+
+It was developed as an exploration of using local sibling search
+outcomes as feedback for late move reductions.
+
+The heuristic is not claimed to be entirely novel or unprecedented.
+Similar ideas may exist in previous chess engine research or
+implementations.
+
+The goal of this document is to describe the implementation,
+hypothesis, testing methodology, and experimental results.
+
 # Surprise-SRD: Sibling Refutation Density with Search Surprise in Alpha-Beta Chess Engines
 
 **Date:** September 2026  
