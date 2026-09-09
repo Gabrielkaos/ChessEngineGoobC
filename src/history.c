@@ -33,7 +33,7 @@ int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
     int captured = pieceType[pos->pieces[to]];
 
     if (move & MVFLAGEP   ) captured = p_pawn;
-    if (move & MVFLAGPROM   ) captured = p_pawn;
+    else if ((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
 
     int threat_from = (threats & (1ULL << from)) ? 1 : 0;
     int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
@@ -61,7 +61,7 @@ void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth)
         captured = pieceType[pos->pieces[to]];
 
         if(move & MVFLAGEP) captured = p_pawn;
-        if(move & MVFLAGPROM) captured = p_pawn;
+        else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
 
         ASSERT(piece >= p_pawn && piece <= p_king);
         ASSERT(captured >= p_pawn && captured < p_king);

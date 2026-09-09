@@ -1793,4 +1793,8 @@
     ->protects early defensive quiet moves (moves 2 & 3) while reducing late hopeless quiets
     ->added Surprise_SRD UCI check option (default true) and srdstats command
 
+    ->added check bonus for quiets giving check
+    ->fixed bad noisy pop 
+    ->fixed promotion capture pawn if move to is empty
+
 	*/

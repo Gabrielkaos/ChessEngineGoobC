@@ -5,7 +5,7 @@
 #include "history.h"
 #include "movegen.h"
 
-static const int MVVAugment[] = {0, 2400, 2400, 4800, 9600, 19200};
+static const int MVVAugment[] = {1200, 2400, 2400, 4800, 9600, 19200};
 
 static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
     int best = lo;
@@ -28,6 +28,7 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->threshold   = 0;
     mp->type        = NORMAL_PICKER;
     mp->badNoisyCount = 0;
+    mp->badNoisyIndex = 0;
 
     int counter  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1] : NOMOVE;
     int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
@@ -52,6 +53,7 @@ void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove){
     mp->threshold   = threshold;
     mp->type        = NOISY_PICKER;
     mp->badNoisyCount = 0;
+    mp->badNoisyIndex = 0;
 }
 
 int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
@@ -76,7 +78,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 int to = TOSQ(move);
                 int captured = pieceType[pos->pieces[to]];
                 if(move & MVFLAGEP)   captured = p_pawn;
-                if(move & MVFLAGPROM) captured = p_pawn;
+                else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
                 mp->list->moves[i].score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured];
             }
             mp->split = mp->noisySize = mp->list->count;
@@ -89,15 +91,15 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 best = mp_getBestIndex(mp->list->moves, 0, mp->noisySize);
                 move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, best);
 
-                if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
-                    mp->badNoisies[mp->badNoisyCount++].move = move;
-                    continue;
-                }
-
                 if(move == mp->tableMove) continue;
                 if(move == mp->killer1) mp->killer1 = NOMOVE;
                 if(move == mp->killer2) mp->killer2 = NOMOVE;
                 if(move == mp->counter) mp->counter = NOMOVE;
+
+                if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
+                    mp->badNoisies[mp->badNoisyCount++].move = move;
+                    continue;
+                }
 
                 mp->lastStage = STAGE_GOOD_NOISY;
                 return move;
@@ -113,7 +115,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
 
         case STAGE_KILLER_1:
             mp->stage = STAGE_KILLER_2;
-            if(!skipQuiets && mp->killer1 != mp->tableMove && moveIsPseudoLegal(pos, mp->killer1)){
+            if(!skipQuiets && mp->killer1 != mp->tableMove && !moveIsTactical(pos, mp->killer1) && moveIsPseudoLegal(pos, mp->killer1)){
                 mp->lastStage = STAGE_KILLER_1;
                 return mp->killer1;
             }
@@ -121,7 +123,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
 
         case STAGE_KILLER_2:
             mp->stage = STAGE_COUNTER_MOVE;
-            if(!skipQuiets && mp->killer2 != mp->tableMove && moveIsPseudoLegal(pos, mp->killer2)){
+            if(!skipQuiets && mp->killer2 != mp->tableMove && !moveIsTactical(pos, mp->killer2) && moveIsPseudoLegal(pos, mp->killer2)){
                 mp->lastStage = STAGE_KILLER_2;
                 return mp->killer2;
             }
@@ -133,6 +135,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 && mp->counter != mp->tableMove
                 && mp->counter != mp->killer1
                 && mp->counter != mp->killer2
+                && !moveIsTactical(pos, mp->counter)
                 && moveIsPseudoLegal(pos, mp->counter)){
                 mp->lastStage = STAGE_COUNTER_MOVE;
                 return mp->counter;
@@ -172,6 +175,22 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 threatByLesser[p_queen]  = threatByLesser[p_rook] | rookAttacks;
                 threatByLesser[p_king]   = 0;
 
+                U64 checkSquares[6];
+                U64 enemyKingBB = pieces_cp(pos, enemy, KING);
+                if(enemyKingBB){
+                    int enemyKingSq = LSBINDEX(enemyKingBB);
+                    U64 bishopChecks = get_bishop_attacks(enemyKingSq, occ);
+                    U64 rookChecks   = get_rook_attacks(enemyKingSq, occ);
+                    checkSquares[p_pawn]   = pawn_attacks[enemy][enemyKingSq];
+                    checkSquares[p_knight] = knight_attacks[enemyKingSq];
+                    checkSquares[p_bishop] = bishopChecks;
+                    checkSquares[p_rook]   = rookChecks;
+                    checkSquares[p_queen]  = bishopChecks | rookChecks;
+                    checkSquares[p_king]   = 0ULL;
+                } else {
+                    for(int p = 0; p < 6; ++p) checkSquares[p] = 0ULL;
+                }
+
                 int startCount = mp->list->count; // == mp->split
                 GenerateAllQuiet(pos, mp->list);   // appends
                 mp->quietSize = mp->list->count - startCount;
@@ -199,6 +218,11 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                                   (threatByLesser[pType] & (1ULL << to) ? 1 : 0));
                     int piece_value_lookup = (pos->side == WHITE) ? (wP + pType) : (bP + pType);
                     mp->list->moves[i].score += SEEPieceValues[piece_value_lookup] * v;
+
+                    // Direct check bonus: if the move gives direct check and doesn't blunder material
+                    if((checkSquares[pType] & (1ULL << to)) && StaticExchangeEvaluation(pos, move, 0)){
+                        mp->list->moves[i].score += 16384;
+                    }
                 }
             }
             mp->stage = STAGE_QUIET;
@@ -221,12 +245,12 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             /* fallthrough */
 
         case STAGE_BAD_NOISY:
-            if(mp->badNoisyCount && mp->type != NOISY_PICKER){
-                move = mp->badNoisies[--mp->badNoisyCount].move;
+            while(mp->badNoisyIndex < mp->badNoisyCount && mp->type != NOISY_PICKER){
+                move = mp->badNoisies[mp->badNoisyIndex++].move;
 
                 if(move == mp->tableMove || move == mp->killer1 ||
                    move == mp->killer2  || move == mp->counter)
-                    return selectNextMove(mp, pos, skipQuiets);
+                    continue;
 
                 mp->lastStage = STAGE_BAD_NOISY;
                 return move;

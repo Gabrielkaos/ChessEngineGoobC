@@ -204,6 +204,7 @@ typedef struct {
     int split;
     S_MOVE badNoisies[128];
     int badNoisyCount;
+    int badNoisyIndex;
     int noisySize;  // active un-popped count within [0, split)
     int quietSize;  // active un-popped count within [split, split+quietSize)
 
