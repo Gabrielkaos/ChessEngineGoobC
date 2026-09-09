@@ -15,6 +15,18 @@ implementations.
 The goal of this document is to describe the implementation,
 hypothesis, testing methodology, and experimental results.
 
+## Development Note
+
+Surprise-SRD was developed through iterative experimentation and
+AI-assisted technical brainstorming. The heuristic was subsequently
+adapted, implemented, tested, and revised within the GOOB chess engine.
+
+The final implementation described in this document reflects the
+experimental behavior and results of the GOOB implementation.
+
+This document does not claim that all underlying concepts are novel or
+that similar ideas have not appeared in previous chess engine research.
+
 # Surprise-SRD: Sibling Refutation Density with Search Surprise in Alpha-Beta Chess Engines
 
 **Date:** September 2026  
@@ -390,7 +402,7 @@ Illegal moves: 0
 | **Black (OLD)** | 120 | 201 | 718 | -81 |
 | *Black Margin* | *+16 wins* | *-15 losses* | — | **+31 net margin for NEW** |
 
-Notice the mathematical symmetry: Surprise-SRD gained exactly **+31 net wins playing White** and **+31 net wins playing Black**, conclusively proving that the defensive collapse was completely eliminated while preserving full offensive conversion strength.
+Notice the mathematical symmetry: Surprise-SRD gained **+31 net wins playing both White and Black** in this test sample. This suggests that the defensive collapse observed in earlier versions may have been mitigated, although additional SPRT testing is required to confirm the result statistically.
 
 ### 5.3 Benchmark Search Efficiency
 
@@ -422,4 +434,4 @@ info string Surprise-SRD: quiet_lmr=25632 inc_R=653 (2.5%) dec_R=894 (3.5%) surp
 
 Surprise-SRD demonstrates that Late Move Reductions do not need to operate as static, open-loop approximations. By tracking **local search surprises** (when reduced siblings refute expectations) and anchoring reductions to **positional evaluation deficits with early-move protection**, an alpha-beta engine gains critical resilience against move-ordering failure.
 
-The resulting implementation is clean, requires no dynamic memory allocations, adds negligible CPU overhead, and yields a verified **+5.2 Elo** performance improvement in GOOB 2.2-BETA.
+The resulting implementation is clean, requires no dynamic memory allocations, adds negligible CPU overhead, and produced a preliminary result of +5.2 ± 8.3 Elo over 2,078 games. The result is promising but has not yet reached statistical significance under the configured SPRT.
