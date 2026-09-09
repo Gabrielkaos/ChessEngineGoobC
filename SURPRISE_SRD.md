@@ -1,6 +1,5 @@
 # Surprise-SRD: Sibling Refutation Density with Search Surprise in Alpha-Beta Chess Engines
 
-**Author:** Gabriel Montes (*GOOB Chess Engine*) & Antigravity  
 **Date:** September 2026  
 **Target Engine:** GOOB 2.2-BETA  
 **Repository Location:** `src/search.c`, `src/search.h`, `src/defs.h`, `src/uci.c`  
