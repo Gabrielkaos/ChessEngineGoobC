@@ -1,3 +1,5 @@
+![](https://github.com/Gabrielkaos/ChessEngineGoobC/blob/main/logo/GOOBLOGO2.bmp)
+
 # ChessEngineGoobC
 UCI playing Chess Engine written in C
 
