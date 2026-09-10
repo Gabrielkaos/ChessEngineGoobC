@@ -96,6 +96,11 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     //low-ply history is refreshed every search (Stockfish fills it with 102)
     clearLowPlyHistory(pos);
 
+    int initIterVal = (info->bestPreviousScore != INFINITE_BOUND) ? info->bestPreviousScore : 0;
+    for(index = 0; index < 4; ++index){
+        info->iterValue[index] = initIterVal;
+    }
+
 }
 
 
@@ -1162,7 +1167,6 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     info->lastBestMoveDepth = currentDepth;
                 
                 int iterIdx = currentDepth & 3;
-                info->iterValue[iterIdx] = pvScore[0];
                 
                 //falling eval: is the score dropping compared to the previous move's
                 //final score and a few iterations ago this move?
@@ -1234,6 +1238,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     }
                 }
             }
+        }
+
+        if (threadNum == 0) {
+            info->iterValue[currentDepth & 3] = pvScore[0];
         }
     }
     if (threadNum == 0) {

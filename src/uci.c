@@ -511,6 +511,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
                 
                 if (info->originalTimeAdjust < 0.0) {
                     info->originalTimeAdjust = 0.3128 * log10((double)timeLeft) - 0.4354;
+                    if (info->originalTimeAdjust < 0.5) info->originalTimeAdjust = 0.5;
                 }
                 
                 double term1 = 0.0121431 + pow(ply + 2.94693, 0.461073) * optConstant;
@@ -529,7 +530,9 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
             }
             
             int optimumTime = (int)(optScale * timeLeft);
-            if (optimumTime < 1) optimumTime = 1;
+            int minOpt = (time > moveOverhead) ? (time - moveOverhead) / (centiMTG / 100 + 2) : 1;
+            if (minOpt < 1) minOpt = 1;
+            if (optimumTime < minOpt) optimumTime = minOpt;
             
             int maximumTimeFromOpt = (int)(maxScale * optimumTime);
             int maximumTimeFromRemaining = (int)(0.825179 * time - moveOverhead);
