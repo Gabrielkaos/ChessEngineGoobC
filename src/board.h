@@ -48,7 +48,6 @@ typedef struct {
     S_MOVEPICKER singularMovePickers[MAXDEPTH];
     ALIGN64 NNUE_Accumulator nnue_accumulators[MAXDEPTH];
     DirtyPiece dirtyPieces[MAXDEPTH];
-    SurpriseSRDStats srd_stats;
 } S_SEARCH_THREAD;
 
 static inline S_SEARCH_THREAD* alloc_search_thread(void) {

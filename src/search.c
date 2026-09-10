@@ -42,17 +42,6 @@ void initLMRTable(){
 
 int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
 
-void printSurpriseSRDStats(const SurpriseSRDStats *stats){
-    if(!stats || stats->srd_nodes == 0) return;
-    printf("info string Surprise-SRD: quiet_lmr=%" PRIu64 " inc_R=%" PRIu64 " (%.1f%%) dec_R=%" PRIu64 " (%.1f%%) surprises=%" PRIu64 "\n",
-           stats->srd_nodes,
-           stats->srd_triggered,
-           (double)stats->srd_triggered * 100.0 / stats->srd_nodes,
-           stats->srd_reduction_minus_1,
-           (double)stats->srd_reduction_minus_1 * 100.0 / stats->srd_nodes,
-           stats->srd_surprising_moves);
-}
-
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
@@ -107,9 +96,6 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     //low-ply history is refreshed every search (Stockfish fills it with 102)
     clearLowPlyHistory(pos);
 
-#if USE_SURPRISE_SRD
-    memset(&pos->search->srd_stats, 0, sizeof(SurpriseSRDStats));
-#endif
 }
 
 
@@ -647,17 +633,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //    late quiet moves (Legal >= EVAL_MOVE_LIMIT) by +1, while protecting early quiets.
             // 3. Surplus: When statically winning/ahead of alpha, reduce promising quiets less.
             if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
-                pos->search->srd_stats.srd_nodes++;
                 int evalDiff = alpha - staticEval;
                 if (siblingSurprise) {
                     R -= 1;
-                    pos->search->srd_stats.srd_reduction_minus_1++;
                 } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
                     R += 1;
-                    pos->search->srd_stats.srd_triggered++;
                 } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
                     R -= 1;
-                    pos->search->srd_stats.srd_reduction_minus_1++;
                 }
             }
 #endif
@@ -693,7 +675,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 #if USE_SURPRISE_SRD
             if (SurpriseSRDEnabled && R > 1) {
                 siblingSurprise = 1;
-                pos->search->srd_stats.srd_surprising_moves++;
             }
 #endif
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
@@ -1329,10 +1310,6 @@ static int workerLoop(void *data) {
                     }
                 }
             }
-
-#if USE_SURPRISE_SRD
-            printSurpriseSRDStats(&worker->originalPos->search->srd_stats);
-#endif
 
             if (worker->workerData.info->setOptionPonder && worker->workerData.bestMove != NOMOVE) {
                 if (worker->workerData.ponderMove == NOMOVE) {

@@ -168,31 +168,9 @@ Promising quiet moves have their reductions reduced by 1 ply ($R -= 1$), but **s
 
 All code modifications are contained within four files in `src/`.
 
-### 4.1 Data Structures (`src/defs.h`)
+### 4.1 Data Structures
 
-Lines 241–247 define the thread-local diagnostic statistics struct:
-
-```c
-// [defs.h:L241-247]
-// Surprise-SRD (Sibling Refutation Density with Search Surprise)
-typedef struct {
-    uint64_t srd_nodes;               // Total quiet LMR decisions evaluated
-    uint64_t srd_triggered;           // Count of R += 1 triggers (eval deficit)
-    uint64_t srd_reduction_minus_1;   // Count of R -= 1 triggers (surprises + surplus)
-    uint64_t srd_surprising_moves;    // Count of reduced moves that beat alpha
-} SurpriseSRDStats;
-```
-
-- **`srd_nodes`**: Increments on every quiet LMR decision point, providing the exact denominator for trigger ratios.
-- **`srd_triggered`**: Tracks how often late hopeless moves were pruned.
-- **`srd_reduction_minus_1`**: Tracks how often reductions were softened.
-- **`srd_surprising_moves`**: Tracks the occurrence of genuine move-ordering breakdowns.
-
-In `src/board.h:L51`, this structure is embedded in `S_SEARCH_THREAD`:
-```c
-SurpriseSRDStats srd_stats;
-```
-Ensuring thread safety across all SMP search threads without global mutex contention.
+During development and calibration, thread-local diagnostic statistics were tracked via a `SurpriseSRDStats` structure (`srd_nodes`, `srd_triggered`, `srd_reduction_minus_1`, `srd_surprising_moves`). For production performance, diagnostic tracking was stripped from the inner search loops to avoid cache-line writes and memory overhead on quiet move decisions.
 
 ---
 
@@ -212,7 +190,6 @@ Lines 76–86 define the algorithmic constants and prototypes:
 #define EVAL_MOVE_LIMIT        4
 
 extern int SurpriseSRDEnabled;
-extern void printSurpriseSRDStats(const SurpriseSRDStats *stats);
 ```
 
 - **`USE_SURPRISE_SRD`**: Compile-time switch allowing complete conditional elimination of the heuristic.
@@ -225,34 +202,16 @@ extern void printSurpriseSRDStats(const SurpriseSRDStats *stats);
 
 ### 4.3 Search Implementation (`src/search.c`)
 
-#### A. Diagnostic Reporting & Initialization
+#### A. Initialization
 
-Lines 43–54 define the status reporter:
+The runtime toggle is defined:
 
 ```c
-// [search.c:L43-54]
+// [search.c:L43]
 int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
-
-void printSurpriseSRDStats(const SurpriseSRDStats *stats){
-    if(!stats || stats->srd_nodes == 0) return;
-    printf("info string Surprise-SRD: quiet_lmr=%" PRIu64 " inc_R=%" PRIu64 " (%.1f%%) dec_R=%" PRIu64 " (%.1f%%) surprises=%" PRIu64 "\n",
-           stats->srd_nodes,
-           stats->srd_triggered,
-           (double)stats->srd_triggered * 100.0 / stats->srd_nodes,
-           stats->srd_reduction_minus_1,
-           (double)stats->srd_reduction_minus_1 * 100.0 / stats->srd_nodes,
-           stats->srd_surprising_moves);
-}
 ```
-Outputs standard UCI-compliant debug lines reporting percentage activity and surprise count.
+Diagnostic `info string` reporting and counter updates were removed to ensure zero runtime overhead during game searches.
 
-Lines 110–112 reset the stats at the start of each search iteration:
-```c
-// [search.c:L110-112]
-#if USE_SURPRISE_SRD
-    memset(&pos->search->srd_stats, 0, sizeof(SurpriseSRDStats));
-#endif
-```
 
 #### B. Sibling Flag Initialization
 
@@ -282,17 +241,13 @@ Inside the quiet move reduction calculation (Lines 642–663):
             //    late quiet moves (Legal >= EVAL_MOVE_LIMIT) by +1, while protecting early quiets.
             // 3. Surplus: When statically winning/ahead of alpha, reduce promising quiets less.
             if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
-                pos->search->srd_stats.srd_nodes++;
                 int evalDiff = alpha - staticEval;
                 if (siblingSurprise) {
                     R -= 1;
-                    pos->search->srd_stats.srd_reduction_minus_1++;
                 } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
                     R += 1;
-                    pos->search->srd_stats.srd_triggered++;
                 } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
                     R -= 1;
-                    pos->search->srd_stats.srd_reduction_minus_1++;
                 }
             }
 #endif
@@ -302,11 +257,10 @@ Inside the quiet move reduction calculation (Lines 642–663):
   - `!rootNode`: Root moves dictate time management and UCI stability; they are never artificially manipulated.
   - `!inCheck`: In check, static evaluation is unavailable or uncorrected, and moves are evasions.
   - `abs(alpha) < ISMATE`: Prevents mating bounds ($\pm 30,000$) from generating bogus evaluations.
-- **Line 650 (`srd_nodes++`)**: Records an active quiet LMR decision point.
-- **Line 651 (`int evalDiff = alpha - staticEval`)**: Measures expectation deficit in centipawns.
-- **Line 652–655 (`if (siblingSurprise) R -= 1`)**: Prioritized above all else. If an earlier sibling was a surprise, dampen reduction by 1 ply to prevent tactical pruning.
-- **Line 655–658 (`else if (evalDiff > 120 && Legal >= 4) R += 1`)**: Deficit reduction. Requires $120\text{ cp}$ deficit and Move 4 or later. Moves 2 and 3 are 100% exempt.
-- **Line 658–661 (`else if (evalDiff < -100 && R > 1) R -= 1`)**: Surplus reduction. Requires $100\text{ cp}$ surplus and only applies if $R \ge 2$, ensuring $R \ge 1$ after subtraction.
+- **Line 650 (`int evalDiff = alpha - staticEval`)**: Measures expectation deficit in centipawns.
+- **Line 651–653 (`if (siblingSurprise) R -= 1`)**: Prioritized above all else. If an earlier sibling was a surprise, dampen reduction by 1 ply to prevent tactical pruning.
+- **Line 653–655 (`else if (evalDiff > 120 && Legal >= 4) R += 1`)**: Deficit reduction. Requires $120\text{ cp}$ deficit and Move 4 or later. Moves 2 and 3 are 100% exempt.
+- **Line 655–657 (`else if (evalDiff < -100 && R > 1) R -= 1`)**: Surplus reduction. Requires $100\text{ cp}$ surplus and only applies if $R \ge 2$, ensuring $R \ge 1$ after subtraction.
 
 Following this block, Line 669 enforces invariant bounds:
 ```c
@@ -326,7 +280,6 @@ Lines 691–701 execute the PVS re-search:
 #if USE_SURPRISE_SRD
             if (SurpriseSRDEnabled && R > 1) {
                 siblingSurprise = 1;
-                pos->search->srd_stats.srd_surprising_moves++;
             }
 #endif
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
@@ -336,7 +289,6 @@ Lines 691–701 execute the PVS re-search:
 - **Line 692**: Triggers when a reduced move exceeds $\alpha$ (`R != 1 && Score > alpha`).
 - **Line 694 (`if (SurpriseSRDEnabled && R > 1)`)**: Only reduced moves ($R \ge 2$) qualify. If a move was searched unreduced ($R = 1$), beating $\alpha$ is expected behavior, not a surprise.
 - **Line 695 (`siblingSurprise = 1`)**: Sets the flag. If the subsequent full-depth re-search does not cause an immediate $\beta$-cutoff, the move loop proceeds to the next move with `siblingSurprise == 1`.
-- **Line 696**: Ticks the diagnostic surprise counter.
 
 ---
 
@@ -358,15 +310,7 @@ Lines 691–701 execute the PVS re-search:
       }
   #endif
   ```
-- **Diagnostic Command (`uci.c:L757-762`)**:
-  ```c
-  #if USE_SURPRISE_SRD
-      else if (strEquals(str, "srdstats")) {
-          printSurpriseSRDStats(&pos->search->srd_stats);
-          fflush(stdout);
-      }
-  #endif
-  ```
+
 
 ---
 

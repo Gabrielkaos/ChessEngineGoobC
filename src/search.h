@@ -83,7 +83,6 @@ static const int WindowDepth = 5;
 #define EVAL_MOVE_LIMIT        4
 
 extern int SurpriseSRDEnabled;
-extern void printSurpriseSRDStats(const SurpriseSRDStats *stats);
 
 //FUNCTIONS
 extern void initLMRTable();

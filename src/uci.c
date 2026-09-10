@@ -754,12 +754,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
         }
 
-#if USE_SURPRISE_SRD
-        else if (strEquals(str, "srdstats")) {
-            printSurpriseSRDStats(&pos->search->srd_stats);
-            fflush(stdout);
-        }
-#endif
 
         else if (strEquals(str, "perfttest")) {
             PerftSuiteTest(pos);

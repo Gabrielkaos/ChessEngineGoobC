@@ -241,13 +241,6 @@ typedef struct {
     int8_t  castleRights;
 } S_UNDO;
 
-//Surprise-SRD (Sibling Refutation Density with Search Surprise)
-typedef struct {
-    uint64_t srd_nodes;
-    uint64_t srd_triggered;
-    uint64_t srd_reduction_minus_1;
-    uint64_t srd_surprising_moves;
-} SurpriseSRDStats;
 
 //Search Details
 typedef struct {
