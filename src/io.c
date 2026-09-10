@@ -19,7 +19,7 @@ char * PrSq(const int sq){
 }
 
 char * PrMove(const int move){
-    static char moveStr[6];
+    _Thread_local static char moveStr[6];
 
     if(move==NOMOVE){
         strcpy(moveStr,"0000");

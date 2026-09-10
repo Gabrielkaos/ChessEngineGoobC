@@ -609,12 +609,13 @@ void parsePosition(char* lineIn,S_BOARD *pos){
     if(ptrChar != NULL){
         ptrChar+=6;
         while(*ptrChar){
-            move=ParseMove(ptrChar,pos);
-            if(move==NOMOVE) break;
+            while(*ptrChar == ' ') ptrChar++;
+            if(!*ptrChar) break;
+            move = ParseMove(ptrChar, pos);
+            if(move == NOMOVE) break;
             makeMove(pos, move, &pos->stateTable[pos->hisPly + 1]);
-            pos->ply=0;
-            while(*ptrChar && *ptrChar != ' ')ptrChar++;
-            ptrChar++;
+            pos->ply = 0;
+            while(*ptrChar && *ptrChar != ' ') ptrChar++;
         }
     }
     pos->ply = 0;
