@@ -1798,5 +1798,7 @@
     ->fixed promotion capture pawn if move to is empty
     ->added split quiets into good and bad
     ->double the weight of main history
+    ->fixed bugs in time management
+    ->sorting bad noisy moves
 
 	*/

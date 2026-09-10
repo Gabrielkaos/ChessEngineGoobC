@@ -104,7 +104,9 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move == mp->counter) mp->counter = NOMOVE;
 
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
-                    mp->badNoisies[mp->badNoisyCount++].move = move;
+                    mp->badNoisies[mp->badNoisyCount].move  = move;
+                    mp->badNoisies[mp->badNoisyCount].score = moveEstimatedValue(pos, move);
+                    mp->badNoisyCount++;
                     continue;
                 }
 
@@ -259,6 +261,21 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             if(mp->type == NOISY_PICKER){
                 mp->stage = STAGE_DONE;
                 return NOMOVE;
+            }
+
+            // Sort bad noisies by material value (descending):
+            // least-losing captures first to maximize cutoffs.
+            // Guard: only sort on first entry (index == 0).
+            if(mp->badNoisyIndex == 0){
+                for(int i = 1; i < mp->badNoisyCount; i++){
+                    S_MOVE key = mp->badNoisies[i];
+                    int j = i - 1;
+                    while(j >= 0 && mp->badNoisies[j].score < key.score){
+                        mp->badNoisies[j + 1] = mp->badNoisies[j];
+                        j--;
+                    }
+                    mp->badNoisies[j + 1] = key;
+                }
             }
 
             while(mp->badNoisyIndex < mp->badNoisyCount){
