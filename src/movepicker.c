@@ -6,6 +6,7 @@
 #include "movegen.h"
 
 static const int MVVAugment[] = {1200, 2400, 2400, 4800, 9600, 19200};
+static const int GoodQuietThreshold = -14000;
 
 static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
     int best = lo;
@@ -29,6 +30,9 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->type        = NORMAL_PICKER;
     mp->badNoisyCount = 0;
     mp->badNoisyIndex = 0;
+    mp->noisySize   = 0;
+    mp->quietSize   = 0;
+    mp->split       = 0;
 
     int counter  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1] : NOMOVE;
     int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
@@ -54,6 +58,9 @@ void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove){
     mp->type        = NOISY_PICKER;
     mp->badNoisyCount = 0;
     mp->badNoisyIndex = 0;
+    mp->noisySize   = 0;
+    mp->quietSize   = 0;
+    mp->split       = 0;
 }
 
 int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
@@ -203,6 +210,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //quiet score: butterfly + continuation histories plus the
                     //shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
+                                             + getMainHistory(pos, move, mp->threats)
                                              + 2 * getPawnHistory(pos, move);
 
                     //low-ply history boost near the root, fading out with ply
@@ -225,10 +233,54 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     }
                 }
             }
-            mp->stage = STAGE_QUIET;
+            mp->stage = STAGE_GOOD_QUIET;
             /* fallthrough */
 
-        case STAGE_QUIET:
+        case STAGE_GOOD_QUIET:
+            while(!skipQuiets && mp->quietSize){
+                best = mp_getBestIndex(mp->list->moves, mp->split, mp->quietSize);
+                if(mp->list->moves[best].score <= GoodQuietThreshold)
+                    break;
+
+                move = mp_popMoveAt(mp->list->moves, mp->split, &mp->quietSize, best);
+
+                if(move == mp->tableMove || move == mp->killer1 ||
+                   move == mp->killer2  || move == mp->counter)
+                    continue;
+
+                mp->lastStage = STAGE_GOOD_QUIET;
+                return move;
+            }
+
+            mp->stage = STAGE_BAD_NOISY;
+            /* fallthrough */
+
+        case STAGE_BAD_NOISY:
+            if(mp->type == NOISY_PICKER){
+                mp->stage = STAGE_DONE;
+                return NOMOVE;
+            }
+
+            while(mp->badNoisyIndex < mp->badNoisyCount){
+                move = mp->badNoisies[mp->badNoisyIndex++].move;
+
+                if(move == mp->tableMove || move == mp->killer1 ||
+                   move == mp->killer2  || move == mp->counter)
+                    continue;
+
+                mp->lastStage = STAGE_BAD_NOISY;
+                return move;
+            }
+
+            if(skipQuiets){
+                mp->stage = STAGE_DONE;
+                return NOMOVE;
+            }
+
+            mp->stage = STAGE_BAD_QUIET;
+            /* fallthrough */
+
+        case STAGE_BAD_QUIET:
             while(!skipQuiets && mp->quietSize){
                 best = mp_getBestIndex(mp->list->moves, mp->split, mp->quietSize);
                 move = mp_popMoveAt(mp->list->moves, mp->split, &mp->quietSize, best);
@@ -237,22 +289,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                    move == mp->killer2  || move == mp->counter)
                     continue;
 
-                mp->lastStage = STAGE_QUIET;
-                return move;
-            }
-
-            mp->stage = STAGE_BAD_NOISY;
-            /* fallthrough */
-
-        case STAGE_BAD_NOISY:
-            while(mp->badNoisyIndex < mp->badNoisyCount && mp->type != NOISY_PICKER){
-                move = mp->badNoisies[mp->badNoisyIndex++].move;
-
-                if(move == mp->tableMove || move == mp->killer1 ||
-                   move == mp->killer2  || move == mp->counter)
-                    continue;
-
-                mp->lastStage = STAGE_BAD_NOISY;
+                mp->lastStage = STAGE_BAD_QUIET;
                 return move;
             }
 

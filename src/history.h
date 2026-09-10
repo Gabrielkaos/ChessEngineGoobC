@@ -12,6 +12,7 @@ extern int getCaptureHistory(S_BOARD *pos,int move, U64 threats);
 extern void updateKillers(S_BOARD *pos,int move);
 extern void updateHistories(S_BOARD *pos,int *moves,int length, int depth);
 extern int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats);
+extern int getMainHistory(S_BOARD *pos,int move, U64 threats);
 extern void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth);
 
 //pawn history: [pawn structure key][piece][to], shared across threads
