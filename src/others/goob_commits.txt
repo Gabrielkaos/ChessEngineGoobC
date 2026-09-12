@@ -1800,5 +1800,8 @@
     ->double the weight of main history
     ->fixed bugs in time management
     ->sorting bad noisy moves
+    ->scoring bad noises based on capture history
+    ->not double weighting the main history
+    ->added Space/Threat/Complexity/Closedness to eval
 
 	*/

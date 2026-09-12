@@ -21,7 +21,7 @@
 #include "syzygy.h"
 #include "correction.h"
 
-#define INPUTBUFFER 400*6
+#define INPUTBUFFER 65536
 #define Euler 2.8
 
 static int searchThreadValid = 0;

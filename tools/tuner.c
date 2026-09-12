@@ -114,6 +114,25 @@ static REG regs[] = {
     R(PawnConnected32, "[32]"),
     R(BishopTrapped, "[2]"),
     { &RookTrapped, 1, "RookTrapped", "" },
+    { &ThreatWeakPawn, 1, "ThreatWeakPawn", "" },
+    { &ThreatMinorAttackedByPawn, 1, "ThreatMinorAttackedByPawn", "" },
+    { &ThreatMinorAttackedByMinor, 1, "ThreatMinorAttackedByMinor", "" },
+    { &ThreatMinorAttackedByMajor, 1, "ThreatMinorAttackedByMajor", "" },
+    { &ThreatRookAttackedByLesser, 1, "ThreatRookAttackedByLesser", "" },
+    { &ThreatMinorAttackedByKing, 1, "ThreatMinorAttackedByKing", "" },
+    { &ThreatRookAttackedByKing, 1, "ThreatRookAttackedByKing", "" },
+    { &ThreatQueenAttackedByOne, 1, "ThreatQueenAttackedByOne", "" },
+    { &ThreatOverloadedPieces, 1, "ThreatOverloadedPieces", "" },
+    { &ThreatByPawnPush, 1, "ThreatByPawnPush", "" },
+    { &SpaceRestrictPiece, 1, "SpaceRestrictPiece", "" },
+    { &SpaceRestrictEmpty, 1, "SpaceRestrictEmpty", "" },
+    { &SpaceCenterControl, 1, "SpaceCenterControl", "" },
+    RN(ClosednessKnightAdjustment, 9, "[9]"),
+    RN(ClosednessRookAdjustment, 9, "[9]"),
+    { &ComplexityTotalPawns, 1, "ComplexityTotalPawns", "" },
+    { &ComplexityPawnFlanks, 1, "ComplexityPawnFlanks", "" },
+    { &ComplexityPawnEndgame, 1, "ComplexityPawnEndgame", "" },
+    { &ComplexityAdjustment, 1, "ComplexityAdjustment", "" },
     { &tempo, 1, "tempo", "" },
 };
 
@@ -241,7 +260,7 @@ static inline double white_eval(S_BOARD *pos) {
 static void refresh_batch_psqt(S_BOARD *bb, int len) {
     #pragma omp parallel for
     for (int i = 0; i < len; i++) {
-        bb[i].psqtmat = 0;
+        bb[i].st->psqtmat = 0;
         updateListMaterial(&bb[i]);
     }
 }

@@ -88,6 +88,12 @@ extern int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDiagonal
 extern int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
 extern int PawnBackwards[2][8], PawnConnected32[32];
 extern int BishopTrapped[2], RookTrapped;
+extern int ThreatWeakPawn, ThreatMinorAttackedByPawn, ThreatMinorAttackedByMinor, ThreatMinorAttackedByMajor;
+extern int ThreatRookAttackedByLesser, ThreatMinorAttackedByKing, ThreatRookAttackedByKing;
+extern int ThreatQueenAttackedByOne, ThreatOverloadedPieces, ThreatByPawnPush;
+extern int SpaceRestrictPiece, SpaceRestrictEmpty, SpaceCenterControl;
+extern int ClosednessKnightAdjustment[9], ClosednessRookAdjustment[9];
+extern int ComplexityTotalPawns, ComplexityPawnFlanks, ComplexityPawnEndgame, ComplexityAdjustment;
 extern int tempo;
 #endif
 

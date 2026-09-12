@@ -105,7 +105,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
 
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
                     mp->badNoisies[mp->badNoisyCount].move  = move;
-                    mp->badNoisies[mp->badNoisyCount].score = moveEstimatedValue(pos, move);
+                    mp->badNoisies[mp->badNoisyCount].score = getCaptureHistory(pos, move, mp->threats);
                     mp->badNoisyCount++;
                     continue;
                 }
@@ -212,7 +212,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //quiet score: butterfly + continuation histories plus the
                     //shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
-                                             + getMainHistory(pos, move, mp->threats)
+                                            //  + getMainHistory(pos, move, mp->threats)
                                              + 2 * getPawnHistory(pos, move);
 
                     //low-ply history boost near the root, fading out with ply
