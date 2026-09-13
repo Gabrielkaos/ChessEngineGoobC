@@ -6,7 +6,7 @@
 #include "movegen.h"
 
 static const int MVVAugment[] = {1200, 2400, 2400, 4800, 9600, 19200};
-static const int GoodQuietThreshold = -14000;
+static const int GoodQuietThreshold = -3000;
 
 static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
     int best = lo;

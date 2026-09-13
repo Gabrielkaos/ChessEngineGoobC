@@ -1811,6 +1811,7 @@
     ->improved voting of best thread and added different aspirations for each thread
     ->added more robust KBPvK draw recognizer
     ->more robust multiPV and multiThread Search
+    ->lowered threshold good quiet from -14000 -> -3000
 
     //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
     
