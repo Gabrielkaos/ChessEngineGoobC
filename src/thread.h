@@ -26,6 +26,7 @@ typedef struct{
     int voteScore;
     int voteDepth;
     int votePvLineCount;
+    S_PVLINE completedPv;
 } THREAD_SEARCH_WORKER;
 
 

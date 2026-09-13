@@ -979,6 +979,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     int currentDepth,numberOfPvMoves=0,bestScore;
     int pvNum;
     S_PVLINE rootPv;
+    S_PVLINE bestRootPv;
+    bestRootPv.count = 0;
 
     int prevBestMove        = NOMOVE;
     double bestMoveChanges  = 0.0;
@@ -986,16 +988,15 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
 
-    if(threadNum==0){
-        S_MOVELIST rootList[1];
-        GenerateAllMoves(pos, rootList);
-        int rmi;
-        for(rmi=0;rmi<rootList->count;++rmi){
-            int mv = rootList->moves[rmi].move;
-            if(legal(pos, mv)){
-                workerthread->bestMove = mv;
-                break;
-            }
+    S_MOVELIST rootList[1];
+    GenerateAllMoves(pos, rootList);
+    int rmi;
+    for(rmi=0;rmi<rootList->count;++rmi){
+        int mv = rootList->moves[rmi].move;
+        if(pos->tbHit && !TBRootMoveAllowed(pos, mv)) continue;
+        if(legal(pos, mv)){
+            workerthread->bestMove = mv;
+            break;
         }
     }
 
@@ -1056,15 +1057,16 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 if(info->stopped==TRUE)break;
 
+                if(pvNum==0 && rootPv.count > 0){
+                    bestRootPv = rootPv;
+                    workerthread->bestMove   = rootPv.moves[0];
+                    workerthread->ponderMove = rootPv.count > 1 ? rootPv.moves[1] : NOMOVE;
+                }
+
                 if(threadNum==0){
                     numberOfPvMoves = rootPv.count;
                     for (int i = 0; i < numberOfPvMoves; i++) {
                         pos->search->pvArray[i] = rootPv.moves[i];
-                    }
-
-                    if(pvNum==0){
-                        workerthread->bestMove   = pos->search->pvArray[0];
-                        workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
                     }
                 }
 
@@ -1140,7 +1142,12 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         //the worker that completes the deepest, most convincing search wins
         workerthread->voteScore        = pvScore[0];
         workerthread->voteDepth        = currentDepth;
-        workerthread->votePvLineCount  = rootPv.count;
+        workerthread->votePvLineCount  = bestRootPv.count;
+        if(bestRootPv.count > 0){
+            workerthread->completedPv  = bestRootPv;
+            workerthread->bestMove     = bestRootPv.moves[0];
+            workerthread->ponderMove   = (bestRootPv.count > 1) ? bestRootPv.moves[1] : NOMOVE;
+        }
 
         //limits -- based on the best (PV line 1) result only, same as before
         if(!info->UciInfinite){
@@ -1260,6 +1267,118 @@ typedef struct {
 static POOL_WORKER threadPool[MAXTHREADS];
 static int poolSize = 0;
 
+static void waitWorkerSearch(int threadNum);
+
+#define IS_DECISIVE_WIN(s)  ((s) >= (TB_WIN_VALUE - MAXDEPTH))
+#define IS_DECISIVE_LOSS(s) ((s) <= -(TB_WIN_VALUE - MAXDEPTH))
+#define IS_DECISIVE(s)      (IS_DECISIVE_WIN(s) || IS_DECISIVE_LOSS(s))
+
+// Stockfish 19 get_best_thread Lazy SMP voting implementation
+static int get_best_thread_idx(int activeThreads) {
+    int bestIdx = 0;
+
+    // Find minScore among threads that completed at least depth 1 with a valid move
+    int minScore = INFINITE_BOUND;
+    for (int i = 0; i < activeThreads; ++i) {
+        if (threadPool[i].workerData.voteDepth >= 1 &&
+            threadPool[i].workerData.bestMove != NOMOVE &&
+            threadPool[i].workerData.voteScore != -INFINITE_BOUND) {
+            if (threadPool[i].workerData.voteScore < minScore) {
+                minScore = threadPool[i].workerData.voteScore;
+            }
+        }
+    }
+
+    if (minScore == INFINITE_BOUND) {
+        return 0; // Fallback to main thread
+    }
+
+    // Ensure initial bestIdx is eligible
+    if (threadPool[0].workerData.voteDepth < 1 ||
+        threadPool[0].workerData.bestMove == NOMOVE ||
+        threadPool[0].workerData.voteScore == -INFINITE_BOUND) {
+        for (int i = 1; i < activeThreads; ++i) {
+            if (threadPool[i].workerData.voteDepth >= 1 &&
+                threadPool[i].workerData.bestMove != NOMOVE &&
+                threadPool[i].workerData.voteScore != -INFINITE_BOUND) {
+                bestIdx = i;
+                break;
+            }
+        }
+    }
+
+    // Compare each eligible thread against bestIdx following Stockfish get_best_thread
+    for (int i = 0; i < activeThreads; ++i) {
+        if (i == bestIdx) continue;
+        if (threadPool[i].workerData.voteDepth < 1 ||
+            threadPool[i].workerData.bestMove == NOMOVE ||
+            threadPool[i].workerData.voteScore == -INFINITE_BOUND) {
+            continue;
+        }
+
+        int bestMove = threadPool[bestIdx].workerData.bestMove;
+        int newMove  = threadPool[i].workerData.bestMove;
+
+        int bestScore = threadPool[bestIdx].workerData.voteScore;
+        int newScore  = threadPool[i].workerData.voteScore;
+
+        // Stockfish: votes[move] += score - minScore + 14
+        // Tally votes for bestThread's move and newThread's move across all eligible threads
+        int64_t bestMoveVote = 0;
+        int64_t newMoveVote  = 0;
+        for (int j = 0; j < activeThreads; ++j) {
+            if (threadPool[j].workerData.voteDepth >= 1 &&
+                threadPool[j].workerData.bestMove != NOMOVE &&
+                threadPool[j].workerData.voteScore != -INFINITE_BOUND) {
+                int64_t weight = (int64_t)(threadPool[j].workerData.voteScore - minScore + 14);
+                if (threadPool[j].workerData.bestMove == bestMove) bestMoveVote += weight;
+                if (threadPool[j].workerData.bestMove == newMove)  newMoveVote  += weight;
+            }
+        }
+
+        int bestDecisive = IS_DECISIVE(bestScore);
+        int newDecisive  = IS_DECISIVE(newScore);
+
+        if (bestDecisive) {
+            // Both decisive: choose shortest mate / win, or longest loss resistance
+            if (newDecisive) {
+                if (IS_DECISIVE_LOSS(bestScore) && IS_DECISIVE_WIN(newScore)) {
+                    bestIdx = i;
+                } else if (IS_DECISIVE_WIN(bestScore) && IS_DECISIVE_WIN(newScore)) {
+                    // Shorter win = higher score in mate_in convention
+                    if (newScore > bestScore) {
+                        bestIdx = i;
+                    }
+                } else if (IS_DECISIVE_LOSS(bestScore) && IS_DECISIVE_LOSS(newScore)) {
+                    // Longer resistance = higher score (closer to 0)
+                    if (newScore > bestScore) {
+                        bestIdx = i;
+                    }
+                }
+            } else if (IS_DECISIVE_LOSS(bestScore) && !IS_DECISIVE_LOSS(newScore)) {
+                // New thread avoids a decisive loss
+                bestIdx = i;
+            }
+        } else if (newDecisive) {
+            // New thread found a decisive win (or avoids loss)
+            if (IS_DECISIVE_WIN(newScore) || !IS_DECISIVE_LOSS(newScore)) {
+                bestIdx = i;
+            }
+        } else if (!IS_DECISIVE_LOSS(newScore)) {
+            // Neither is decisive: vote according to accumulated move votes
+            if (newMoveVote > bestMoveVote ||
+                (newMoveVote == bestMoveVote &&
+                 (threadPool[i].workerData.votePvLineCount > threadPool[bestIdx].workerData.votePvLineCount ||
+                  (threadPool[i].workerData.votePvLineCount == threadPool[bestIdx].workerData.votePvLineCount &&
+                   threadPool[i].workerData.voteDepth > threadPool[bestIdx].workerData.voteDepth)))) {
+                bestIdx = i;
+            }
+        }
+    }
+
+    return bestIdx;
+}
+
 static int workerLoop(void *data) {
     POOL_WORKER *worker = (POOL_WORKER*)data;
 
@@ -1288,55 +1407,53 @@ static int workerLoop(void *data) {
 
             worker->workerData.info->stopped = TRUE;
 
-            //Lazy SMP best-thread voting (Berserk/Stockfish get_best_thread):
-            //wait for every helper to publish its vote, then adopt the
-            //strongest completed-depth evidence — fastest mate always wins,
-            //otherwise score weighted by depth (with PV-length tiebreak)
             int activeThreads = worker->workerData.info->threadNum;
             if(activeThreads > poolSize) activeThreads = poolSize;
             if(activeThreads > 1){
-                struct timespec tick = { .tv_sec = 0, .tv_nsec = 1000000 };
+                // Wait for all helper threads to complete search using condition variables
                 for(int i = 1; i < activeThreads; ++i){
-                    while(threadPool[i].searching) thrd_sleep(&tick, NULL);
+                    waitWorkerSearch(i);
                 }
 
-                int worst = threadPool[0].workerData.voteScore;
-                for(int i = 1; i < activeThreads; ++i)
-                    if(threadPool[i].workerData.voteScore < worst)
-                        worst = threadPool[i].workerData.voteScore;
+                // In MultiPV mode (> 1), only thread 0 reports and searches multiple root lines
+                if(worker->workerData.info->multiPV <= 1){
+                    int bestIdx = get_best_thread_idx(activeThreads);
 
-                int bestIdx = 0;
-                int bestScr = threadPool[0].workerData.voteScore;
-                int bestVote = threadPool[0].workerData.voteDepth
-                             * (threadPool[0].workerData.voteScore - worst);
+                    // Adopt the winning thread's results if a helper thread won
+                    if(bestIdx != 0 && threadPool[bestIdx].workerData.bestMove != NOMOVE){
+                        worker->workerData.bestMove   = threadPool[bestIdx].workerData.bestMove;
+                        worker->workerData.ponderMove = threadPool[bestIdx].workerData.ponderMove;
+                        worker->workerData.voteScore  = threadPool[bestIdx].workerData.voteScore;
+                        worker->workerData.voteDepth  = threadPool[bestIdx].workerData.voteDepth;
+                        worker->workerData.votePvLineCount = threadPool[bestIdx].workerData.votePvLineCount;
+                        worker->workerData.completedPv = threadPool[bestIdx].workerData.completedPv;
 
-                for(int i = 1; i < activeThreads; ++i){
-                    int cs = threadPool[i].workerData.voteScore;
-                    if(abs(bestScr) >= TB_WIN_VALUE){
-                        //near-mate scores: always prefer the fastest mate
-                        if(cs > bestScr){
-                            bestIdx = i;
-                            bestScr = cs;
-                            bestVote = threadPool[i].workerData.voteDepth * (cs - worst);
+                        // Update previous eval history for time management on subsequent moves
+                        if (!worker->workerData.info->ponder) {
+                            worker->workerData.info->bestPreviousScore = threadPool[bestIdx].workerData.voteScore;
+                            worker->workerData.info->bestPreviousAverageScore =
+                                (worker->workerData.info->bestPreviousAverageScore != INFINITE_BOUND)
+                                ? (worker->workerData.info->bestPreviousAverageScore + threadPool[bestIdx].workerData.voteScore) / 2
+                                : threadPool[bestIdx].workerData.voteScore;
+                        }
+
+                        // Copy winning PV line to thread 0's pvArray and report updated info to UCI
+                        int pvCount = threadPool[bestIdx].workerData.completedPv.count;
+                        if(pvCount > MAXDEPTH) pvCount = MAXDEPTH;
+                        for(int p = 0; p < pvCount; ++p){
+                            worker->originalPos->search->pvArray[p] = threadPool[bestIdx].workerData.completedPv.moves[p];
+                        }
+                        worker->originalPos->seldepth = threadPool[bestIdx].originalPos->seldepth;
+
+                        if(pvCount > 0){
+                            UciReport(worker->workerData.info, worker->workerData.ttable, worker->originalPos,
+                                      -INFINITE_BOUND, INFINITE_BOUND,
+                                      threadPool[bestIdx].workerData.voteScore,
+                                      threadPool[bestIdx].workerData.voteDepth,
+                                      pvCount, 1);
+                            fflush(stdout);
                         }
                     }
-                    else if(cs > -TB_WIN_VALUE){
-                        int cv = threadPool[i].workerData.voteDepth * (cs - worst);
-                        if(cv > bestVote ||
-                           (cv == bestVote &&
-                            threadPool[i].workerData.votePvLineCount >
-                            threadPool[bestIdx].workerData.votePvLineCount)){
-                            bestIdx = i;
-                            bestScr = cs;
-                            bestVote = cv;
-                        }
-                    }
-                }
-
-                //adopt the winning thread's move as our bestmove
-                if(bestIdx != 0 && threadPool[bestIdx].workerData.bestMove != NOMOVE){
-                    worker->workerData.bestMove   = threadPool[bestIdx].workerData.bestMove;
-                    worker->workerData.ponderMove = threadPool[bestIdx].workerData.ponderMove;
                 }
             }
 
@@ -1449,9 +1566,10 @@ static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_P
     w->workerData.threadNumber = threadNum;
     w->workerData.bestMove     = NOMOVE;
     w->workerData.ponderMove   = NOMOVE;
-    w->workerData.voteScore    = 0;
+    w->workerData.voteScore    = -INFINITE_BOUND;
     w->workerData.voteDepth    = 0;
     w->workerData.votePvLineCount = 0;
+    w->workerData.completedPv.count = 0;
 }
 
 static void startWorkerSearch(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
