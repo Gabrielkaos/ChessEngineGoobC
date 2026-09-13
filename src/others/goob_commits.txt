@@ -1810,6 +1810,7 @@
     ->not deflating eval by FMR in EvalPosition()
     ->improved voting of best thread and added different aspirations for each thread
     ->added more robust KBPvK draw recognizer
+    ->more robust multiPV and multiThread Search
 
     //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
     

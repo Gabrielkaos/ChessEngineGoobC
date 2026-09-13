@@ -512,7 +512,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int pawnHist = quietMove ? getPawnHistory(pos, moveInLoop) : 0;
 
         //Quiet late Move pruning
-        if (!info->bruteForceMode && quietMove && bestScore > -ISMATE){
+        if (!rootNode && !info->bruteForceMode && quietMove && bestScore > -ISMATE){
 
             //Futility pruning
             //checking if this position is likely to improve
@@ -556,7 +556,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //SEE
         //checks wether a capture move is valuable
         //if it actually gained material
-        if (    !info->bruteForceMode
+        if (    !rootNode
+            &&  !info->bruteForceMode
             &&  bestScore > -ISMATE
             && !isExempt
             &&  depth <= SEEPruningDepth
@@ -682,7 +683,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
 
         takeMove(pos);
-        if(rootNode){
+        if(rootNode && threadNum==0){
             U64 spent = info->nodes - nodesBeforeMove;
             int fi;
             for(fi=0; fi<pos->search->rootEffortCount; ++fi)
@@ -756,7 +757,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //update TT
     if(rootNode) pos->search->rootPvMove = bestMove;
 
-    if(!rootNode || pos->currentPvNum==0){
+    if(!rootNode || (pos->currentPvNum==0 && pos->excludedRootMoveCount==0)){
         ttBound = bestScore>=beta    ? HFBETA
                 : bestScore>oldAlpha ? HFEXACT : HFALPHA;
         StoreHashEntry(pos, table, bestMove, bestScore, ttBound, depth, rawEval);
@@ -1004,10 +1005,9 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
     }
 
-    //MultiPV: only thread 0 (the reporting thread) searches multiple
-    //root lines. 
-    int rootLegalMoves = (threadNum==0) ? countLegalRootMoves(pos) : 1;
-    int multiPV         = (threadNum==0) ? MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves)) : 1;
+    //MultiPV: all threads search all requested root lines (Lazy SMP)
+    int rootLegalMoves = countLegalRootMoves(pos);
+    int multiPV        = MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves));
 
     //game over (checkmate/stalemate): no legal moves, nothing to search
     if(rootLegalMoves==0){
@@ -1029,15 +1029,24 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
     int delta,alpha,beta, searchDepth;
 
+    //Structure to collect completed lines at each depth for sorting and reporting
+    typedef struct {
+        int score;
+        int alpha;
+        int beta;
+        S_PVLINE pv;
+    } S_DEPTH_PV;
+
     //iterative deepening
     for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
 
         bestMoveChanges /= 2.0;
 
-        //MultiPV: nothing has been reported yet at this depth, so every
-        //root move is a candidate for PV line 1 again. No-op when
-        //multiPV==1 (count is already always 0 in that case).
+        //MultiPV: reset exclusions at start of each depth iteration
         pos->excludedRootMoveCount = 0;
+
+        S_DEPTH_PV depthLines[MAXPOSMOVES];
+        int completedLinesCount = 0;
 
         for(pvNum=0;pvNum<multiPV;++pvNum){
 
@@ -1050,8 +1059,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
             
             if(currentDepth >= WindowDepth && !info->bruteForceMode){
-                alpha = MAX(-INFINITE_BOUND, pvScore[0]-delta);
-                beta  = MIN( INFINITE_BOUND, pvScore[0]+delta);
+                alpha = MAX(-INFINITE_BOUND, pvScore[pvNum]-delta);
+                beta  = MIN( INFINITE_BOUND, pvScore[pvNum]+delta);
             }
 
             while(TRUE){
@@ -1061,27 +1070,17 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 if(info->stopped==TRUE)break;
 
-                if(pvNum==0 && rootPv.count > 0){
-                    bestRootPv = rootPv;
-                    workerthread->bestMove   = rootPv.moves[0];
-                    workerthread->ponderMove = rootPv.count > 1 ? rootPv.moves[1] : NOMOVE;
-                }
-
-                if(threadNum==0){
-                    numberOfPvMoves = rootPv.count;
-                    for (int i = 0; i < numberOfPvMoves; i++) {
-                        pos->search->pvArray[i] = rootPv.moves[i];
-                    }
-                }
-
                 //brute force mode never aspirates, single full-window search only
                 if(info->bruteForceMode)break;
 
-                //report a fail-low/fail-high bound if it's taking a while
-                if(threadNum==0
+                //report a fail-low/fail-high bound if it's taking a while (single PV mode only)
+                if(threadNum==0 && multiPV==1
                     && (bestScore<=alpha || bestScore>=beta)
                     && (getTimeMs()-info->starttime)>BoundReportTime){
-                        UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,numberOfPvMoves,pvNum+1);
+                        for (int i = 0; i < rootPv.count; i++) {
+                            pos->search->pvArray[i] = rootPv.moves[i];
+                        }
+                        UciReport(info, table,pos,alpha,beta,bestScore,currentDepth,rootPv.count,1);
                         fflush(stdout);
                 }
 
@@ -1111,32 +1110,69 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 if(delta > INFINITE_BOUND) delta = INFINITE_BOUND;
             }
 
-            if(currentDepth==1 && pvNum==0 && threadNum==0){
-                info->depthOneComplete = TRUE;
-            }
-
             if(info->stopped==TRUE)break;
 
             pvScore[pvNum]  = bestScore;
             pvAlpha[pvNum]  = bestScore-delta;
             pvBeta[pvNum]   = bestScore+delta;
 
-            if (threadNum==0){
-                //reporting to interface
-                UciReport(info, table,pos,pvAlpha[pvNum],pvBeta[pvNum],bestScore,currentDepth,numberOfPvMoves,pvNum+1);
-                fflush(stdout);
+            depthLines[pvNum].score = bestScore;
+            depthLines[pvNum].alpha = pvAlpha[pvNum];
+            depthLines[pvNum].beta  = pvBeta[pvNum];
+            depthLines[pvNum].pv    = rootPv;
+            completedLinesCount++;
 
-                if(pvNum==0){
-                    if(prevBestMove != NOMOVE && workerthread->bestMove != prevBestMove){
-                        bestMoveChanges += 1.0;
+            //exclude the move actually found so subsequent lines search remaining moves
+            if(rootPv.count > 0 && pos->excludedRootMoveCount < MAXPOSMOVES){
+                pos->excludedRootMoves[pos->excludedRootMoveCount++] = rootPv.moves[0];
+            }
+        }
+
+        if(info->stopped==TRUE && completedLinesCount == 0)break;
+
+        //MultiPV: sort completed lines by score descending (Ethereal method)
+        if(completedLinesCount > 1){
+            for(int i = 0; i < completedLinesCount; i++){
+                for(int j = i + 1; j < completedLinesCount; j++){
+                    if(depthLines[j].score > depthLines[i].score){
+                        S_DEPTH_PV tmp = depthLines[i];
+                        depthLines[i]  = depthLines[j];
+                        depthLines[j]  = tmp;
                     }
-                    prevBestMove = workerthread->bestMove;
                 }
+            }
+            for(int i = 0; i < completedLinesCount; i++){
+                pvScore[i] = depthLines[i].score;
+            }
+        }
 
-            
-                if(pos->search->pvArray[0] != NOMOVE && pos->excludedRootMoveCount < MAXPOSMOVES){
-                    pos->excludedRootMoves[pos->excludedRootMoveCount++] = pos->search->pvArray[0];
+        if(completedLinesCount > 0 && depthLines[0].pv.count > 0){
+            bestRootPv               = depthLines[0].pv;
+            workerthread->bestMove   = depthLines[0].pv.moves[0];
+            workerthread->ponderMove = depthLines[0].pv.count > 1 ? depthLines[0].pv.moves[1] : NOMOVE;
+
+            if(threadNum==0){
+                if(prevBestMove != NOMOVE && workerthread->bestMove != prevBestMove){
+                    bestMoveChanges += 1.0;
                 }
+                prevBestMove = workerthread->bestMove;
+            }
+        }
+
+        if(currentDepth==1 && threadNum==0){
+            info->depthOneComplete = TRUE;
+        }
+
+        //reporting to interface (Thread 0 only)
+        if (threadNum==0){
+            for(int i = 0; i < completedLinesCount; i++){
+                int pCount = depthLines[i].pv.count;
+                if(pCount > MAXDEPTH) pCount = MAXDEPTH;
+                for (int p = 0; p < pCount; p++) {
+                    pos->search->pvArray[p] = depthLines[i].pv.moves[p];
+                }
+                UciReport(info, table, pos, depthLines[i].alpha, depthLines[i].beta, depthLines[i].score, currentDepth, pCount, i + 1);
+                fflush(stdout);
             }
         }
 
@@ -1419,44 +1455,41 @@ static int workerLoop(void *data) {
                     waitWorkerSearch(i);
                 }
 
-                // In MultiPV mode (> 1), only thread 0 reports and searches multiple root lines
-                if(worker->workerData.info->multiPV <= 1){
-                    int bestIdx = get_best_thread_idx(activeThreads);
+                int bestIdx = get_best_thread_idx(activeThreads);
 
-                    // Adopt the winning thread's results if a helper thread won
-                    if(bestIdx != 0 && threadPool[bestIdx].workerData.bestMove != NOMOVE){
-                        worker->workerData.bestMove   = threadPool[bestIdx].workerData.bestMove;
-                        worker->workerData.ponderMove = threadPool[bestIdx].workerData.ponderMove;
-                        worker->workerData.voteScore  = threadPool[bestIdx].workerData.voteScore;
-                        worker->workerData.voteDepth  = threadPool[bestIdx].workerData.voteDepth;
-                        worker->workerData.votePvLineCount = threadPool[bestIdx].workerData.votePvLineCount;
-                        worker->workerData.completedPv = threadPool[bestIdx].workerData.completedPv;
+                // Adopt the winning thread's results if a helper thread won
+                if(bestIdx != 0 && threadPool[bestIdx].workerData.bestMove != NOMOVE){
+                    worker->workerData.bestMove   = threadPool[bestIdx].workerData.bestMove;
+                    worker->workerData.ponderMove = threadPool[bestIdx].workerData.ponderMove;
+                    worker->workerData.voteScore  = threadPool[bestIdx].workerData.voteScore;
+                    worker->workerData.voteDepth  = threadPool[bestIdx].workerData.voteDepth;
+                    worker->workerData.votePvLineCount = threadPool[bestIdx].workerData.votePvLineCount;
+                    worker->workerData.completedPv = threadPool[bestIdx].workerData.completedPv;
 
-                        // Update previous eval history for time management on subsequent moves
-                        if (!worker->workerData.info->ponder) {
-                            worker->workerData.info->bestPreviousScore = threadPool[bestIdx].workerData.voteScore;
-                            worker->workerData.info->bestPreviousAverageScore =
-                                (worker->workerData.info->bestPreviousAverageScore != INFINITE_BOUND)
-                                ? (worker->workerData.info->bestPreviousAverageScore + threadPool[bestIdx].workerData.voteScore) / 2
-                                : threadPool[bestIdx].workerData.voteScore;
-                        }
+                    // Update previous eval history for time management on subsequent moves
+                    if (!worker->workerData.info->ponder) {
+                        worker->workerData.info->bestPreviousScore = threadPool[bestIdx].workerData.voteScore;
+                        worker->workerData.info->bestPreviousAverageScore =
+                            (worker->workerData.info->bestPreviousAverageScore != INFINITE_BOUND)
+                            ? (worker->workerData.info->bestPreviousAverageScore + threadPool[bestIdx].workerData.voteScore) / 2
+                            : threadPool[bestIdx].workerData.voteScore;
+                    }
 
-                        // Copy winning PV line to thread 0's pvArray and report updated info to UCI
-                        int pvCount = threadPool[bestIdx].workerData.completedPv.count;
-                        if(pvCount > MAXDEPTH) pvCount = MAXDEPTH;
-                        for(int p = 0; p < pvCount; ++p){
-                            worker->originalPos->search->pvArray[p] = threadPool[bestIdx].workerData.completedPv.moves[p];
-                        }
-                        worker->originalPos->seldepth = threadPool[bestIdx].originalPos->seldepth;
+                    // Copy winning PV line to thread 0's pvArray and report updated info to UCI
+                    int pvCount = threadPool[bestIdx].workerData.completedPv.count;
+                    if(pvCount > MAXDEPTH) pvCount = MAXDEPTH;
+                    for(int p = 0; p < pvCount; ++p){
+                        worker->originalPos->search->pvArray[p] = threadPool[bestIdx].workerData.completedPv.moves[p];
+                    }
+                    worker->originalPos->seldepth = threadPool[bestIdx].originalPos->seldepth;
 
-                        if(pvCount > 0){
-                            UciReport(worker->workerData.info, worker->workerData.ttable, worker->originalPos,
-                                      -INFINITE_BOUND, INFINITE_BOUND,
-                                      threadPool[bestIdx].workerData.voteScore,
-                                      threadPool[bestIdx].workerData.voteDepth,
-                                      pvCount, 1);
-                            fflush(stdout);
-                        }
+                    if(pvCount > 0){
+                        UciReport(worker->workerData.info, worker->workerData.ttable, worker->originalPos,
+                                  -INFINITE_BOUND, INFINITE_BOUND,
+                                  threadPool[bestIdx].workerData.voteScore,
+                                  threadPool[bestIdx].workerData.voteDepth,
+                                  pvCount, 1);
+                        fflush(stdout);
                     }
                 }
             }
