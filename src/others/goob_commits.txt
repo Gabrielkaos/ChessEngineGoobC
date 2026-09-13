@@ -1809,6 +1809,7 @@
     ->added TTresearchMargin based off ethereal
     ->not deflating eval by FMR in EvalPosition()
     ->improved voting of best thread and added different aspirations for each thread
+    ->added more robust KBPvK draw recognizer
 
     //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
     

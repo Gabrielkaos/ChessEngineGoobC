@@ -925,6 +925,18 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
             return SCALE_OCB_BISHOPS_ONLY;
     }
 
+    // Graduated scale for king approaching rook-pawn corner fortress (0..7 Chebyshev distance)
+    static const int cornerDrawScale[8] = {
+        SCALE_DRAW,   // 0: on promSq (e.g. a8)
+        SCALE_DRAW,   // 1: adjacent to promSq (corner fortress reached)
+        16,           // 2: 1 step away (e.g. c8, c7, b6)
+        40,           // 3: 2 steps away (e.g. d8, d7, c6)
+        72,           // 4: 3 steps away
+        104,          // 5: 4 steps away
+        SCALE_NORMAL, // 6: 5 steps away
+        SCALE_NORMAL  // 7: 6 steps away
+    };
+
     // Wrong colored bishop and rook pawn
     if (   !(eval_info->knightsBB | eval_info->rooksBB | eval_info->queensBB)
         && onlyOne(strong & eval_info->bishopsBB)
@@ -946,17 +958,22 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
             // Check if bishop color is opposite to promotion square color
             if (!(squaresOfMatchingColour(bishopSq) & (1ULL << promSq))) {
 
-                int weakColor = (eval < 0) ? WHITE : BLACK;
+                int strongColor = (eval < 0) ? BLACK : WHITE;
+                int weakColor = !strongColor;
                 int weakKingSq = eval_info->kingSq[weakColor];
+                int weakKingDist = DistanceBetween[weakKingSq][promSq];
 
-                // Only the corner itself and its immediate king-neighbours count
-                // as "fortress reached" — a small, unambiguous set, so the
-                // search doesn't have to map out a wide graduated boundary.
-                U64 drawingSquares = (1ULL << promSq) | king_attacks[promSq];
-
-                if (testBit(drawingSquares, weakKingSq)) {
+                if (weakKingDist <= 1)
                     return SCALE_DRAW;
-                }
+
+                int pawnSq = (strongColor == WHITE) ? getmsb(pawns) : LSBINDEX(pawns);
+                int pRank = relativeRankOf(strongColor, pawnSq);
+                int pawnMoves = 7 - pRank - (pRank == 1);
+
+                if (weakKingDist > pawnMoves + 1)
+                    return SCALE_NORMAL;
+
+                return cornerDrawScale[weakKingDist];
             }
         }
     }
@@ -974,13 +991,22 @@ INLINE int ScaleFactor(S_BOARD *pos,int eval, EVAL_INFO *eval_info){
                 || !(pawns & ~FileBBMask[FILE_H])) {
                 int isAFile = (pawns & FileBBMask[FILE_A]) != 0;
                 int promSq = isAFile ? ((strong == white) ? A8 : A1) : ((strong == white) ? H8 : H1);
-                int weakColor = (eval < 0) ? WHITE : BLACK;
+                int strongColor = (eval < 0) ? BLACK : WHITE;
+                int weakColor = !strongColor;
                 int weakKingSq = eval_info->kingSq[weakColor];
+                int weakKingDist = DistanceBetween[weakKingSq][promSq];
 
-                U64 drawingSquares = (1ULL << promSq) | king_attacks[promSq];
-                if (testBit(drawingSquares, weakKingSq)) {
+                if (weakKingDist <= 1)
                     return SCALE_DRAW;
-                }
+
+                int pawnSq = (strongColor == WHITE) ? getmsb(pawns) : LSBINDEX(pawns);
+                int pRank = relativeRankOf(strongColor, pawnSq);
+                int pawnMoves = 7 - pRank - (pRank == 1);
+
+                if (weakKingDist > pawnMoves + 1)
+                    return SCALE_NORMAL;
+
+                return cornerDrawScale[weakKingDist];
             }
         }
     }
@@ -1452,8 +1478,12 @@ int EvalPosition(S_BOARD *pos){
     pos->gamePhase = getGamePhase(pos);
 
     //interpolate
-    score = (ScoreMG(eval) * (256-pos->gamePhase)
-            +  ScoreEG(eval) * pos->gamePhase * factor / SCALE_NORMAL) / 256;
+    if (factor == SCALE_DRAW) {
+        score = 0;
+    } else {
+        score = (ScoreMG(eval) * (256-pos->gamePhase)
+                +  ScoreEG(eval) * pos->gamePhase * factor / SCALE_NORMAL) / 256;
+    }
 
     //apply WDL scaling
     score = ScaleWDL(score, pos);
@@ -1461,8 +1491,9 @@ int EvalPosition(S_BOARD *pos){
     //store score
     if (!tuneMode) StoreTTEval(pos,score);
 
-    ASSERT((pos->side==WHITE ? score : -score)+tempo < AB_BOUND);
-    score = (pos->side==WHITE ? score : -score)+tempo;
+    int finalTempo = (factor == SCALE_DRAW) ? 0 : tempo;
+    ASSERT((pos->side==WHITE ? score : -score)+finalTempo < AB_BOUND);
+    score = (pos->side==WHITE ? score : -score)+finalTempo;
     return score;
 }
 
