@@ -1039,7 +1039,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
             pos->currentPvNum = pvNum;
 
-            delta       = ScoreWindow;
+            delta       = ScoreWindow + (threadNum % 8);
             alpha       = -INFINITE_BOUND;
             beta        =  INFINITE_BOUND;
             searchDepth = currentDepth;
@@ -1114,8 +1114,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             if(info->stopped==TRUE)break;
 
             pvScore[pvNum]  = bestScore;
-            pvAlpha[pvNum]  = bestScore-ScoreWindow;
-            pvBeta[pvNum]   = bestScore+ScoreWindow;
+            pvAlpha[pvNum]  = bestScore-delta;
+            pvBeta[pvNum]   = bestScore+delta;
 
             if (threadNum==0){
                 //reporting to interface

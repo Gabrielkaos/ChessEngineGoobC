@@ -1808,9 +1808,9 @@
     ->added FMR adjustment to staticEval in AlphaBeta and Quiescence
     ->added TTresearchMargin based off ethereal
     ->not deflating eval by FMR in EvalPosition()
+    ->improved voting of best thread and added different aspirations for each thread
 
     //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
     
-    ->added best thread voting to lazy smp
 
 	*/
