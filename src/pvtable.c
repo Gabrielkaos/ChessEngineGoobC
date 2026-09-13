@@ -201,14 +201,15 @@ int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,int *tt
     S_PVBUCKET *bucket = &table->pTable[index];
 
     for(int i=0;i<TT_BUCKET_SIZE;++i){
-        uint32_t test_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ bucket->entries[i].smp_data ^ (bucket->entries[i].smp_data >> 32));
-        if(bucket->entries[i].smp_key == test_key && bucket->entries[i].smp_data != 0){
+        uint64_t data = bucket->entries[i].smp_data;
+        uint32_t test_key = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32) ^ data ^ (data >> 32));
+        if(bucket->entries[i].smp_key == test_key && data != 0){
             bucket->entries[i].generation = table->generation;   // refresh on hit
             *ttEval  = bucket->entries[i].eval;
-            *move    = EXTRACT_MOVE(bucket->entries[i].smp_data);
-            *ttDepth = EXTRACT_DEPTH(bucket->entries[i].smp_data);
-            *ttBound = EXTRACT_FLAGS(bucket->entries[i].smp_data);
-            *score   = EXTRACT_SCORE(bucket->entries[i].smp_data);
+            *move    = EXTRACT_MOVE(data);
+            *ttDepth = EXTRACT_DEPTH(data);
+            *ttBound = EXTRACT_FLAGS(data);
+            *score   = EXTRACT_SCORE(data);
             return TRUE;
         }
     }

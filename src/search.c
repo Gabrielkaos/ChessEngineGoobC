@@ -311,7 +311,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if (tbBound == HFEXACT
                 || (tbBound == HFBETA && tbScore >= beta)
                 || (tbBound == HFALPHA && tbScore <= alpha)) {
-                StoreHashEntry(pos, table, NOMOVE, tbScore, tbBound, MAXDEPTH-1, tbScore);
+                StoreHashEntry(pos, table, NOMOVE, tbScore, tbBound, MAXDEPTH-1, VALUE_NONE);
                 return tbScore;
             }
 
