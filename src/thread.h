@@ -20,6 +20,12 @@ typedef struct{
     
     int ponderMove, bestMove;
     int threadNumber;
+
+    //Lazy SMP best-thread voting record, published by each worker as it
+    //completes a full iterative-deepening level
+    int voteScore;
+    int voteDepth;
+    int votePvLineCount;
 } THREAD_SEARCH_WORKER;
 
 

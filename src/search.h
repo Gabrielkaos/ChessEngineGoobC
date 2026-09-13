@@ -19,6 +19,9 @@ static const int DeltaMarginQ    = 150;
 
 static const int QSSeeMargin     = 110;
 
+static const int TTResearchMargin   = 128;   // Ethereal
+static const int AlphaPruningDepth  = 5;     // Ethereal
+static const int AlphaMargin        = 3000;  // Ethereal
 
 static const int ScoreWindow = 10;
 
@@ -55,8 +58,6 @@ static const int WindowDepth = 5;
 #define RazorMarginCoeff   259
 
 
-// #define SmallProbCutMargin 400
-
 #define IIRDepth 6
 
 #define AllNodeScale 276
@@ -67,8 +68,6 @@ static const int WindowDepth = 5;
 #define NMPVerifyDepth 16   // Stockfish's threshold
 
 #define DoubleExtMargin 15 * 8
-#define TripleExtMargin 90 //unused for now
-
 
 #define TTMoveHistoryMax 8192   // tunable
 #define TTMoveHistoryScale 40   // tunable

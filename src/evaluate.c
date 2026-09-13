@@ -1417,7 +1417,7 @@ int EvalPosition(S_BOARD *pos){
     //null move recognizer
     if(pos->ply > 0 && pos->search->moveStack[pos->ply - 1]==NULLMOVE){
         score = -pos->search->eval_stack[pos->ply - 1] + 2*tempo;
-        return pos->useFiftyMoveRule ? score * (100-pos->st->fiftyMove)/100 : score;
+        return score;
     }
 
     //probing cached eval
@@ -1425,7 +1425,7 @@ int EvalPosition(S_BOARD *pos){
         int hashedEval=ProbeTTEval(pos);
         if(hashedEval != VALUE_NONE){
             score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
-            return pos->useFiftyMoveRule ? score * (100-pos->st->fiftyMove)/100:score;
+            return score;
         }
     }
 
@@ -1434,7 +1434,7 @@ int EvalPosition(S_BOARD *pos){
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
         score = nn_score + tempo;
-        return pos->useFiftyMoveRule ? score * (100 - pos->st->fiftyMove) / 100 : score;
+        return score;
     }
 
     //Initialization
@@ -1463,7 +1463,7 @@ int EvalPosition(S_BOARD *pos){
 
     ASSERT((pos->side==WHITE ? score : -score)+tempo < AB_BOUND);
     score = (pos->side==WHITE ? score : -score)+tempo;
-    return pos->useFiftyMoveRule ? score * (100-pos->st->fiftyMove)/100:score;
+    return score;
 }
 
 

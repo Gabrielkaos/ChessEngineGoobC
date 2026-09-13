@@ -6,7 +6,6 @@
 #include "pvtable.h"
 #include "some_maths.h"
 #include "recog.h"
-#include "inttypes.h"
 #include "evaluate.h"
 #include "bitboards.h"
 #include "uci.h"
@@ -105,32 +104,14 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
 
 //protos
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt);
-int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt);
 
-
-int isExcludedRootMove(const S_BOARD *pos,int move){
+static int isExcludedRootMove(const S_BOARD *pos,int move){
     int i;
     for(i=0;i<pos->excludedRootMoveCount;++i){
         if(pos->excludedRootMoves[i]==move)return TRUE;
     }
     return FALSE;
-}
-
-void checkPvLegality(S_BOARD *pos, int *pvArray, int len) {
-    StateInfo st[MAXDEPTH];
-    for (int i = 0; i < len; i++) {
-        int move = pvArray[i];
-        if (!legal(pos, move)) {
-            printf("ILLEGAL PV MOVE FOUND! move=%x\n", move);
-            fflush(stdout);
-            abort();
-        }
-        makeMove(pos, move, &st[i]);
-    }
-    for (int i = 0; i < len; i++) {
-        takeMove(pos);
-    }
 }
 
 
@@ -147,11 +128,21 @@ static int isShuffling(S_BOARD *pos, int move){
 }
 
 
+//Fifty-move-rule (FMR) eval deflation, from Berserk: as the fifty-move
+//counter climbs toward the draw limit, prune on increasingly pessimistic
+//evals. The corrected static eval (eval_stack) stays untouched so history
+//and improving signals keep the uncorrected value.
+INLINE int adjustEvalOnFmr(const S_BOARD *pos, int eval){
+    if(!pos->useFiftyMoveRule) return eval;
+    return (200 - pos->st->fiftyMove) * eval / 200;
+}
+
+
 //Quiescence search function to check if there are captures that can change the game
 
 int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
-    int value,moveInLoop,moveNum;
+    int value,moveInLoop;
     int best;
 
     //check up for limits
@@ -177,9 +168,11 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         }
     }
 
-    //standing pat: save the static eval, then use it as our floor
+    //standing pat: save the corrected static eval for history, then deflate
+    //it on the fifty-move rule (Berserk) and use it as our floor
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
-    int eval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
+    int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
+    int eval = adjustEvalOnFmr(pos, staticEval);
     best = eval;
     alpha = MAX(alpha, eval);
     if(alpha >= beta) return eval;
@@ -199,6 +192,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
         if(!legal(pos, moveInLoop)) continue;
+
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -298,6 +292,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                }
         }
 
+        //TT research margin (Ethereal): an upper-bound entry from only one
+        //ply shallower that fails hard against alpha needs no re-search
+        if(!pvNode && ttDepth >= depth - 1 && ttBound==HFALPHA &&
+           ttValue + TTResearchMargin <= alpha && depth>=2 && 
+           !inCheck && pos->st->fiftyMove < 96){
+            return alpha;
+        }
+
     }
 
     //Syzygy interior-node probe
@@ -322,24 +324,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
-    //SMALL PROBCUT
-    //cheap TT-only cutoff: if we already have a lower-bound entry from a
-    //reasonably deep search that clears beta by a solid margin, trust it
-    //without generating a single move
-    
-    // int smallProbCutBeta = beta + SmallProbCutMargin;
-    // if(!rootNode &&
-    //    ttHit &&
-    //    (ttBound == HFBETA) &&
-    //    ttDepth >= depth - 4 &&
-    //    ttValue >= smallProbCutBeta &&
-    //    abs(beta) < ISMATE &&
-    //    abs(ttValue) < ISMATE){
-    //     return smallProbCutBeta;
-    // }
-
-
-
     //store in eval_stack each staticEval
     //history stays independent of how much correction was already
     //applied when this position was last stored
@@ -351,6 +335,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //see if we improved on the last position
     improving = (!inCheck && pos->ply >= 2) ? (staticEval > pos->search->eval_stack[pos->ply-2] || (pos->ply >= 4 && staticEval > pos->search->eval_stack[pos->ply-4])) : 1;
+
+    //FMR-deflated eval used for pruning: more pessimistic as the fifty-move
+    //draw approaches (Berserk). improving/hindsight keep the raw staticEval.
+    int eval = inCheck ? staticEval : adjustEvalOnFmr(pos, staticEval);
 
 
     //hindsight depth adjustment based on how much the parent reduced
@@ -369,7 +357,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //recover — verify with qsearch instead of expanding this node
     if(!info->bruteForceMode && !pvNode && !inCheck &&
     depth <= RazoringDepth &&
-    staticEval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
+    eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
         int r = Quiescence(alpha,beta,pos,info,table);
         if(r <= alpha) return r;
     }
@@ -381,12 +369,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     if(!info->bruteForceMode && !inCheck && !pvNode){
 
-        //beta pruning
-        //at shallow depth and when mate is unlikely
-        //we prune aggresively
-        //means that the position is good enough that no deeper search needed
-        if(depth <= BetaPruningDepth && staticEval - BetaMargin*depth > beta){
-            return staticEval;
+        if(depth <= BetaPruningDepth && eval - BetaMargin*depth > beta){
+            return eval;
+        }
+
+        //alpha pruning (Ethereal): in non-PV nodes a shallow position whose
+        //eval is hopelessly far below alpha cannot be rescued by any move
+        if(depth <= AlphaPruningDepth && eval + AlphaMargin <= alpha){
+            return eval;
         }
 
         //null move
@@ -396,7 +386,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //null move should not be done at root
             //if the position is favorable, we are likely to prune
             if(!rootNode &&
-                staticEval >= beta &&
+                eval >= beta &&
                 depth >= defaultNullMoveDepth &&
                 pos->ply >= pos->nmpMinPly &&
                 boardHasNonPawnMaterial(pos,pos->side) &&
@@ -407,7 +397,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 StateInfo nullSt;
                 makeNullMove(pos, &nullSt);
 
-                R = 4 + depth / 6 + MIN(3, (staticEval - beta) / 200);
+                R = 4 + depth / 6 + MIN(3, (eval - beta) / 200);
 
                 int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, &lpv);
                 takeNullMove(pos);
@@ -455,14 +445,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         !pvNode &&
         depth >=probCutDepth &&
         abs(beta) < ISMATE &&
-        (staticEval>=beta || staticEval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
+        (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
 
             int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
             int move_in_prob;
-            //int probThresh = rBeta - staticEval;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
-            initNoisyMovePicker(probmp, rBeta - staticEval, NOMOVE);
+            initNoisyMovePicker(probmp, rBeta - eval, NOMOVE);
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
                 if (!legal(pos, move_in_prob)) continue;
@@ -528,14 +517,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //checking if this position is likely to improve
             //if not then we skip it
             if (   depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
+                && (eval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
                     skipQuiets = 1;
                 }
 
             if (   !skipQuiets
                 && !isSpecial
                 && depth <= FutilityPruningDepth
-                && (staticEval + FutilityMargin * depth) <= alpha
+                && (eval + FutilityMargin * depth) <= alpha
                 && hist < FutilityPruningHistoryLimit[improving]){
                     continue;
                 }
@@ -731,13 +720,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
-    //soften fail-high scores toward beta — avoids overshoot noise,
-    //skip this near mate scores where exact values matter
-    // if(bestScore>=beta && abs(bestScore)<ISMATE && abs(alpha)<ISMATE){
-    //     bestScore = (bestScore*depth + beta) / (depth+1);
-    // }
-
-
     //update history counters on a fail high for a quiet move
     if(bestScore>=beta && !moveIsTactical(pos,bestMove))
         updateHistories(pos,quietsTried,quietsPlayed,depth);
@@ -782,7 +764,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //Singularity
 //checks if the move is truly singular or the only best move in the position
 //also checks if a stornger move if found(MULTICUT)
-int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt){
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt){
 
     int moveInLoop = NOMOVE;
     int skipQuiets = 0;
@@ -843,7 +825,6 @@ int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum
         int adjustedDoubleMargin = DoubleExtMargin - pos->shared->ttMoveHistory / TTMoveHistoryScale;
 
         if(value < rBeta - adjustedDoubleMargin) extension++;
-        // if(value < rBeta - TripleExtMargin) extension++;
         return extension;
     }
 
@@ -972,7 +953,7 @@ int SearchPositionThread(void *data){
 }
 
 //MultiPV support
-int countLegalRootMoves(S_BOARD *pos){
+static int countLegalRootMoves(S_BOARD *pos){
     S_MOVELIST list[1];
     GenerateAllMoves(pos,list);
 
@@ -995,7 +976,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     S_PVTABLE *table     = workerthread->ttable;
     int threadNum        = workerthread->threadNumber;
 
-    int currentDepth,numberOfPvMoves,bestScore;
+    int currentDepth,numberOfPvMoves=0,bestScore;
     int pvNum;
     S_PVLINE rootPv;
 
@@ -1080,8 +1061,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     for (int i = 0; i < numberOfPvMoves; i++) {
                         pos->search->pvArray[i] = rootPv.moves[i];
                     }
-                    
-                    // checkPvLegality(pos, pos->search->pvArray, numberOfPvMoves);
+
                     if(pvNum==0){
                         workerthread->bestMove   = pos->search->pvArray[0];
                         workerthread->ponderMove = numberOfPvMoves > 1 ? pos->search->pvArray[1] : NOMOVE;
@@ -1155,6 +1135,12 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
 
         if(info->stopped==TRUE)break;
+
+        //publish this thread's Lazy SMP vote for the just-completed depth;
+        //the worker that completes the deepest, most convincing search wins
+        workerthread->voteScore        = pvScore[0];
+        workerthread->voteDepth        = currentDepth;
+        workerthread->votePvLineCount  = rootPv.count;
 
         //limits -- based on the best (PV line 1) result only, same as before
         if(!info->UciInfinite){
@@ -1302,6 +1288,58 @@ static int workerLoop(void *data) {
 
             worker->workerData.info->stopped = TRUE;
 
+            //Lazy SMP best-thread voting (Berserk/Stockfish get_best_thread):
+            //wait for every helper to publish its vote, then adopt the
+            //strongest completed-depth evidence — fastest mate always wins,
+            //otherwise score weighted by depth (with PV-length tiebreak)
+            int activeThreads = worker->workerData.info->threadNum;
+            if(activeThreads > poolSize) activeThreads = poolSize;
+            if(activeThreads > 1){
+                struct timespec tick = { .tv_sec = 0, .tv_nsec = 1000000 };
+                for(int i = 1; i < activeThreads; ++i){
+                    while(threadPool[i].searching) thrd_sleep(&tick, NULL);
+                }
+
+                int worst = threadPool[0].workerData.voteScore;
+                for(int i = 1; i < activeThreads; ++i)
+                    if(threadPool[i].workerData.voteScore < worst)
+                        worst = threadPool[i].workerData.voteScore;
+
+                int bestIdx = 0;
+                int bestScr = threadPool[0].workerData.voteScore;
+                int bestVote = threadPool[0].workerData.voteDepth
+                             * (threadPool[0].workerData.voteScore - worst);
+
+                for(int i = 1; i < activeThreads; ++i){
+                    int cs = threadPool[i].workerData.voteScore;
+                    if(abs(bestScr) >= TB_WIN_VALUE){
+                        //near-mate scores: always prefer the fastest mate
+                        if(cs > bestScr){
+                            bestIdx = i;
+                            bestScr = cs;
+                            bestVote = threadPool[i].workerData.voteDepth * (cs - worst);
+                        }
+                    }
+                    else if(cs > -TB_WIN_VALUE){
+                        int cv = threadPool[i].workerData.voteDepth * (cs - worst);
+                        if(cv > bestVote ||
+                           (cv == bestVote &&
+                            threadPool[i].workerData.votePvLineCount >
+                            threadPool[bestIdx].workerData.votePvLineCount)){
+                            bestIdx = i;
+                            bestScr = cs;
+                            bestVote = cv;
+                        }
+                    }
+                }
+
+                //adopt the winning thread's move as our bestmove
+                if(bestIdx != 0 && threadPool[bestIdx].workerData.bestMove != NOMOVE){
+                    worker->workerData.bestMove   = threadPool[bestIdx].workerData.bestMove;
+                    worker->workerData.ponderMove = threadPool[bestIdx].workerData.ponderMove;
+                }
+            }
+
             //safety net: verify the bestmove is actually legal before sending it
             //to the GUI — a TT collision or threading issue could leave a stale
             //move that passed makeMove in a different internal state
@@ -1411,6 +1449,9 @@ static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_P
     w->workerData.threadNumber = threadNum;
     w->workerData.bestMove     = NOMOVE;
     w->workerData.ponderMove   = NOMOVE;
+    w->workerData.voteScore    = 0;
+    w->workerData.voteDepth    = 0;
+    w->workerData.votePvLineCount = 0;
 }
 
 static void startWorkerSearch(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
@@ -1468,9 +1509,6 @@ void FreeThreadPool(void) {
 
 void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     ASSERT(checkBoard(pos));
-
-    int bestMove   = NOMOVE;
-    int ponderMove = NOMOVE;
 
     //init search things
     InitSearcher(pos, info, table);

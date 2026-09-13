@@ -1803,5 +1803,14 @@
     ->scoring bad noises based on capture history
     ->not double weighting the main history
     ->added Space/Threat/Complexity/Closedness to eval
+    ->added Alpha Pruning
+    ->added FMR eval adjusting function
+    ->added FMR adjustment to staticEval in AlphaBeta and Quiescence
+    ->added TTresearchMargin based off ethereal
+    ->not deflating eval by FMR in EvalPosition()
+
+    //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
+    
+    ->added best thread voting to lazy smp
 
 	*/
