@@ -231,6 +231,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int oldAlpha        =alpha;
     int Legal           =0;
     int bestScore       =-AB_BOUND;
+    int maxValue        =INFINITE_BOUND;
     
     S_PVLINE lpv;
     lpv.count = 0;
@@ -303,7 +304,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //Syzygy interior-node probe
-    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth){
+    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth && !pos->tbHit){
         int tbScore, tbBound;
         if(TBProbeWDLSearch(pos, pos->ply, &tbScore, &tbBound)){
             info->tbhits++;
@@ -311,7 +312,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if (tbBound == HFEXACT
                 || (tbBound == HFBETA && tbScore >= beta)
                 || (tbBound == HFALPHA && tbScore <= alpha)) {
-                StoreHashEntry(pos, table, NOMOVE, tbScore, tbBound, MAXDEPTH-1, VALUE_NONE);
+                StoreHashEntry(pos, table, NOMOVE, tbScore, tbBound, MIN(MAXDEPTH-1, depth+6), VALUE_NONE);
                 return tbScore;
             }
 
@@ -319,7 +320,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if (tbScore > alpha) alpha = tbScore;
                 if (tbScore > bestScore) bestScore = tbScore;
             } else if (tbBound == HFALPHA) {
-                if (tbScore < beta) beta = tbScore;
+                if (tbScore < maxValue) maxValue = tbScore;
             }
         }
     }
@@ -748,6 +749,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             updateCorrectionHistory(pos, depth, diff);
         }
     }
+
+    //clamp to Syzygy upper bound if one was found
+    if(bestScore > maxValue) bestScore = maxValue;
 
     //update TT
     if(rootNode) pos->search->rootPvMove = bestMove;
