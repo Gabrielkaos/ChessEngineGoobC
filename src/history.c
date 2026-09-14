@@ -192,7 +192,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             //the whole game (Stockfish: << bonus * (bonus > -4 ? 1104 : 459) / 1024)
             {
                 const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
-                const int pBonus = delta * (delta > -4 ? 1104 : 459) / 1024;
+                const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
                 histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
                                   pBonus, PAWN_HIST_MAX);
             }
