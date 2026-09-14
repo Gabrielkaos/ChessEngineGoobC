@@ -63,6 +63,7 @@ typedef struct {
     ALIGN64 CaptureHistoryTable  chist;
     ALIGN64 HistoryTable         histtable;
     ALIGN64 CounterMoveTable     cmtable;
+    ALIGN64 FollowupMoveTable    followupTable;
     ALIGN64 PawnCorrectionTable  pawnCorrHist;
     ALIGN64 NonPawnCorrectionTable nonPawnCorrHist;
     ALIGN64 MinorCorrectionTable minorCorrHist;

@@ -28,6 +28,7 @@ typedef int16_t ContinuationTable[CONT_HIST_SLOTS][6][64][6][64];
 typedef int16_t HistoryTable[2][2][2][6][64];
 typedef int16_t CaptureHistoryTable[6][2][2][64][5];
 typedef int CounterMoveTable[2][6][64];
+typedef int FollowupMoveTable[2][6][64];
 
 //Stockfish-style low-ply history: butterfly history kept only for the
 //first few plies of the search, to sharpen move ordering near the root
@@ -190,6 +191,7 @@ enum {
     STAGE_KILLER_1,
     STAGE_KILLER_2,
     STAGE_COUNTER_MOVE,
+    STAGE_FOLLOWUP_MOVE,
     STAGE_GENERATE_QUIET,
     STAGE_GOOD_QUIET,
     STAGE_BAD_NOISY,
@@ -218,6 +220,7 @@ typedef struct {
     int killer1;
     int killer2;
     int counter;
+    int followup;
 
     U64 threats;
 

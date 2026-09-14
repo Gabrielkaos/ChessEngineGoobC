@@ -488,7 +488,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
 
         int isExempt      = (mp->lastStage==STAGE_TABLE || mp->lastStage==STAGE_GOOD_NOISY);
-        int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE);
+        int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE || mp->lastStage==STAGE_FOLLOWUP_MOVE);
         int isSpecial     = isExempt || isRefutation;
 
         //Syzygy root filtering

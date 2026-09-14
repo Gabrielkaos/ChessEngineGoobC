@@ -38,10 +38,16 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
     int cmTo     = TOSQ(counter);
 
+    int followup = pos->ply > 1 ? pos->search->moveStack[pos->ply - 2] : NOMOVE;
+    int fmPiece  = pos->ply > 1 ? pos->search->pieceStack[pos->ply - 2] : 0;
+    int fmTo     = TOSQ(followup);
+
     mp->killer1 = pos->search->searchKillers[0][pos->ply];
     mp->killer2 = pos->search->searchKillers[1][pos->ply];
     mp->counter = (counter != NOMOVE && counter != NULLMOVE)
                 ? pos->shared->cmtable[!pos->side][cmPiece][cmTo] : NOMOVE;
+    mp->followup = (followup != NOMOVE && followup != NULLMOVE)
+                 ? pos->shared->followupTable[pos->side][fmPiece][fmTo] : NOMOVE;
 }
 
 void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
@@ -53,7 +59,7 @@ void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove){
     mp->list->count = 0;
     mp->stage       = STAGE_TABLE;
     mp->tableMove = ttMove;
-    mp->killer1 = mp->killer2 = mp->counter = NOMOVE;
+    mp->killer1 = mp->killer2 = mp->counter = mp->followup = NOMOVE;
     mp->threshold   = threshold;
     mp->type        = NOISY_PICKER;
     mp->badNoisyCount = 0;
@@ -102,6 +108,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move == mp->killer1) mp->killer1 = NOMOVE;
                 if(move == mp->killer2) mp->killer2 = NOMOVE;
                 if(move == mp->counter) mp->counter = NOMOVE;
+                if(move == mp->followup) mp->followup = NOMOVE;
 
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
                     mp->badNoisies[mp->badNoisyCount].move  = move;
@@ -139,8 +146,9 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             /* fallthrough */
 
         case STAGE_COUNTER_MOVE:
-            mp->stage = STAGE_GENERATE_QUIET;
+            mp->stage = STAGE_FOLLOWUP_MOVE;
             if(!skipQuiets
+                && mp->counter != NOMOVE
                 && mp->counter != mp->tableMove
                 && mp->counter != mp->killer1
                 && mp->counter != mp->killer2
@@ -148,6 +156,21 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 && moveIsPseudoLegal(pos, mp->counter)){
                 mp->lastStage = STAGE_COUNTER_MOVE;
                 return mp->counter;
+            }
+            /* fallthrough */
+
+        case STAGE_FOLLOWUP_MOVE:
+            mp->stage = STAGE_GENERATE_QUIET;
+            if(!skipQuiets
+                && mp->followup != NOMOVE
+                && mp->followup != mp->tableMove
+                && mp->followup != mp->killer1
+                && mp->followup != mp->killer2
+                && mp->followup != mp->counter
+                && !moveIsTactical(pos, mp->followup)
+                && moveIsPseudoLegal(pos, mp->followup)){
+                mp->lastStage = STAGE_FOLLOWUP_MOVE;
+                return mp->followup;
             }
             /* fallthrough */
 
@@ -247,7 +270,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 move = mp_popMoveAt(mp->list->moves, mp->split, &mp->quietSize, best);
 
                 if(move == mp->tableMove || move == mp->killer1 ||
-                   move == mp->killer2  || move == mp->counter)
+                   move == mp->killer2  || move == mp->counter ||
+                   move == mp->followup)
                     continue;
 
                 mp->lastStage = STAGE_GOOD_QUIET;
@@ -282,7 +306,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 move = mp->badNoisies[mp->badNoisyIndex++].move;
 
                 if(move == mp->tableMove || move == mp->killer1 ||
-                   move == mp->killer2  || move == mp->counter)
+                   move == mp->killer2  || move == mp->counter ||
+                   move == mp->followup)
                     continue;
 
                 mp->lastStage = STAGE_BAD_NOISY;
@@ -303,7 +328,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 move = mp_popMoveAt(mp->list->moves, mp->split, &mp->quietSize, best);
 
                 if(move == mp->tableMove || move == mp->killer1 ||
-                   move == mp->killer2  || move == mp->counter)
+                   move == mp->killer2  || move == mp->counter ||
+                   move == mp->followup)
                     continue;
 
                 mp->lastStage = STAGE_BAD_QUIET;

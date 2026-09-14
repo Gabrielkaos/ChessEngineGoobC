@@ -14,6 +14,7 @@ void resetContinuationTable(S_BOARD *pos){
     memset(pos->shared->chist,0,sizeof(CaptureHistoryTable));
     memset(pos->shared->histtable,0,sizeof(HistoryTable));
     memset(pos->shared->cmtable,0,sizeof(CounterMoveTable));
+    memset(pos->shared->followupTable,0,sizeof(FollowupMoveTable));
     clearCorrectionHistory(pos);
     pos->shared->ttMoveHistory = 0;
 }

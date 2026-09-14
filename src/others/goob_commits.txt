@@ -1812,6 +1812,7 @@
     ->added more robust KBPvK draw recognizer
     ->more robust multiPV and multiThread Search
     ->lowered threshold good quiet from -14000 -> -3000
+    ->added follow up move table
 
     //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
     

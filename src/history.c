@@ -151,6 +151,14 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
         pos->shared->cmtable[!pos->side][cmPiece][cmTo] = bestMove;
     }
 
+    int fmMove  = pos->ply > 1 ? pos->search->moveStack[pos->ply - 2] : NOMOVE;
+    int fmPiece = pos->ply > 1 ? pos->search->pieceStack[pos->ply - 2] : 0;
+    int fmTo    = TOSQ(fmMove);
+
+    if (fmMove != NOMOVE && fmMove != NULLMOVE){
+        pos->shared->followupTable[pos->side][fmPiece][fmTo] = bestMove;
+    }
+
     if(!(length==1 && depth <= 3)){
 
         U64 threats = allAttackedSquares(pos, pos->side ^ 1);
