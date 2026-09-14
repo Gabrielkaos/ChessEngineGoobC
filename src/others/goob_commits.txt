@@ -1814,7 +1814,7 @@
     ->lowered threshold good quiet from -14000 -> -3000
     ->added follow up move table
 
-    //Previous Best - GOOB-2-2-BETA-native-OLD(Base)
+    //Previous Best - /home/gabriel/Desktop/engines/GOOB-2-2-BETA-native-OLD(Base)
     
 
 	*/
