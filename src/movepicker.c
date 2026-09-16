@@ -89,10 +89,17 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
             for(int i = 0; i < mp->list->count; ++i){
                 move = mp->list->moves[i].move;
                 int to = TOSQ(move);
+                int from = FROMSQ(move);
+                int pt = pieceType[pos->pieces[from]];
                 int captured = pieceType[pos->pieces[to]];
                 if(move & MVFLAGEP)   captured = p_pawn;
                 else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
-                mp->list->moves[i].score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured];
+                
+                int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - pt;
+                if(move & MVFLAGPROM){
+                    score += MVVAugment[pieceType[PROMOTED(move)]] - 1200;
+                }
+                mp->list->moves[i].score = score;
             }
             mp->split = mp->noisySize = mp->list->count;
             mp->stage = STAGE_GOOD_NOISY;
@@ -111,8 +118,20 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move == mp->followup) mp->followup = NOMOVE;
 
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
+                    int from = FROMSQ(move);
+                    int to = TOSQ(move);
+                    int pt = pieceType[pos->pieces[from]];
+                    int captured = pieceType[pos->pieces[to]];
+                    if(move & MVFLAGEP)   captured = p_pawn;
+                    else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
+                    
+                    int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - pt;
+                    if(move & MVFLAGPROM){
+                        score += MVVAugment[pieceType[PROMOTED(move)]] - 1200;
+                    }
+
                     mp->badNoisies[mp->badNoisyCount].move  = move;
-                    mp->badNoisies[mp->badNoisyCount].score = getCaptureHistory(pos, move, mp->threats);
+                    mp->badNoisies[mp->badNoisyCount].score = score;
                     mp->badNoisyCount++;
                     continue;
                 }
