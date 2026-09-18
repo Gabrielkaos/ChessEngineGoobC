@@ -264,6 +264,7 @@ TUNABLE int KingPawnFileProximity[8] = {
     S(  36,  46), S(  22,  31), S(  13,  15), S(  -8, -22),
     S(  -5, -62), S(  -3, -75), S( -15, -81), S( -12, -75),
 };
+TUNABLE int KingUncastled = S( -20, 0);
 
 //Queen Eval Things
 TUNABLE int QueenRelativePin = S( -22, -13);
@@ -278,8 +279,9 @@ TUNABLE int QueenMobility[28] = {
 };
 
 //Rook Eval Things
-TUNABLE int RookFile[2]   = { S(  10,   9), S(  34,   8) };
-TUNABLE int RookOnSeventh = S(  -1,  42);
+TUNABLE int RookFile[2]          = { S(  10,   9), S(  34,   8) };
+TUNABLE int RookEnemyKingFile[2] = { S(  15,   0), S(  30,   0) };
+TUNABLE int RookOnSeventh        = S(  -1,  42);
 TUNABLE int RookMobility[15] = {
     S(-127,-148), S( -56,-127), S( -25, -85), S( -12, -28),
     S( -10,   2), S( -12,  27), S( -11,  42), S(  -4,  46),
@@ -764,6 +766,12 @@ INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
     int count = COUNTBIT(defenders & eval_info->kingAreas[US]);
     eval += KingDefenders[count];
 
+    //uncastled king penalty with queens on the board
+    const int castleRights = (US == WHITE) ? (WKCA | WQCA) : (BKCA | BQCA);
+    if ((pos->st->castleRights & castleRights) && enemyQueens) {
+        eval += KingUncastled;
+    }
+
     if(eval_info->attCnt[US]>1-COUNTBIT(enemyQueens)){
 
         U64 weak = eval_info->attacked[THEM]
@@ -863,6 +871,11 @@ INLINE int evalRooks(S_BOARD *pos, EVAL_INFO *eval_info,int color){
         if (!(myPawns & FileBBMask[FILE_OF(sq)])) {
             open = !(notMyPawns & FileBBMask[FILE_OF(sq)]);
             eval += RookFile[open];
+
+            //rook facing enemy king's file on open/semi-open file
+            if (FILE_OF(sq) == FILE_OF(eval_info->kingSq[!color])) {
+                eval += RookEnemyKingFile[open];
+            }
         }
 
         //rook on seventh

@@ -92,9 +92,11 @@ static REG regs[] = {
     R(KingDefenders, "[12]"),
     RN(KingShelter, 128, "[2][8][8]"),
     R(KingPawnFileProximity, "[8]"),
+    { &KingUncastled, 1, "KingUncastled", "" },
     { &QueenRelativePin, 1, "QueenRelativePin", "" },
     R(QueenMobility, "[28]"),
     RN(RookFile, 2, "[2]"),
+    RN(RookEnemyKingFile, 2, "[2]"),
     { &RookOnSeventh, 1, "RookOnSeventh", "" },
     R(RookMobility, "[15]"),
     { &KnightBehindPawn, 1, "KnightBehindPawn", "" },
@@ -233,14 +235,14 @@ static void setup_pos(S_BOARD *pos, const CPOS *cp) {
     ResetBoard(pos);
     for (int i = 0; i < 64; i++) pos->pieces[i] = cp->pieces[i];
     pos->side = cp->side;
-    pos->castleRights = cp->castle;
-    pos->enPas = cp->ep;
-    pos->fiftyMove = cp->fifty;
-    pos->pkHash = GeneratePKHash(pos);
-    pos->npHash[WHITE] = GenerateNonPawnHash(pos, WHITE);
-    pos->npHash[BLACK] = GenerateNonPawnHash(pos, BLACK);
-    pos->minorHash = GenerateMinorHash(pos);
-    pos->posKey = GeneratePosKey(pos);
+    pos->st->castleRights = cp->castle;
+    pos->st->enPas = cp->ep;
+    pos->st->fiftyMove = cp->fifty;
+    pos->st->pkHash = GeneratePKHash(pos);
+    pos->st->npHash[WHITE] = GenerateNonPawnHash(pos, WHITE);
+    pos->st->npHash[BLACK] = GenerateNonPawnHash(pos, BLACK);
+    pos->st->minorHash = GenerateMinorHash(pos);
+    pos->st->posKey = GeneratePosKey(pos);
     updateListMaterial(pos);
 }
 
