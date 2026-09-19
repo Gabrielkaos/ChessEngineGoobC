@@ -374,6 +374,7 @@ TUNABLE int ThreatByPawnPush           = S( 15, 32);
 TUNABLE int SpaceRestrictPiece = S(-4, -1);
 TUNABLE int SpaceRestrictEmpty = S(-4, -2);
 TUNABLE int SpaceCenterControl = S( 3,  0);
+TUNABLE int PawnCentralDuo     = S(22,  6);
 
 //Closedness Eval Things (ported from Ethereal 14.00)
 TUNABLE int ClosednessKnightAdjustment[9] = {
@@ -1206,6 +1207,15 @@ INLINE int evaluateSpace(S_BOARD *pos, EVAL_INFO *eval_info, int colour) {
         + 2 * COUNTBIT(pos->byTypeBB[ROOK  ] | pos->byTypeBB[QUEEN ]) > 12) {
         count = COUNTBIT(~eval_info->attacked[THEM] & (eval_info->attacked[US] | friendly) & CENTER_BIG);
         eval += count * SpaceCenterControl;
+    }
+
+    // Unopposed central pawn duo bonus (e.g. e4+d4 for White, e5+d5 for Black)
+    U64 myPawns = pieces_cp(pos, US, PAWN);
+    U64 enemyPawns = pieces_cp(pos, THEM, PAWN);
+    U64 duoMask = (1ULL << RELATIVE_SQ(US, D4)) | (1ULL << RELATIVE_SQ(US, E4));
+    U64 oppMask = (1ULL << RELATIVE_SQ(US, D5)) | (1ULL << RELATIVE_SQ(US, E5));
+    if (((myPawns & duoMask) == duoMask) && !(enemyPawns & oppMask)) {
+        eval += PawnCentralDuo;
     }
 
     return eval;

@@ -129,6 +129,7 @@ static REG regs[] = {
     { &SpaceRestrictPiece, 1, "SpaceRestrictPiece", "" },
     { &SpaceRestrictEmpty, 1, "SpaceRestrictEmpty", "" },
     { &SpaceCenterControl, 1, "SpaceCenterControl", "" },
+    { &PawnCentralDuo, 1, "PawnCentralDuo", "" },
     RN(ClosednessKnightAdjustment, 9, "[9]"),
     RN(ClosednessRookAdjustment, 9, "[9]"),
     { &ComplexityTotalPawns, 1, "ComplexityTotalPawns", "" },

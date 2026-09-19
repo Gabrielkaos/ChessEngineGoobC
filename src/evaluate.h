@@ -91,7 +91,7 @@ extern int BishopTrapped[2], RookTrapped;
 extern int ThreatWeakPawn, ThreatMinorAttackedByPawn, ThreatMinorAttackedByMinor, ThreatMinorAttackedByMajor;
 extern int ThreatRookAttackedByLesser, ThreatMinorAttackedByKing, ThreatRookAttackedByKing;
 extern int ThreatQueenAttackedByOne, ThreatOverloadedPieces, ThreatByPawnPush;
-extern int SpaceRestrictPiece, SpaceRestrictEmpty, SpaceCenterControl;
+extern int SpaceRestrictPiece, SpaceRestrictEmpty, SpaceCenterControl, PawnCentralDuo;
 extern int ClosednessKnightAdjustment[9], ClosednessRookAdjustment[9];
 extern int ComplexityTotalPawns, ComplexityPawnFlanks, ComplexityPawnEndgame, ComplexityAdjustment;
 extern int tempo;
