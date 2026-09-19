@@ -189,6 +189,11 @@ TUNABLE int SafetySafeRookCheck   = S(  90,  98);
 TUNABLE int SafetySafeBishopCheck = S(  59,  59);
 TUNABLE int SafetySafeKnightCheck = S( 112, 117);
 TUNABLE int SafetyAdjustment      = S( -74, -26);
+TUNABLE int SafetyFlightSquares[9] = {
+    S(  88,  64), S(  45,  32), S(  18,  12), S(   0,   0),
+    S( -15, -10), S( -28, -18), S( -38, -24), S( -46, -28),
+    S( -52, -32),
+};
 TUNABLE int SafetyStorm[2][8] = {
    {S(  -4,  -1), S(  -8,   3), S(   0,   5), S(   1,  -1),
     S(   3,   6), S(  -2,  20), S(  -2,  18), S(   2, -12)},
@@ -745,6 +750,28 @@ INLINE int evalBishops(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 }
 
 
+// King escape-square flood fill:
+// Walks the king's adjacent squares and counts how many are simultaneously:
+// (a) not attacked by the enemy
+// (b) not occupied by a friendly piece
+// This measures real flight squares, providing a direct metric of "can the king actually run"
+// (how trapped the king is right now), complementing the attacker density metrics
+// (SafetyWeakSquares, kingAttacksCount, etc.).
+INLINE int kingEscapeSquaresFloodFill(const S_BOARD *pos, const EVAL_INFO *eval_info, int color){
+    int sq = eval_info->kingSq[color];
+    int them = !color;
+
+    // Bitboard parallel equivalent of walking each adjacent square s in king_attacks[sq]:
+    // (a) ~eval_info->attacked[them] : not attacked by the enemy
+    // (b) ~pos->byColorBB[color]     : not occupied by a friendly piece
+    U64 escapes = king_attacks[sq] & ~eval_info->attacked[them] & ~pos->byColorBB[color];
+    return COUNTBIT(escapes);
+}
+
+INLINE int kingFlightSquares(const S_BOARD *pos, const EVAL_INFO *eval_info, int color){
+    return kingEscapeSquaresFloodFill(pos, eval_info, color);
+}
+
 INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     int US=color;
@@ -775,6 +802,8 @@ INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
     if(eval_info->attCnt[US]>1-COUNTBIT(enemyQueens)){
 
+        int escapes = kingEscapeSquaresFloodFill(pos, eval_info, US);
+
         U64 weak = eval_info->attacked[THEM]
                     & ~eval_info->attackedBy2[US]
                     & (~eval_info->attacked[US] | eval_info->attacks_array_queens[US] | king_attacks[sq]);
@@ -798,6 +827,7 @@ INLINE int evalKing(S_BOARD *pos, EVAL_INFO *eval_info,int color){
 
         safety+=SafetyAttackValue     * scaledAttackCounts
                 + SafetyWeakSquares     * COUNTBIT(weak & eval_info->kingAreas[US])
+                + SafetyFlightSquares[escapes]
                 + SafetyNoEnemyQueens   * !enemyQueens
                 + SafetySafeQueenCheck  * COUNTBIT(queenChecks)
                 + SafetySafeRookCheck   * COUNTBIT(rookChecks)

@@ -78,7 +78,7 @@ extern int PassedSafePromotionPath, PassedProtectedByRook;
 extern int SafetyKnightWeight, SafetyBishopWeight, SafetyRookWeight, SafetyQueenWeight;
 extern int SafetyAttackValue, SafetyWeakSquares, SafetyNoEnemyQueens;
 extern int SafetySafeQueenCheck, SafetySafeRookCheck, SafetySafeBishopCheck, SafetySafeKnightCheck;
-extern int SafetyAdjustment, SafetyStorm[2][8], SafetyShelter[2][8];
+extern int SafetyAdjustment, SafetyFlightSquares[9], SafetyStorm[2][8], SafetyShelter[2][8];
 extern int KingStorm[2][4][8], KingDefenders[12], KingShelter[2][8][8];
 extern int KingPawnFileProximity[8], KingUncastled;
 extern int QueenRelativePin, QueenMobility[28];

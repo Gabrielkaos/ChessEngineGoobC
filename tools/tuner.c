@@ -86,6 +86,7 @@ static REG regs[] = {
     { &SafetySafeBishopCheck, 1, "SafetySafeBishopCheck", "" },
     { &SafetySafeKnightCheck, 1, "SafetySafeKnightCheck", "" },
     { &SafetyAdjustment, 1, "SafetyAdjustment", "" },
+    R(SafetyFlightSquares, "[9]"),
     RN(SafetyStorm, 16, "[2][8]"),
     RN(SafetyShelter, 16, "[2][8]"),
     RN(KingStorm, 64, "[2][4][8]"),
