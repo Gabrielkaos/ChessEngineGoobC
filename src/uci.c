@@ -366,6 +366,9 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         sscanf(line, "%*s %*s %*s %*s %511s", path);
         if (strlen(path)>0 && strcmp(path,"<empty>")!=0) {
             pknet_init(path);
+        }else{
+            pknet_clear();
+            printf("info string PKNet cleared\n");
         }
         clearEvalTable(pos->eTable);
      }

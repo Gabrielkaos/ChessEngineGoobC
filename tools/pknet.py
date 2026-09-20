@@ -39,6 +39,12 @@ Usage
 
     # Round-trip check that the exported binary decodes identically
     python3 pknet.py verify pknet.bin
+
+For GOOB's own datagen (tools/datagen_pk.py), mg;eg are the PK-RESIDUAL
+labels from eval_fen_pk_residual_c (pawn eval + king/pawn safety), i.e.
+exactly the terms the engine lets the net replace. Do not label with the
+full classical eval -- the engine adds the piece terms on top of the net's
+output, so full-eval labels get double-counted at inference time.
 """
 
 import argparse
@@ -121,7 +127,7 @@ def fen_to_features(fen):
 # ---- network forward (must match pknet_eval in pknet_loader.c) ------------
 def forward(x, phase, W1, b1, W2, b2, scale=1.0):
     h = b1 + W1 @ x                       # (H1,)
-    gate = (h > 0).astype(np.float32)
+    gate = (h >= 0).astype(np.float32)    # matches C: h[j] >= 0.0f
     out = b2 + (gate * h) @ W2.T          # (OUT,) = [mg, eg]
     interp = (out[0] * (256 - phase) + out[1] * phase) / 256.0
     return interp * scale
@@ -216,7 +222,7 @@ if HAS_TORCH:
 
         def forward(self, x, phase):
             h = self.fc1(x)
-            gate = (h > 0).float()
+            gate = (h >= 0).float()          # matches C: h[j] >= 0.0f
             out = self.fc2(gate * h)
             wmg = (256.0 - phase) / 256.0
             weg = phase / 256.0
@@ -369,7 +375,7 @@ def train(data_path, out_path, epochs, lr, batch, from_result, scale=1.0, resume
                 xb = X[idx]; pb = P[idx]; yb = Y[idx]
 
                 h = b1 + xb @ W1.T
-                gate = (h > 0).astype(np.float32)
+                gate = (h >= 0).astype(np.float32)   # matches C: h[j] >= 0.0f
                 out = b2 + (gate * h) @ W2.T
 
                 wmg = (256.0 - pb) / 256.0

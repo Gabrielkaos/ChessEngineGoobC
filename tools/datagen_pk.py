@@ -7,10 +7,16 @@ Usage:
     nodes        search nodes per move          (default 1000)
     games        total games across all threads (default 5000)
     threads      number of engine processes     (default 5)
-    out          output file, FEN;result lines  (default dataset_pk.epd, appended)
+    out          output file, FEN;mg;eg lines      (default dataset_pk.epd, appended)
     pos_cap      max quiet positions kept per game; 0 = keep all (default)
 
-Output format is "FEN;result" (result from white's POV).
+Output format is "FEN;mg;eg" (white POV).
+
+mg;eg are the PK-RESIDUAL labels the net must learn: pawn structure eval +
+king/pawn safety (eval_fen_pk_residual_c). They are NOT the full classical
+eval -- the engine keeps evalKing/passers/threats/space/psqtmat/closedness/
+complexity classical and adds them on top of the net's output, so labelling
+with the full eval would double-count those terms at inference time.
 
 --- Reliability notes (fixed) ---
 Two resource-leak bugs could hang the whole machine on long runs:
@@ -310,7 +316,15 @@ def generate_random_pk_fen():
 
         board.turn = chess.WHITE if random.random() > 0.5 else chess.BLACK
 
-        if board.is_valid():
+        # is_valid() is only a structural sanity check (kings present,
+        # pawns on ranks 2-7, ...); a random K+P scatter can still be an
+        # unreachable position, e.g. a pawn giving check to the king of the
+        # side NOT to move. Reject check states entirely: they are dead
+        # giveaways in a quiet-labelled dataset and pollute the labels.
+        if board.is_valid() and not board.is_check():
+            # side NOT to move's king attacked => illegal/unreachable
+            if board.attackers(board.turn, board.king(not board.turn)):
+                continue
             board.halfmove_clock = 0
             board.fullmove_number = 1
             return board.fen()
@@ -392,14 +406,18 @@ def play_game(eng, out_fh, lock, stats):
         moves_history.append(bm_str)
         ply += 1
 
-    from evaluation import evalFen
+    from evaluation import evalFenPKResidual
     
     if POS_CAP and len(quiet_positions) > POS_CAP:
         quiet_positions = random.sample(quiet_positions, POS_CAP)
 
     lines = []
     for fen in quiet_positions:
-        mg, eg = evalFen(fen)
+        # Label = the pawn+king residual the net replaces (pawn eval +
+        # king/pawn safety), NOT the full classical eval -- the engine adds
+        # the piece terms on top of the net's output, so labelling with the
+        # full eval would double-count them.
+        mg, eg = evalFenPKResidual(fen)
         lines.append(f"{fen};{mg};{eg}")
 
     with lock:

@@ -55,6 +55,10 @@ static inline int pkIndex(int colour, int piece, int sq) {
 
 int pknet_init(const char *path) {
 
+    /* reset first: a failed load below must leave PKNet DISABLED, not
+       silently still running whatever net was loaded before. */
+    pknet_loaded = 0;
+
     FILE *f = fopen(path, "rb");
     if (!f) {
         fprintf(stderr, "[PKNet] Cannot open %s\n", path);
@@ -82,6 +86,11 @@ int pknet_init(const char *path) {
     return 1;
 }
 
+void pknet_clear(void) {
+    pknet_loaded = 0;
+    pk_scale = 1.0f;
+}
+
 int pknet_eval(const S_BOARD *pos) {
 
     float h[PK_H1];
@@ -100,9 +109,16 @@ int pknet_eval(const S_BOARD *pos) {
     if (bk) { int sq = poplsb(&bk); int idx = pkIndex(BLACK, KING, sq);
               for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
 
-    while (wp) { int sq = poplsb(&wp); int idx = pkIndex(WHITE, PAWN, sq);
+    while (wp) { int sq = poplsb(&wp);
+                 /* pawns only have features on ranks 2-7 (sq 8..55); a
+                    rank-1/8 pawn would give pkIndex() a negative index and
+                    read out of bounds, so skip defensively. */
+                 if (sq < 8 || sq > 55) continue;
+                 int idx = pkIndex(WHITE, PAWN, sq);
                  for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
-    while (bp) { int sq = poplsb(&bp); int idx = pkIndex(BLACK, PAWN, sq);
+    while (bp) { int sq = poplsb(&bp);
+                 if (sq < 8 || sq > 55) continue;
+                 int idx = pkIndex(BLACK, PAWN, sq);
                  for (int i = 0; i < PK_H1; i++) h[i] += pk_w1[idx][i]; }
 
     float out[PK_OUT];

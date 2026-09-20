@@ -8,5 +8,6 @@ extern int pknet_loaded;
 
 int  pknet_init(const char *path);
 int  pknet_eval(const S_BOARD *pos);
+void pknet_clear(void);
 
 #endif

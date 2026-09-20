@@ -1435,17 +1435,49 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
 }
 
 
+// PKNet mode skips EvalPawn, but the kept evaluatePassed() term reads
+// eval_info->passers (normally filled by EvalPawn / the pawn-hash probe).
+// Populate just the passers bitboards (same stopper logic as EvalPawn) so
+// net + kept terms reproduce the classical eval exactly under UsePKNet.
+INLINE void initPassers(S_BOARD *pos, EVAL_INFO *eval_info){
+    U64 enemyPawns  = pieces_cp(pos, BLACK, PAWN);
+    U64 friendlyPawn = pieces_cp(pos, WHITE, PAWN);
+    while (friendlyPawn){
+        int sq = poplsb(&friendlyPawn);
+        U64 stoppers = enemyPawns & pawnPassedMark(WHITE, sq);
+        if (!stoppers) SETBIT(eval_info->passers[WHITE], sq);
+    }
+    enemyPawns  = pieces_cp(pos, WHITE, PAWN);
+    friendlyPawn = pieces_cp(pos, BLACK, PAWN);
+    while (friendlyPawn){
+        int sq = poplsb(&friendlyPawn);
+        U64 stoppers = enemyPawns & pawnPassedMark(BLACK, sq);
+        if (!stoppers) SETBIT(eval_info->passers[BLACK], sq);
+    }
+}
+
+
 INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
     int eval=0;
 
     // store and probe pawns
-    if (pos->usePKNet && pknet_loaded) {
-        // network returns full PK score, store in pawnEval so evaluatePieces
-        // picks it up normally via eval_info->pawnEval[WHITE/BLACK]
+    if (pos->usePKNet && pknet_loaded && getGamePhase(pos) == 256) {
+        // network returns the PAWN+KING RESIDUAL (pawn eval + king/pawn
+        // safety) it replaces -- everything else (evalKing, passers,
+        // threats, space, psqtmat, closedness, complexity) is still added
+        // below. slot it into pawnEval so evaluatePieces picks it up
+        // normally via eval_info->pawnEval[WHITE/BLACK].
+        //
+        // Only applied in full pawn endgames (gamePhase == 256, i.e. kings
+        // and pawns only): the net is trained exclusively on king+pawn-only
+        // positions, has no visibility of attacking pieces (so it cannot
+        // learn king safety), and its MG head is never supervised at that
+        // phase. Outside that domain the classical pawn/king eval is kept.
         int pk = pknet_eval(pos);
         eval_info->pawnEval[WHITE] +=  pk;  // pk is a tapered MakeScore(MG,EG)
         eval_info->pawnEval[BLACK] +=  0;   // already baked into WHITE score
+        initPassers(pos, eval_info);        // keep evaluatePassed() working
     }else {
         if (!tuneMode && ProbePawnKingEval(pos, eval_info)){
             // pawn eval was served from cache
@@ -1588,5 +1620,40 @@ void eval_fen_c(const char* fen, int* mg, int* eg) {
     
     *mg = ScoreMG(eval);
     *eg = ScoreEG(eval);
+    free(pos->search);
+}
+
+// PK-residual labels for PKNet training.
+//
+// In the engine, when UsePKNet is on, the net's output is slotted into
+// eval_info->pawnEval[WHITE] and the engine then ADDS the piece terms on
+// top: evalKnights/Bishops/Rooks/Queens, evalKing, evaluatePassed,
+// evaluateThreats, evaluateSpace, psqtmat, closedness and complexity. The
+// only classical terms the net replaces are:
+//
+//     EvalPawn(pawn structure)  +  evaluateKingsPawns(king/pawn safety)
+//
+// so the training target must be exactly that residual, not the full
+// classical eval -- otherwise the kept terms get double-counted at eval
+// time. `eval_fen_pk_residual_c` returns this residual as a packed
+// MakeScore so (mg, eg) are the white-POV MG/EG components.
+void eval_fen_pk_residual_c(const char* fen, int* mg, int* eg) {
+    S_BOARD pos[1];
+    pos->search = alloc_search_thread();
+    ParseFEN((char*)fen, pos);
+    pos->useNNUE = 0;
+    pos->usePKNet = 0;
+    pos->contempt = 0;
+
+    EVAL_INFO eval_info[1];
+    initEvalThings(pos, eval_info);
+
+    EvalPawn(pos, eval_info);
+    int residual = (eval_info->pawnEval[WHITE] - eval_info->pawnEval[BLACK])
+                 + (evaluateKingsPawns(pos, eval_info, WHITE)
+                    - evaluateKingsPawns(pos, eval_info, BLACK));
+
+    *mg = ScoreMG(residual);
+    *eg = ScoreEG(residual);
     free(pos->search);
 }

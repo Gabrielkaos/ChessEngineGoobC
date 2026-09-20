@@ -18,6 +18,21 @@ def evalFen(fen: str):
     _lib.eval_fen_c(fen_bytes, ctypes.byref(mg), ctypes.byref(eg))
     return (mg.value, eg.value)
 
+def evalFenPKResidual(fen: str):
+    """
+    Returns (mg, eg) of the PK residual the engine's PKNet replaces:
+    pawn structure eval + king/pawn safety (eval_fen_pk_residual_c).
+
+    The engine keeps evalKing/passers/threats/space/psqtmat/closedness/
+    complexity classical and adds them on top of the net's output, so these
+    labels -- NOT the full classical eval -- are what the net must learn.
+    """
+    mg = ctypes.c_int()
+    eg = ctypes.c_int()
+    fen_bytes = fen.encode('utf-8')
+    _lib.eval_fen_pk_residual_c(fen_bytes, ctypes.byref(mg), ctypes.byref(eg))
+    return (mg.value, eg.value)
+
 if __name__ == "__main__":
     print(evalFen("rnbqkbnr/pp1ppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"))
 
