@@ -61,14 +61,14 @@ int pknet_init(const char *path) {
 
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "[PKNet] Cannot open %s\n", path);
+        fprintf(stderr, "info string [PKNet] Cannot open %s\n", path);
         return 0;
     }
 
     uint32_t magic = 0;
     if (fread(&magic, sizeof(uint32_t), 1, f) != 1 || magic != PK_MAGIC) {
         fclose(f);
-        fprintf(stderr, "[PKNet] %s: bad magic (not a PK22 net)\n", path);
+        fprintf(stderr, "info string [PKNet] %s: bad magic (not a PK22 net)\n", path);
         return 0;
     }
 
@@ -82,7 +82,7 @@ int pknet_init(const char *path) {
 
     fclose(f);
     pknet_loaded = 1;
-    fprintf(stderr, "[PKNet] Loaded %s  scale=%.0f\n", path, pk_scale);
+    fprintf(stderr, "info string [PKNet] Loaded %s  scale=%.0f\n", path, pk_scale);
     return 1;
 }
 
