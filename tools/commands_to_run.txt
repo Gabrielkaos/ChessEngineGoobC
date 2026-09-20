@@ -1,0 +1,2 @@
+train - python pknet.py train dataset_pk.epd --out pknet.bin --epochs 80 --lr 1e-3 --batch 256 --scale 1.0
+datagen - python datagen_pk.py 2000 20000 10 dataset_pk.epd 64
