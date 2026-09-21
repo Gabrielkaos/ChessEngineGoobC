@@ -1422,7 +1422,7 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evaluateThreats(pos,eval_info,WHITE) - evaluateThreats(pos,eval_info,BLACK);
     eval+= evaluateSpace(pos,eval_info,WHITE) - evaluateSpace(pos,eval_info,BLACK);
 
-    if (!pos->usePKNet || !pknet_loaded || getGamePhase(pos) != 256) {
+    if (!pos->usePKNet || !pknet_loaded || pos->gamePhase != 256) {
         eval+= evaluateKingsPawns(pos,eval_info,WHITE) - evaluateKingsPawns(pos,eval_info,BLACK);
     }
 
@@ -1461,8 +1461,11 @@ INLINE int getClassicalEval(S_BOARD *pos, EVAL_INFO *eval_info){
 
     int eval=0;
 
+    //phase (computed once here; reused by evaluatePieces and EvalPosition)
+    pos->gamePhase = getGamePhase(pos);
+
     // store and probe pawns
-    if (pos->usePKNet && pknet_loaded && getGamePhase(pos) == 256) {
+    if (pos->usePKNet && pknet_loaded && pos->gamePhase == 256) {
         // network returns the PAWN+KING RESIDUAL (pawn eval + king/pawn
         // safety) it replaces -- everything else (evalKing, passers,
         // threats, space, psqtmat, closedness, complexity) is still added
@@ -1559,8 +1562,7 @@ int EvalPosition(S_BOARD *pos){
     //scale factor
     int factor=ScaleFactor(pos, ScoreEG(eval), eval_info);
 
-    //phase
-    pos->gamePhase = getGamePhase(pos);
+    //phase already computed by getClassicalEval() above
 
     //interpolate
     if (factor == SCALE_DRAW) {
