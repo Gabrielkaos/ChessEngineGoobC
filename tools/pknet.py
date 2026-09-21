@@ -22,12 +22,17 @@ Square convention: sq = rank*8 + file, a1 = 0, h8 = 63 (same as the engine).
 
 Binary format (src/pknet_loader.c reads this):
 
-    uint32 magic = 0x32324B50   ("PK22")
+    uint32 magic = 0x33324B50   ("PK23")
     float  scale
     float  w1[224][32]          row-major: for idx in 0..223: for i in 0..31
     float  b1[32]
     float  w2[2][32]            row-major: for o in 0..1: for j in 0..31
     float  b2[2]
+
+The magic is bumped PK22 -> PK23: the engine's runtime residual changed.
+PK23 nets replace EvalPawn + evaluateKingsPawns + evaluatePassed (passers
+included); PK22 nets only covered the first two, so they must not load
+silently under the new engine semantics.
 
 Usage
 -----
@@ -41,10 +46,11 @@ Usage
     python3 pknet.py verify pknet.bin
 
 For GOOB's own datagen (tools/datagen_pk.py), mg;eg are the PK-RESIDUAL
-labels from eval_fen_pk_residual_c (pawn eval + king/pawn safety), i.e.
-exactly the terms the engine lets the net replace. Do not label with the
-full classical eval -- the engine adds the piece terms on top of the net's
-output, so full-eval labels get double-counted at inference time.
+labels from eval_fen_pk_residual_c (pawn eval + king/pawn safety + passed
+pawns), i.e. exactly the terms the engine lets the net replace. Do not
+label with the full classical eval -- the engine adds the piece terms on
+top of the net's output, so full-eval labels get double-counted at
+inference time.
 """
 
 import argparse
@@ -67,7 +73,7 @@ except ImportError:
 INPUT = 224
 H1 = 32
 OUT = 2
-MAGIC = 0x32324B50
+MAGIC = 0x33324B50  # "PK23" -- covers the expanded residual incl. evaluatePassed
 
 WHITE, BLACK = 0, 1
 PAWN, KING = 1, 6

@@ -33,8 +33,13 @@
 #define PK_H1    32
 #define PK_OUT   2
 
-/* "PK22" little-endian, rejects the old 256x128x64x1 binary format */
-#define PK_MAGIC 0x32324B50u
+/* "PK23" little-endian, rejects the old 256x128x64x1 binary format and the
+   PK22 nets trained on the older residual (EvalPawn + evaluateKingsPawns
+   only). PK23 nets cover the expanded residual (EvalPawn +
+   evaluateKingsPawns + evaluatePassed), so an outdated net file must not
+   load silently -- the engine would skip evaluatePassed without the net
+   covering it. */
+#define PK_MAGIC 0x33324B50u
 
 int pknet_loaded = 0;
 

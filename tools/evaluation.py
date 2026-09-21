@@ -21,11 +21,12 @@ def evalFen(fen: str):
 def evalFenPKResidual(fen: str):
     """
     Returns (mg, eg) of the PK residual the engine's PKNet replaces:
-    pawn structure eval + king/pawn safety (eval_fen_pk_residual_c).
+    pawn structure eval + king/pawn safety + passed-pawn eval
+    (eval_fen_pk_residual_c).
 
-    The engine keeps evalKing/passers/threats/space/psqtmat/closedness/
-    complexity classical and adds them on top of the net's output, so these
-    labels -- NOT the full classical eval -- are what the net must learn.
+    The engine keeps evalKing/threats/space/psqtmat/closedness/complexity
+    classical and adds them on top of the net's output, so these labels --
+    NOT the full classical eval -- are what the net must learn.
     """
     mg = ctypes.c_int()
     eg = ctypes.c_int()

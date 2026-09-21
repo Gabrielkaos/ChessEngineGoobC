@@ -13,10 +13,11 @@ Usage:
 Output format is "FEN;mg;eg" (white POV).
 
 mg;eg are the PK-RESIDUAL labels the net must learn: pawn structure eval +
-king/pawn safety (eval_fen_pk_residual_c). They are NOT the full classical
-eval -- the engine keeps evalKing/passers/threats/space/psqtmat/closedness/
-complexity classical and adds them on top of the net's output, so labelling
-with the full eval would double-count those terms at inference time.
+king/pawn safety + passed-pawn eval (eval_fen_pk_residual_c). They are NOT
+the full classical eval -- the engine keeps
+evalKing/threats/space/psqtmat/closedness/complexity classical and adds
+them on top of the net's output, so labelling with the full eval would
+double-count those terms at inference time.
 
 --- Reliability notes (fixed) ---
 Two resource-leak bugs could hang the whole machine on long runs:
@@ -413,10 +414,10 @@ def play_game(eng, out_fh, lock, stats):
 
     lines = []
     for fen in quiet_positions:
-        # Label = the pawn+king residual the net replaces (pawn eval +
-        # king/pawn safety), NOT the full classical eval -- the engine adds
-        # the piece terms on top of the net's output, so labelling with the
-        # full eval would double-count them.
+        # Label = the pawn+king+passed-pawn residual the net replaces (pawn
+        # eval + king/pawn safety + passed-pawn eval), NOT the full classical
+        # eval -- the engine adds the piece terms on top of the net's output,
+        # so labelling with the full eval would double-count them.
         mg, eg = evalFenPKResidual(fen)
         lines.append(f"{fen};{mg};{eg}")
 
