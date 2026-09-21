@@ -1422,7 +1422,7 @@ INLINE int evaluatePieces(S_BOARD *pos, EVAL_INFO *eval_info){
     eval+= evaluateThreats(pos,eval_info,WHITE) - evaluateThreats(pos,eval_info,BLACK);
     eval+= evaluateSpace(pos,eval_info,WHITE) - evaluateSpace(pos,eval_info,BLACK);
 
-    if (!pos->usePKNet || !pknet_loaded) {
+    if (!pos->usePKNet || !pknet_loaded || getGamePhase(pos) != 256) {
         eval+= evaluateKingsPawns(pos,eval_info,WHITE) - evaluateKingsPawns(pos,eval_info,BLACK);
     }
 
