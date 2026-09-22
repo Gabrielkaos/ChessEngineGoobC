@@ -8,6 +8,7 @@ Example:
 
 import argparse
 import os
+import shutil
 import time
 
 import torch
@@ -44,9 +45,19 @@ def evaluate(model, loader, device):
     return total_loss / n
 
 
-def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val):
-    """Saves the complete state to resume training later."""
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+def save_checkpoint(
+    path,
+    model,
+    optimizer,
+    scheduler,
+    epoch,
+    best_val,
+    batch=None,
+    total_batches=None,
+):
+    """Saves the complete state to resume training later using an atomic write."""
+    abs_path = os.path.abspath(path)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -54,7 +65,23 @@ def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val):
         "scheduler_state_dict": scheduler.state_dict(),
         "best_val": best_val,
     }
-    torch.save(checkpoint, path)
+    if batch is not None:
+        checkpoint["batch"] = batch
+    if total_batches is not None:
+        checkpoint["total_batches"] = total_batches
+
+    tmp_path = f"{abs_path}.tmp"
+    torch.save(checkpoint, tmp_path)
+
+    # Keep previous checkpoint as .bak as an extra fallback
+    if os.path.exists(abs_path):
+        bak_path = f"{abs_path}.bak"
+        try:
+            shutil.copyfile(abs_path, bak_path)
+        except Exception:
+            pass
+
+    os.replace(tmp_path, abs_path)
 
 
 def main():
@@ -65,6 +92,18 @@ def main():
     ap.add_argument("--batch-size", type=int, default=8192)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument(
+        "--shuffle",
+        action="store_true",
+        default=False,
+        help="Shuffle train data (default: False for fast sequential disk I/O)",
+    )
+    ap.add_argument(
+        "--save-interval",
+        type=int,
+        default=2000,
+        help="Save checkpoint every N batches within an epoch (default: 2000, 0 to disable)",
+    )
     ap.add_argument("--out-best", default="../checkpoints/nnue.pt", help="Path to save best model")
     ap.add_argument("--out-last", default="../checkpoints/last.pt", help="Path to save last model checkpoint")
     ap.add_argument(
@@ -86,7 +125,7 @@ def main():
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=args.shuffle,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
         drop_last=True,
@@ -123,73 +162,142 @@ def main():
             sched.load_state_dict(checkpoint["scheduler_state_dict"])
             start_epoch = checkpoint["epoch"] + 1
             best_val = checkpoint.get("best_val", float("inf"))
+            saved_batch = checkpoint.get("batch")
+            saved_total = checkpoint.get("total_batches")
+            batch_str = (
+                f" (saved at batch {saved_batch}/{saved_total})"
+                if saved_batch is not None and saved_total is not None
+                else ""
+            )
             print(
-                f"--> Resumed successfully at Epoch {start_epoch} (Best Val MSE: {best_val:.6f})"
+                f"--> Resumed successfully at Epoch {start_epoch}{batch_str} (Best Val MSE: {best_val:.6f})"
             )
         else:
             print(f"Warning: Checkpoint '{args.resume}' not found. Starting from scratch.")
 
-    for epoch in range(start_epoch, args.epochs + 1):
-        t0 = time.time()
-        running = 0.0
-        seen = 0
-
-        total_batches = len(train_loader)
-
-        for batch_idx, (features, y) in enumerate(train_loader, start=1):
-            white_idx, black_idx, offsets, stm = _to_device(features, device)
-            y = y.to(device)
-
-            opt.zero_grad()
-
-            pred = torch.sigmoid(model(white_idx, offsets, black_idx, offsets, stm))
-            loss = loss_fn(pred, y)
-
-            loss.backward()
-            opt.step()
-
-            running += loss.item() * y.size(0)
-            seen += y.size(0)
-
-            # Print every 100 batches (or on the last batch)
-            if batch_idx % 100 == 0 or batch_idx == total_batches:
-                elapsed = time.time() - t0
-                avg_loss = running / seen
-
-                print(
-                    f"\rEpoch {epoch}/{args.epochs} | "
-                    f"Batch {batch_idx}/{total_batches} "
-                    f"({100 * batch_idx / total_batches:.1f}%) | "
-                    f"Loss {avg_loss:.6f} | "
-                    f"Elapsed {elapsed:.1f}s",
-                    end="",
-                    flush=True,
-                )
-
-        print()  # Move to next line after epoch finishes
-
-        sched.step()
-
-        val_loss = evaluate(model, val_loader, device)
-        dt = time.time() - t0
-
+    if start_epoch > args.epochs:
         print(
-            f"Epoch {epoch:3d} complete | "
-            f"Train MSE {running/seen:.6f} | "
-            f"Val MSE {val_loss:.6f} | "
-            f"Time {dt:.1f}s"
+            f"--> Checkpoint has already reached Epoch {start_epoch - 1} of {args.epochs}. "
+            f"Increase --epochs to train further."
         )
+        return
 
-        # Save last state after every epoch
-        save_checkpoint(args.out_last, model, opt, sched, epoch, best_val)
+    total_batches = len(train_loader)
+    epoch = start_epoch
+    batch_idx = 0
 
-        # Save best state if validation improved
-        if val_loss < best_val:
-            best_val = val_loss
-            save_checkpoint(args.out_best, model, opt, sched, epoch, best_val)
-            print(f"  -> saved new best checkpoint to {args.out_best}")
+    try:
+        for epoch in range(start_epoch, args.epochs + 1):
+            t0 = time.time()
+            running = 0.0
+            seen = 0
 
-    print("Done. Best val MSE:", best_val)
+            for batch_idx, (features, y) in enumerate(train_loader, start=1):
+                white_idx, black_idx, offsets, stm = _to_device(features, device)
+                y = y.to(device)
+
+                opt.zero_grad()
+
+                pred = torch.sigmoid(model(white_idx, offsets, black_idx, offsets, stm))
+                loss = loss_fn(pred, y)
+
+                loss.backward()
+                opt.step()
+
+                running += loss.item() * y.size(0)
+                seen += y.size(0)
+
+                # Periodic mid-epoch save
+                if args.save_interval > 0 and batch_idx % args.save_interval == 0:
+                    save_checkpoint(
+                        args.out_last,
+                        model,
+                        opt,
+                        sched,
+                        epoch - 1,
+                        best_val,
+                        batch=batch_idx,
+                        total_batches=total_batches,
+                    )
+
+                # Print every 100 batches (or on the last batch)
+                if batch_idx % 100 == 0 or batch_idx == total_batches:
+                    elapsed = time.time() - t0
+                    avg_loss = running / seen
+
+                    print(
+                        f"\rEpoch {epoch}/{args.epochs} | "
+                        f"Batch {batch_idx}/{total_batches} "
+                        f"({100 * batch_idx / total_batches:.1f}%) | "
+                        f"Loss {avg_loss:.6f} | "
+                        f"Elapsed {elapsed:.1f}s",
+                        end="",
+                        flush=True,
+                    )
+
+            print()  # Move to next line after epoch finishes
+
+            sched.step()
+
+            val_loss = evaluate(model, val_loader, device)
+            dt = time.time() - t0
+
+            print(
+                f"Epoch {epoch:3d} complete | "
+                f"Train MSE {running/seen:.6f} | "
+                f"Val MSE {val_loss:.6f} | "
+                f"Time {dt:.1f}s"
+            )
+
+            is_best = val_loss < best_val
+            if is_best:
+                best_val = val_loss
+
+            # Save last state after every completed epoch
+            save_checkpoint(
+                args.out_last,
+                model,
+                opt,
+                sched,
+                epoch,
+                best_val,
+                batch=total_batches,
+                total_batches=total_batches,
+            )
+
+            # Save best state if validation improved
+            if is_best:
+                save_checkpoint(
+                    args.out_best,
+                    model,
+                    opt,
+                    sched,
+                    epoch,
+                    best_val,
+                    batch=total_batches,
+                    total_batches=total_batches,
+                )
+                print(f"  -> saved new best checkpoint to {args.out_best}")
+
+        print("Done. Best val MSE:", best_val)
+
+    except KeyboardInterrupt:
+        print("\n\n[!] Training paused by user (KeyboardInterrupt).")
+        print("--> Saving emergency checkpoint...")
+        completed = (batch_idx == total_batches)
+        saved_epoch = epoch if completed else max(0, epoch - 1)
+        save_checkpoint(
+            args.out_last,
+            model,
+            opt,
+            sched,
+            saved_epoch,
+            best_val,
+            batch=batch_idx,
+            total_batches=total_batches,
+        )
+        print(f"--> Emergency checkpoint successfully saved to: {args.out_last}")
+        print("--> Resume anytime by running with: --resume\n")
 
 
 if __name__ == "__main__":
