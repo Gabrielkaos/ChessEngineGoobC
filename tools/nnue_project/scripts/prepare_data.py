@@ -169,73 +169,98 @@ def main():
         val_buf = bytearray()
         done = False
 
-        while futures and not done:
-            fut = futures.popleft()
-            for record, r in fut.result():
-                n_scanned += 1
-                if n_val_written < args.n_val and r < VAL_FRACTION:
-                    val_buf += record
-                    n_val_written += 1
-                elif n_train_written < args.n_train:
-                    train_buf += record
-                    n_train_written += 1
-                    if pbar is not None:
-                        pbar.update(1)
+        # Dynamically calculate validation sampling fraction with 10% headroom
+        total_target = args.n_train + args.n_val
+        val_fraction = max(0.002, min(0.5, (args.n_val / total_target) * 1.1)) if total_target > 0 else VAL_FRACTION
 
-                if n_train_written >= args.n_train and n_val_written >= args.n_val:
-                    done = True
-                    break
+        try:
+            while futures and not done:
+                fut = futures.popleft()
+                for record, r in fut.result():
+                    n_scanned += 1
+                    if n_val_written < args.n_val and r < val_fraction:
+                        val_buf += record
+                        n_val_written += 1
+                    elif n_train_written < args.n_train:
+                        train_buf += record
+                        n_train_written += 1
+                        if pbar is not None:
+                            pbar.update(1)
 
-            if len(train_buf) >= FLUSH_BYTES:
+                    if n_train_written >= args.n_train and n_val_written >= args.n_val:
+                        done = True
+                        break
+
+                if len(train_buf) >= FLUSH_BYTES:
+                    f_train.write(train_buf)
+                    train_buf.clear()
+                if len(val_buf) >= FLUSH_BYTES:
+                    f_val.write(val_buf)
+                    val_buf.clear()
+
+                if pbar is not None:
+                    if n_train_written % 1000 == 0 or done:
+                        pbar.set_postfix(
+                            val=f"{n_val_written}/{args.n_val}",
+                            scanned=n_scanned,
+                            refresh=False,
+                        )
+                elif n_scanned % args.progress_every == 0:
+                    elapsed = time.time() - start
+                    rate = n_train_written / elapsed if elapsed > 0 else 0
+                    remaining = args.n_train - n_train_written
+                    eta_s = remaining / rate if rate > 0 else float("inf")
+                    print(
+                        f"scanned={n_scanned:,} "
+                        f"train={n_train_written:,}/{args.n_train:,} "
+                        f"val={n_val_written:,}/{args.n_val:,} "
+                        f"rate={rate:,.0f} rec/s "
+                        f"eta={eta_s/60:,.1f} min",
+                        flush=True,
+                    )
+
+                if not done:
+                    submit_next()
+
+        except (KeyboardInterrupt, Exception) as e:
+            print(f"\n[Safeguard] Interrupted or error ({type(e).__name__}: {e}). Saving all data collected so far...")
+        finally:
+            # Final flush of all in-memory records
+            if train_buf:
                 f_train.write(train_buf)
                 train_buf.clear()
-            if len(val_buf) >= FLUSH_BYTES:
+            if val_buf:
                 f_val.write(val_buf)
                 val_buf.clear()
 
+            f_train.flush()
+            f_val.flush()
+
+            # Ensure files are strictly aligned to RECORD_SIZE (68 bytes) in case of sudden termination
+            for path in (train_path, val_path):
+                if os.path.exists(path):
+                    fsize = os.path.getsize(path)
+                    rem = fsize % RECORD_SIZE
+                    if rem != 0:
+                        with open(path, "a+b") as fix_f:
+                            fix_f.truncate(fsize - rem)
+                        print(f"[Safeguard] Truncated {rem} trailing bytes from {path} for clean record alignment.")
+
+            # if we stopped early, drop any still-pending/running work
+            if futures:
+                ex.shutdown(wait=False, cancel_futures=True)
+
             if pbar is not None:
-                if n_train_written % 1000 == 0 or done:
-                    pbar.set_postfix(
-                        val=f"{n_val_written}/{args.n_val}",
-                        scanned=n_scanned,
-                        refresh=False,
-                    )
-            elif n_scanned % args.progress_every == 0:
-                elapsed = time.time() - start
-                rate = n_train_written / elapsed if elapsed > 0 else 0
-                remaining = args.n_train - n_train_written
-                eta_s = remaining / rate if rate > 0 else float("inf")
-                print(
-                    f"scanned={n_scanned:,} "
-                    f"train={n_train_written:,}/{args.n_train:,} "
-                    f"val={n_val_written:,}/{args.n_val:,} "
-                    f"rate={rate:,.0f} rec/s "
-                    f"eta={eta_s/60:,.1f} min",
-                    flush=True,
-                )
-
-            if not done:
-                submit_next()
-
-        # final flush
-        if train_buf:
-            f_train.write(train_buf)
-        if val_buf:
-            f_val.write(val_buf)
-
-        # if we stopped early, drop any still-pending/running work
-        if futures:
-            ex.shutdown(wait=False, cancel_futures=True)
-
-    if pbar is not None:
-        pbar.close()
+                pbar.close()
 
     elapsed = time.time() - start
-    print(f"Wrote {n_train_written} train records to {train_path}")
-    print(f"Wrote {n_val_written} val records to {val_path}")
+    actual_train = (os.path.getsize(train_path) // RECORD_SIZE) if os.path.exists(train_path) else 0
+    actual_val = (os.path.getsize(val_path) // RECORD_SIZE) if os.path.exists(val_path) else 0
+    print(f"Wrote {actual_train:,} train records to {train_path}")
+    print(f"Wrote {actual_val:,} val records to {val_path}")
     print(f"Record size: {RECORD_SIZE} bytes")
     print(f"Total time: {elapsed/60:.1f} min "
-          f"({n_train_written/elapsed:,.0f} train rec/s)")
+          f"({actual_train/elapsed:,.0f} train rec/s)" if elapsed > 0 else "")
 
 
 if __name__ == "__main__":
