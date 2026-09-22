@@ -1539,10 +1539,10 @@ int EvalPosition(S_BOARD *pos){
     }
 
     if (!tuneMode && pos->useNNUE && nnue_loaded) {
-        int nn_score = nnue_eval(pos), pos;
+        int nn_score = nnue_eval(pos);
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
-        return score;
+        return nn_score;
     }
 
     //Initialization
