@@ -1530,16 +1530,18 @@ int EvalPosition(S_BOARD *pos){
     if (!tuneMode){
         int hashedEval=ProbeTTEval(pos);
         if(hashedEval != VALUE_NONE){
-            score = (pos->side==WHITE ? hashedEval:-hashedEval)+tempo;
+            score = (pos->side==WHITE ? hashedEval:-hashedEval);
+            if (!pos->useNNUE || !nnue_loaded) {
+                score += tempo; // Only classical eval needs tempo
+            }
             return score;
         }
     }
 
     if (!tuneMode && pos->useNNUE && nnue_loaded) {
-        int nn_score = ScaleWDL(nnue_eval(pos), pos);
+        int nn_score = nnue_eval(pos), pos;
         int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
         StoreTTEval(pos, white_relative);
-        score = nn_score + tempo;
         return score;
     }
 
