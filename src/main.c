@@ -12,6 +12,7 @@
 #include "init.h"
 #include "board.h"
 #include "syzygy.h"
+#include "nnue_loader.h"
 
 int main(int argc, char *argv[])
 {
@@ -51,7 +52,7 @@ int main(int argc, char *argv[])
     setbuf(stdin, NULL);
     setbuf(stdout, NULL);
 
-    // nnue_init("models/nnue_v1.bin");
+    nnue_init(NULL);
     // pknet_init("models/pknet.bin");
 
 #ifdef DEBUG

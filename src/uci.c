@@ -182,6 +182,11 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         char *ptrTrue = strstr(line, "true");
         if (ptrTrue != NULL) {
             pos->useNNUE = TRUE;
+            if (!nnue_loaded) {
+                if (nnue_init(NULL)) {
+                    nnue_refresh_accumulator(pos);
+                }
+            }
             printf("info string UseNNUE set to true\n");
         } else {
             pos->useNNUE = FALSE;
@@ -751,7 +756,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
         }
 
-        else if(strEquals(str,"evaluate")){
+        else if(strEquals(str,"evaluate") || strEquals(str, "eval")){
             PrintBoard(pos);
             printf("Eval:%d\n",EvalPosition(pos));
             MirrorBoard(pos);

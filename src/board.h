@@ -25,7 +25,7 @@ typedef struct {
 } DirtyPiece;
 
 typedef struct {
-    ALIGN64 int32_t accumulation[COLOR_NB][NNUE_ACC_SIZE];
+    ALIGN64 int16_t accumulation[COLOR_NB][NNUE_ACC_SIZE];
     uint8_t computed[COLOR_NB];
 } NNUE_Accumulator;
 

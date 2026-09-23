@@ -20,12 +20,13 @@ from nnue_dataset import NNUEDataset, nnue_collate
 
 
 def _to_device(features, device):
-    white_idx, black_idx, offsets, stm = features
+    white_idx, black_idx, offsets, stm, buckets = features
     return (
         white_idx.to(device),
         black_idx.to(device),
         offsets.to(device),
         stm.to(device),
+        buckets.to(device),
     )
 
 
@@ -36,9 +37,9 @@ def evaluate(model, loader, device):
     loss_fn = nn.MSELoss(reduction="sum")
     with torch.no_grad():
         for features, y in loader:
-            white_idx, black_idx, offsets, stm = _to_device(features, device)
+            white_idx, black_idx, offsets, stm, buckets = _to_device(features, device)
             y = y.to(device)
-            pred = torch.sigmoid(model(white_idx, offsets, black_idx, offsets, stm))
+            pred = torch.sigmoid(model(white_idx, black_idx, offsets, stm, buckets))
             total_loss += loss_fn(pred, y).item()
             n += y.size(0)
     model.train()
@@ -142,7 +143,7 @@ def main():
     )
 
     model = NNUE().to(device)
-    print(f"model layers size{model.l1_size},{model.l2_size},{model.l3_size}")
+    print(f"Model architecture: {model.num_features} -> ({model.l1_size}x2) -> 1x{model.num_buckets}")
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.StepLR(
         opt, step_size=max(1, args.epochs // 4), gamma=0.3
@@ -193,12 +194,12 @@ def main():
             seen = 0
 
             for batch_idx, (features, y) in enumerate(train_loader, start=1):
-                white_idx, black_idx, offsets, stm = _to_device(features, device)
+                white_idx, black_idx, offsets, stm, buckets = _to_device(features, device)
                 y = y.to(device)
 
                 opt.zero_grad()
 
-                pred = torch.sigmoid(model(white_idx, offsets, black_idx, offsets, stm))
+                pred = torch.sigmoid(model(white_idx, black_idx, offsets, stm, buckets))
                 loss = loss_fn(pred, y)
 
                 loss.backward()
