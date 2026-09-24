@@ -1,0 +1,162 @@
+Let me set up a test harness so I can check the loader changes against your original, bit for bit.Now the verification script. Its integer path mirrors the C arithmetic exactly (including int16 wraparound and C's truncating division), so it can also serve as a reference for your engine.Now a C harness that runs the same positions through the original loader and the patched one in several build modes, plus a randomized incremental-update test:Clean compile with `-Wall -Wextra` in every mode. I'll add a `NNUE_NO_SIMD` debug switch so the scalar path can be tested too (it's also a handy knob for you when debugging):The "original" builds were accidentally picking up the new header (quoted includes search the source file's own directory first). Fixing that:Benchmark bug on my side (stack index could run past 16). Fixing:PyTorch runs on CPU now. First the model change, verified against the original for identical outputs and gradients:Identical up to float rounding, and the checkpoint format is unchanged. A quick CPU timing (GPU gains should be similar or larger, but measure on yours):Interrupted in epoch 2 at batch 36, saved as (epoch 1 complete, batch 36). Now resume:Resumed exactly at batch 36 and trained only the remaining 22 batches of epoch 2. A quick check that the resumed epoch sees precisely the unseen samples:Now I'll add the same overflow checks to the exporter (reusing the checker's bound so the two can't drift apart):The pipeline check works, and the float-vs-quantized column shows up to ~60 cp error on this toy net. Let me make sure that's genuine quantization error and not a bug in my reference:Now the last link: does the actual C engine code print the same numbers as the checker for this trained net?Bit-exact across the board. Last, the data-preparation fix. I'll write the grouping as a pure function so it can be tested on rows shaped like the real dataset:Testing it on rows copied from the dataset viewer, and comparing to what the original filter kept:
+
+**Short answer:** the engine-side inference is already efficient. The bigger problems are correctness issues in the data and training pipeline, plus one overflow risk that can silently corrupt evals. You can keep your trained network: the `.bin` file format and the `.pt` checkpoint format are unchanged in all the patched files below.
+
+## Is it efficient already?
+
+On the engine side, mostly yes. Fused add/sub accumulator updates, lazy accumulators, the Lizard SCReLU trick and no king buckets are close to state of the art for a 768→(1024×2)→1×8 net.
+
+I benchmarked the original and patched loaders on the same net, measured in ns per call. "Eval" is an incremental evaluation in a search-like loop; "refresh" is a full accumulator rebuild plus eval:
+
+| Build | Original eval / refresh | Patched eval / refresh |
+|---|---|---|
+| Runtime dispatch | ~320 / ~3300 | ~330 / ~1550 |
+| `-mavx2` | ~295 / ~3190 | ~300 / ~1490 |
+| `-march=native` (AVX-512) | – | ~250 / ~1190 |
+
+What the numbers mean:
+- **Evals on AVX2:** unchanged. There was little left to gain.
+- **Refreshes:** about 2.1× faster, from the new register-tiled accumulator kernel. This kernel is also used for captures and castling.
+- **AVX-512 CPUs:** evals about 17% faster.
+- **Compiler flags:** building with `-O3 -march=native` (or at least `-mavx2`) is worth another 5–10% over runtime dispatch.
+
+How much of this shows up as NPS depends on eval's share of search time. The search itself may offer bigger wins, such as skipping evals you don't need or reusing the TT static eval.
+
+On the training side, I changed the model's output layer to one matmul followed by a bucket gather. It gives identical results and is about 15% faster per step on CPU. The likely real bottleneck is `nnue_dataset.py`, which you didn't upload. If it decodes samples one at a time in Python, loading the data into memory and decoding whole batches with vectorized code would probably help more than anything else.
+
+For data prep, the bottleneck is Hugging Face streaming. The patch selects only the columns it needs. Downloading the parquet shards and reading them with pyarrow would be faster still.
+
+## Bugs, in order of impact
+
+**1. The training labels are noisy (`prepare_data.py`).** The Lichess dataset has one row per (position, evaluation, principal variation). That's about 482M rows for about 191M positions, and most rows score worse moves in MultiPV analysis, not the position itself. Your script trained on all of them.
+
+A real example: one endgame position is mate-in-26 at depth 55, but a shallower row scoring it 0cp also passed your filters and was kept as a draw label. It also creates near-duplicate adjacent rows and leakage between train and val. Lichess's own guidance is to use the first principal variation of the deepest evaluation. The patched script does that: on a sample, 9 kept rows became 3 correct labels.
+
+**2. There's no weight clipping, which can silently break engine evals.** The engine's fast AVX2 kernel multiplies 16-bit values. If any quantized output weight exceeds ±128 (float ±2.0), that multiply overflows. I reproduced this: with an unclipped test net, the original loader gave wrong evals on 50/50 test positions. The 16-bit feature accumulator can also overflow if weights grow large.
+
+The patched `train.py` clips to ±1.98, as bullet does. The patched loader also checks the weights at load time and falls back to an exact (slower) kernel if they're too large. So your existing net will evaluate correctly either way.
+
+**3. Conventions I couldn't verify, but which must match the engine.** These live in files you didn't upload:
+- **Target POV:** the dataset's cp and mate scores are from White's point of view. Training targets must be negated when Black is to move, and the sigmoid scale must be 400.
+- **Square numbering:** must be a1=0.
+- **Piece order:** must be P,N,B,R,Q,K = 0..5. If your `PTYPE_OF` returns 1..6 (Stockfish-style, which the `byTypeBB[ALL_PIECES]` naming hints at), every feature index shifts and the king index runs past the table.
+
+**4. `train.py` issues:**
+- Shuffling was off by default, on data that arrives in stream order.
+- Resuming mid-epoch restarted the whole epoch.
+- The default `--save-interval` of 2000 is larger than the ~976 batches per epoch at 8M positions, so only Ctrl-C ever saved mid-epoch.
+- `batch_idx` wasn't reset per epoch, so pressing Ctrl-C early in the next epoch could mark an untrained epoch as complete.
+- Calling `loss.item()` every batch forced a GPU sync.
+
+**5. Loader edge cases:**
+- A failed reload left half-overwritten weights active.
+- A bad explicit path silently fell back to the default net.
+- `nnue_eval` dereferenced `pos->search` without a NULL check.
+- Deep plies could reuse a stale accumulator slot.
+- `aligned_alloc` doesn't exist on Windows/MinGW.
+- File size was never validated.
+
+## What the patched files do
+
+- **`nnue_loader.h`:** same API and file format. Fixes everything in (5), adds the exact-kernel fallback from (2), adds the faster refresh and AVX-512 paths, and documents the build flags.
+- **`check_net.py`** (new): verifies a net file. It checks file size and the overflow bounds, and computes bit-exact reference evals that should match your engine exactly. With `--checkpoint` it compares float and quantized outputs. With `--pipeline` it runs positions through your real dataset code and flags feature, bucket, or POV mismatches.
+- **`train.py`:**
+  - `--clip`, defaulting to 1.98.
+  - Shuffling on by default, with a `--seed` option.
+  - Exact mid-epoch resume at the saved batch, with correct Ctrl-C saves.
+  - No per-batch GPU sync.
+  - `--init`, to fine-tune an existing net on new data with a fresh optimizer.
+- **`prepare_data.py`:** keeps one correct label per position.
+- **`model.py`:** the faster output layer.
+- **`export_weights.py`:** warns about overflow risk at export time.
+
+## What I'd do first
+
+Run this with your real modules:
+
+```
+python check_net.py --net ../checkpoints/quantised.bin --checkpoint ../checkpoints/nnue.pt --pipeline
+```
+
+Then compare its printed evals with your engine's `nnue_eval` on the same FENs. If they match and there are no warnings, the conventions in (3) are consistent. After that, regenerate the data with the new `prepare_data.py` and fine-tune your current net with `--init`, rather than starting from scratch.
+
+## Testing caveats
+
+The C code was tested against stub headers, not your real `board.h`. That covered all build variants against the Python reference, plus about 625k randomized lazy-vs-fresh accumulator checks with 0 mismatches. The training pipeline ran end to end (train, interrupt, resume, export, load in both loaders) using stand-in versions of `fen_utils.py` and `nnue_dataset.py`. There was no GPU, and I didn't test with clang.
+
+If you share `nnue_dataset.py` and `fen_utils.py`, I can check the POV convention directly and speed up data loading.
+
+
+Your POV handling is correct, so the most serious risk I flagged last time doesn't apply. The real problem in these two files was speed. The new `nnue_dataset.py` loads batches about 12× faster and gives identical output.
+
+**Conventions are correct on the Python side.**
+- `pack_record` stores the eval from White's point of view, and `nnue_collate` negates it when Black is to move.
+- `CP_SCALE` is 400, matching the engine.
+- Features use a1=0, piece order P..K = 0..5 and the `^56` flip for Black.
+- Buckets count all pieces including kings.
+
+All of this matches what `nnue_loader.h` expects. I checked it end to end with your real files:
+- `check_net.py --pipeline` passes on all 10 positions.
+- I trained a small net with your modules and exported it.
+- The C loader printed exactly the evals the checker predicted.
+
+One thing is still unverified: the engine's own board code (`PTYPE_OF` returning 0..5 or 1..6, and how squares are numbered). The last step is to check that your engine's `nnue_eval` prints the same numbers as `check_net.py` for those FENs.
+
+**Bugs:** none that affect training. Two small notes:
+- The mate flag byte is ignored, so mate positions would train as ±3000cp. That's harmless because `prepare_data.py` drops mates unless you pass `--keep-mate`.
+- On Windows or macOS, the original dataset could copy the whole data file into every worker process. With my 4M-position test file that was 272 MB per worker. It only happens if the file was already opened in the main process before the workers start. The new version prevents this.
+
+**Speed:** the bottleneck was one Python `__getitem__` call per position, which is 8192 calls per batch. The new version reads the whole batch in one step; PyTorch 2.0 and later picks this up automatically, and older versions still work the per-position way. It also computes features with lookup tables. The biggest single gain in that step came from finding the occupied squares with a true/false mask instead of the raw bytes, which is about 5× faster.
+
+Measured on one core, for batches of 8192:
+
+| | Original | New |
+|---|---|---|
+| Reading the batch | 21 ms | 0.35 ms |
+| Computing features | 9.6 ms | 1.7 ms |
+| Total per batch | 36 ms | 2.9 ms |
+| Positions per second | 0.22M | 2.8M |
+
+The results are the same: every output tensor matches the original element for element. A seeded training run with the old and new module produced bit-identical weights. It's a drop-in replacement, so `train.py` and `check_net.py` need no changes.
+
+How much this matters depends on your hardware:
+- **On CPU:** it changes little, because the training step itself takes about 730 ms per batch.
+- **On a GPU:** the old loader was probably what limited you. With the default 4 workers it managed roughly one batch every 9 ms, likely slower than a GPU step for this net. Now a single worker produces about 340 batches per second.
+
+I couldn't measure on a GPU here. My test positions also averaged 17 pieces, fewer than real games, so expect feature computation to be a bit slower on your data.
+
+**`fen_utils.py`:** leave it as it is. `pack_record` takes about 4.7 µs per record, around 40 seconds for 8M positions on one core. Downloading from Hugging Face is still what limits data prep.
+
+Now the cleanup script for the existing cache.Yes, you can keep it and don't need to re-download anything. The file format is unchanged, so all the new files read it directly. But used as-is, it still has the label problem: each position appears several times, most copies carry the score of a worse move, and most val positions are also in train. `clean_cache.py` repairs this in one pass over your existing files and writes new ones, so the originals are never touched.
+
+It does three things:
+1. **Keeps one label per position.** Copies of a position sit next to each other in your file, so it merges each group into one record and keeps the score that's best for the side to move. That is the best move's score.
+2. **Fixes val.** It removes duplicates from val and corrects each val label using that position's copies in train.
+3. **Removes val positions from train**, so validation measures generalization again.
+
+I tested it by running your original `prepare_data.py` on a simulated dataset with the same row structure as the Lichess one:
+- Average label error dropped from 110cp to 3.8cp.
+- 85% of labels became exactly the correct score.
+- Positions shared between train and val went from 4,672 to 0.
+
+On the real rows we looked at earlier, it recovered the correct 69cp and 35cp labels.
+
+One case it can't fix: positions whose best line was a forced mate. Your original run dropped mate rows, so for those only a worse line's score survived. The mate-in-26 endgame is an example; it stays labeled 0. The records don't show which positions are affected, so I can't tell you how many there are. Regenerating with the fixed `prepare_data.py` later is the only complete fix.
+
+```
+python clean_cache.py --train ../data/train1.bin --val ../data/val1.bin --out-dir ../data/clean
+python train.py --train ../data/clean/train.bin --val ../data/clean/val.bin
+```
+
+What to expect:
+- **Size:** the real dataset has about 2.5 rows per position, so expect roughly 120M positions (about 8 GB). The script prints the exact counts and how noisy your old labels were.
+- **Speed:** here it took about 2 minutes of processing per 300M records. On your machine, reading the 20 GB file will likely take longer than that.
+- **Resources:** it uses about 1 GB of RAM, plus disk space for the cleaned file.
+- **Val loss:** it will be higher than your old numbers. That's expected, because the old val loss was partly measuring memorized positions. Don't compare the two.
+- **Existing net:** if you already trained a net on the old data, add `--init ../checkpoints/nnue.pt` to fine-tune it on the cleaned data instead of starting over.
+
+I also updated `train.py` because of your data size. The version I gave you earlier built a Python list of every index each epoch, which would need about 11 GB of RAM at 300M positions. It now hands out one small array per batch instead. The batches are identical to before, and resuming after Ctrl-C still gives bit-identical weights; I tested this by interrupting at batch 90 of 178 and resuming.
+
+If the cleaned file doesn't fit in your RAM, fully random shuffling will make every batch thousands of random disk reads. In that case:
+1. Add `--shuffle` to the `clean_cache.py` command to write the file in random order.
+2. Train with `--shuffle-batches`. Each batch is then one sequential read, and the batch order still changes every epoch.

@@ -5,6 +5,10 @@ Example:
     python train.py --train ../data/train1.bin --val ../data/val1.bin \
         --epochs 20 --batch-size 8192 --lr 1e-3 --resume
 
+A file larger than RAM: pre-shuffle it once (clean_cache.py --shuffle), then
+    python train.py --train ../data/clean/train.bin --val ../data/clean/val.bin \
+        --shuffle-batches --resume
+
 Fine-tune an existing network on new data (weights only, fresh optimizer):
     python train.py --train ../data/train2.bin --val ../data/val2.bin \
         --init ../checkpoints/nnue.pt --lr 3e-4 --epochs 8 \
@@ -16,6 +20,7 @@ import os
 import shutil
 import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Sampler
@@ -49,34 +54,60 @@ def clip_weights(model, limit):
         p.clamp_(-limit, limit)
 
 
-class ResumableSampler(Sampler):
-    """Per-epoch permutation that is reproducible from (seed, epoch), so a
-    mid-epoch checkpoint resumes at the exact batch it stopped at instead of
-    replaying the start of the epoch."""
+class ResumableBatchSampler(Sampler):
+    """Yields one index array per batch (drop_last), in an order that is
+    reproducible from (seed, epoch), so a mid-epoch checkpoint resumes at the
+    exact batch it stopped at instead of replaying the start of the epoch.
 
-    def __init__(self, n, batch_size, shuffle, seed=0):
+    Batches are numpy slices of a single permutation: no per-position Python
+    objects, so memory and CPU stay flat even for hundreds of millions of
+    positions (a Python list of 300M indices alone would need ~11 GB).
+
+    Modes:
+      shuffle          a fresh permutation of all positions every epoch
+      shuffle_batches  fixed contiguous batches, visited in a fresh order every
+                       epoch; for a file pre-shuffled on disk (clean_cache.py
+                       --shuffle) that does not fit in RAM, since every batch
+                       is then a single sequential read
+      neither          file order
+    """
+
+    def __init__(self, n, batch_size, shuffle, seed=0, shuffle_batches=False):
         self.n = n
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.shuffle_batches = shuffle_batches
         self.seed = seed
+        self.num_batches = n // batch_size
         self.epoch = 1
-        self.start = 0
+        self.start_batch = 0
 
     def set_epoch(self, epoch, start_batch=0):
         self.epoch = epoch
-        self.start = start_batch * self.batch_size
+        self.start_batch = start_batch
+
+    def _generator(self):
+        g = torch.Generator()
+        g.manual_seed(self.seed * 1_000_003 + self.epoch)
+        return g
 
     def __iter__(self):
+        B = self.batch_size
+        if self.shuffle_batches:
+            order = torch.randperm(self.num_batches, generator=self._generator()).numpy()
+            for b in order[self.start_batch:]:
+                yield np.arange(b * B, (b + 1) * B)
+            return
+        perm = None
         if self.shuffle:
-            g = torch.Generator()
-            g.manual_seed(self.seed * 1_000_003 + self.epoch)
-            order = torch.randperm(self.n, generator=g)
-        else:
-            order = torch.arange(self.n)
-        return iter(order[self.start:].tolist())
+            # int32 halves the memory; torch draws the same permutation either way.
+            dtype = torch.int32 if self.n < 2**31 else torch.int64
+            perm = torch.randperm(self.n, generator=self._generator(), dtype=dtype).numpy()
+        for b in range(self.start_batch, self.num_batches):
+            yield perm[b * B:(b + 1) * B] if perm is not None else np.arange(b * B, (b + 1) * B)
 
     def __len__(self):
-        return max(0, self.n - self.start)
+        return max(0, self.num_batches - self.start_batch)
 
 
 def evaluate(model, loader, device):
@@ -152,6 +183,13 @@ def main():
         help="Shuffle train data each epoch (default: on; --no-shuffle for file order). "
              "The data cache is in stream order, so unshuffled batches are highly correlated.",
     )
+    ap.add_argument(
+        "--shuffle-batches",
+        action="store_true",
+        help="Shuffle the order of fixed, contiguous batches instead of single positions "
+             "(overrides --shuffle). Use with a file pre-shuffled by clean_cache.py --shuffle "
+             "that is larger than RAM: each batch becomes one sequential read.",
+    )
     ap.add_argument("--seed", type=int, default=0, help="Seed for the per-epoch shuffle")
     ap.add_argument(
         "--clip",
@@ -194,15 +232,17 @@ def main():
     if total_batches == 0:
         raise SystemExit("Training set is smaller than one batch.")
 
-    train_sampler = ResumableSampler(len(train_ds), args.batch_size, args.shuffle, args.seed)
+    train_sampler = ResumableBatchSampler(
+        len(train_ds), args.batch_size, args.shuffle, args.seed, args.shuffle_batches
+    )
     sampler_state = {"shuffle": args.shuffle, "seed": args.seed, "batch_size": args.batch_size}
+    if args.shuffle_batches:
+        sampler_state["shuffle_batches"] = True
     train_loader = DataLoader(
         train_ds,
-        batch_size=args.batch_size,
-        sampler=train_sampler,
+        batch_sampler=train_sampler,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
-        drop_last=True,
         collate_fn=nnue_collate,
         persistent_workers=(args.workers > 0),
     )
