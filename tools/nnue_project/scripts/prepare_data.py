@@ -8,9 +8,9 @@ machine (not inside a sandboxed tool environment):
     pip install datasets tqdm
     python prepare_data.py --n-train 8000000 --n-val 50000
 
-It writes:
-    data/train.bin
-    data/val.bin
+It writes (with the default --out-dir ../data):
+    ../data/train1.bin
+    ../data/val1.bin
 
 Each record is 68 bytes (see fen_utils.py for the exact layout).
 
@@ -41,6 +41,7 @@ import argparse
 import os
 import random
 import time
+import traceback
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 
@@ -56,18 +57,51 @@ VAL_FRACTION = 0.006  # matches the original sampling rate for the val split
 FLUSH_BYTES = 4 * 1024 * 1024  # flush each output file every ~4MB
 
 
+def best_eval_per_position(rows):
+    """Collapse the dataset's exploded rows to one label per position.
+
+    The HF dataset has one row per (position, evaluation, principal variation):
+    the same FEN appears several times, and rows after the first of each
+    evaluation are the scores of *other, worse moves* (MultiPV lines 2, 3, ...),
+    not of the position. Lichess recommends using the deepest evaluation's
+    first PV. Rows of one FEN are contiguous, and within an evaluation the PVs
+    are in order, so the first row of each (depth, knodes) block is its PV1.
+
+    Yields (fen, depth, cp, mate), once per position."""
+    cur_fen = None
+    best = None          # (depth_for_compare, depth, cp, mate)
+    prev_key = None
+    for row in rows:
+        fen = row["fen"]
+        if fen != cur_fen:
+            if best is not None:
+                yield cur_fen, best[1], best[2], best[3]
+            cur_fen, best, prev_key = fen, None, None
+        key = (row["depth"], row["knodes"])
+        if key != prev_key:                      # first row of a new evaluation = its PV1
+            prev_key = key
+            d = row["depth"] if row["depth"] is not None else -1
+            if best is None or d > best[0]:
+                best = (d, row["depth"], row["cp"], row["mate"])
+    if best is not None:
+        yield cur_fen, best[1], best[2], best[3]
+
+
 def iter_filtered_rows(min_depth: int, max_abs_cp: int, keep_mate: bool):
     from datasets import load_dataset
 
     ds = load_dataset(
         "Lichess/chess-position-evaluations", split="train", streaming=True
     )
+    try:
+        # Skip decoding the PV move strings; they are never used.
+        ds = ds.select_columns(["fen", "depth", "knodes", "cp", "mate"])
+    except Exception:
+        pass
 
-    for row in ds:
-        if row["depth"] is not None and row["depth"] < min_depth:
+    for fen, depth, cp, mate in best_eval_per_position(ds):
+        if depth is not None and depth < min_depth:
             continue
-        cp = row["cp"]
-        mate = row["mate"]
         if mate is not None:
             if not keep_mate:
                 continue
@@ -78,7 +112,7 @@ def iter_filtered_rows(min_depth: int, max_abs_cp: int, keep_mate: bool):
                 # Very lopsided positions add little signal for training a
                 # small eval net and can dominate the loss; skip them.
                 continue
-        yield row["fen"], cp, mate
+        yield fen, cp, mate
 
 
 def batched(iterable, n):
@@ -223,6 +257,8 @@ def main():
                     submit_next()
 
         except (KeyboardInterrupt, Exception) as e:
+            if not isinstance(e, KeyboardInterrupt):
+                traceback.print_exc()
             print(f"\n[Safeguard] Interrupted or error ({type(e).__name__}: {e}). Saving all data collected so far...")
         finally:
             # Final flush of all in-memory records

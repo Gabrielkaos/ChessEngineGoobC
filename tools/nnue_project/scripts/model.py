@@ -63,9 +63,10 @@ class NNUE(nn.Module):
 
         x = torch.cat([own_act, other_act], dim=1)  # (B, 2048)
 
-        # Bucket selection
-        selected_w = self.output_weights[buckets]   # (B, 2048)
-        selected_b = self.output_biases[buckets]    # (B,)
-
-        out = torch.sum(x * selected_w, dim=1) + selected_b
-        return out
+        # Bucket selection: evaluate all 8 buckets as one small matmul, then pick
+        # each sample's bucket. Same result as gathering per-sample weight rows,
+        # but it avoids materialising a (B, 2048) copy of the weights and the
+        # scatter-add that indexing needs in the backward pass.
+        all_buckets = x @ self.output_weights.t()                          # (B, 8)
+        out = all_buckets.gather(1, buckets.unsqueeze(1)).squeeze(1)       # (B,)
+        return out + self.output_biases[buckets]

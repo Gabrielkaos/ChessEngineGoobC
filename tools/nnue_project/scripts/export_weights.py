@@ -18,6 +18,8 @@ import torch
 
 from model import NNUE, QA, QB
 
+FAST_OUT_W_LIMIT = 128   # engine's fast SCReLU kernel computes w * v in int16 (v <= 255)
+
 
 def quantize(val, scale, name):
     v = np.round(val.astype(np.float64) * scale)
@@ -48,9 +50,26 @@ def export_checkpoint(checkpoint_path: str, out_path: str):
     print(f"Output bias:     {out_b.shape}, range [{out_b.min():.4f}, {out_b.max():.4f}]")
 
     q_ft_w = quantize(ft_w, QA, "ft.weight")
-    q_ft_b = quantize(ft_b, QA, "ft.bias")
+    q_ft_b = quantize(ft_b, QA, "ft_bias")
     q_out_w = quantize(out_w, QB, "output_weights")
     q_out_b = quantize(out_b, QA * QB, "output_biases")
+
+    # Limits of the engine's integer inference (see nnue_loader.h). These are
+    # not caught by the per-value int16 check above.
+    max_out = int(np.abs(q_out_w.astype(np.int32)).max())
+    if max_out > FAST_OUT_W_LIMIT:
+        n_bad = int((np.abs(q_out_w.astype(np.int32)) > FAST_OUT_W_LIMIT).sum())
+        print(f"Warning: {n_bad} output weights exceed +/-{FAST_OUT_W_LIMIT} (max {max_out}). The fast SIMD "
+              f"kernel would overflow; the patched loader will use its slower exact kernel. "
+              f"Train with --clip 1.98 to avoid this.")
+    try:
+        from check_net import accumulator_bound
+        hi, lo = accumulator_bound(q_ft_w, q_ft_b)
+        if hi > 32767 or lo < -32768:
+            print(f"Warning: int16 accumulator can reach [{lo:,.0f}, {hi:,.0f}] in extreme positions "
+                  f"(overflow wraps around). Train with --clip 1.98 to avoid this.")
+    except ImportError:
+        pass
 
     with open(out_path, "wb") as f:
         f.write(q_ft_w.tobytes())
