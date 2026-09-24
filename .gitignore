@@ -13,7 +13,7 @@ tools/dataset*.epd
 tools/*.bin
 tools/*.so
 tools/*.d
-tools/nnue_project/data/*
+tools/nnue_project/data_*
 tools/nnue_project/checkpoints/*
 tools/nnue_project/scripts/__pycache__/
 
