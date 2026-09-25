@@ -1,7 +1,20 @@
 /*
  * nnue_loader.h / nnue_loader.c
  * ==============================
- * NNUE inference for GOOB — Schoenemann-0.5.0 Architecture:
+ * NNUE inference for GOOB.
+ *
+ * Architecture and SIMD inference adapted from:
+ *   Schoenemann (https://github.com/Jochengehtab/Schoenemann)
+ *   Copyright (c) Jochen Gehtab
+ *   Licensed under GNU Affero General Public License v3.0 (AGPL-3.0).
+ *
+ * Adaptations for GOOB:
+ *   - Adapted data structures, integration hooks, and accumulator management
+ *     for GOOB's board representation and search by Gabriel Montes.
+ *   - Network weights and training data independently generated and trained
+ *     by Gabriel Montes.
+ *
+ * NNUE Details — Schoenemann-0.5.0 Architecture:
  *
  *   - 768 perspective-aware input features (2 colors x 6 piece types x 64 squares).
  *     Unlike HalfKP/HalfKA, king positions are NOT part of the feature index!

@@ -25,6 +25,12 @@ I watched CodeMonkeyKings's tutorial on BBC, after implementing the bitboards, I
 Just trying to see how far I can make GOOB stronger by watching, reading, and researching how other open source engines work :)
 
 
+## NNUE Evaluation
+GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation function based on the **Schoenemann-0.5.0** architecture:
+* **Architecture:** Perspective-aware dual-accumulator topology `(768 -> 1024)x2 -> 1x8` with Squared Clipped ReLU (SCReLU) activation and 8 material buckets.
+* **Inference Code:** SIMD-accelerated inference adapted from [Schoenemann](https://github.com/Jochengehtab/Schoenemann) by Jochen Gehtab (licensed under GNU AGPL-3.0).
+* **Data & Training:** Network weights (`quantised.bin`) and datasets were independently produced and trained by Gabriel Montes using custom data and training pipelines (`tools/nnue_project/`).
+
 ## Credits
 ##### Credits to everyone who inspired and helped me
 
@@ -36,6 +42,7 @@ Just trying to see how far I can make GOOB stronger by watching, reading, and re
 * [Chess Coding Adventure](https://youtu.be/U4ogK0MIzqk)
 
 ###### Some very inspiring engines I used for reference
+* [Schoenemann](https://github.com/Jochengehtab/Schoenemann) by Jochen Gehtab – NNUE network architecture and SIMD inference reference (AGPL-3.0)
 * [Ethereal Chess Engine by Andrew Grant](https://github.com/AndyGrant/Ethereal)
 * Vice
 * [BBC](https://github.com/maksimKorzh/bbc)
