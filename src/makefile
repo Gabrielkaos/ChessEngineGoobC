@@ -56,8 +56,9 @@ endif
 # ---------------------------------------------------------------------------
 # Source / name settings
 # ---------------------------------------------------------------------------
-NAME := GOOB-2.2-BETA
-SRCS := $(wildcard *.c)
+NAME     := GOOB-2.2-BETA
+SRCS     := $(wildcard *.c)
+EVALFILE ?= weights/quantised.bin
 
 # ---------------------------------------------------------------------------
 # Common compiler flags (ISA-neutral)
@@ -65,7 +66,7 @@ SRCS := $(wildcard *.c)
 # -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
 #               path; the inner #ifdef __BMI2__ guard makes it a no-op on
 #               CPUs that do not have BMI2.
-BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS)
+BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\"
 LDFLAGS     := -lm -flto=auto
 
 # ---------------------------------------------------------------------------
@@ -203,6 +204,11 @@ pgo:
 # ---------------------------------------------------------------------------
 -include $(wildcard obj/*/*.d)
 -include $(wildcard $(TUNEOBJDIR)/*.d)
+
+# Rebuild nnue_loader.o whenever the embedded network binary changes
+obj/%/nnue_loader.o: $(EVALFILE)
+$(TUNEOBJDIR)/nnue_loader.o: $(EVALFILE)
+
 
 # ---------------------------------------------------------------------------
 # Legacy 'depend' target (kept for compatibility)

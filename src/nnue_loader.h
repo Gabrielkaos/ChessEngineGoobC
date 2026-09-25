@@ -57,8 +57,9 @@
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
 
-/* Load weights from binary file. Returns 1 on success, 0 on failure.
- * If path is NULL or "<empty>", checks default candidate paths.
+/* Load weights from binary file or embedded network. Returns 1 on success, 0 on failure.
+ * If path is NULL, "<empty>", or "default", loads the embedded network.
+ * If path is a valid file, loads the custom network from that file.
  * On failure, a previously loaded network (if any) stays active. */
 int nnue_init(const char *path);
 
@@ -171,6 +172,10 @@ typedef struct {
 static NNUE_Weights *g_weights = NULL;
 static int g_out_needs_exact = 0;   /* 1 if max |out_w| > NNUE_FAST_OUT_W_LIMIT */
 int nnue_loaded = 0;
+
+extern const unsigned char gEmbeddedNetData[];
+extern const unsigned int gEmbeddedNetSize;
+
 
 /* ── Feature Index Calculation ───────────────────────────────────────────── */
 static inline size_t nnue_feature_index(int us, int piece, int sq) {
@@ -604,72 +609,67 @@ static void nnue_aligned_free(void *p) {
 }
 
 int nnue_init(const char *path) {
-    FILE *f = NULL;
+    NNUE_Weights *w = NULL;
     const char *opened = NULL;
 
-    if (path && path[0] && strcmp(path, "<empty>") != 0) {
-        f = fopen(path, "rb");
+    if (path && path[0] && strcmp(path, "<empty>") != 0 && strcmp(path, "default") != 0) {
+        FILE *f = fopen(path, "rb");
         if (f) {
             opened = path;
+            w = (NNUE_Weights *)nnue_aligned_alloc(64, sizeof(NNUE_Weights));
+            if (!w) {
+                fclose(f);
+                return 0;
+            }
+
+            size_t read = 0;
+            read += fread(w->ft_w, sizeof(int16_t), NNUE_INPUT_SIZE * NNUE_HIDDEN_SIZE, f);
+            read += fread(w->ft_b, sizeof(int16_t), NNUE_HIDDEN_SIZE, f);
+            read += fread(w->out_w, sizeof(int16_t), NNUE_OUTPUT_BUCKETS * NNUE_HIDDEN_SIZE * 2, f);
+            read += fread(w->out_b, sizeof(int16_t), NNUE_OUTPUT_BUCKETS, f);
+
+            long extra = 0;
+            {
+                long here = ftell(f);
+                if (here >= 0 && fseek(f, 0, SEEK_END) == 0) {
+                    long end = ftell(f);
+                    if (end > here) extra = end - here;
+                }
+            }
+            fclose(f);
+
+            if (read < (size_t)NNUE_TOTAL_SHORTS) {
+                printf("info string NNUE load failed: expected %zu shorts, read %zu\n",
+                       (size_t)NNUE_TOTAL_SHORTS, read);
+                fflush(stdout);
+                nnue_aligned_free(w);
+                return 0;
+            }
+            if (extra != 0 && extra != NNUE_BULLET_PADDING) {
+                printf("info string NNUE warning: '%s' has %ld unexpected trailing bytes "
+                       "(different architecture or layout?)\n", opened, extra);
+            }
         } else {
-            printf("info string NNUE: cannot open '%s', trying default locations\n", path);
+            printf("info string NNUE: cannot open '%s'\n", path);
             fflush(stdout);
+            return 0;
         }
-    }
-    if (!f) {
-        const char *candidates[] = {
-            "quantised.bin",
-            "weights/quantised.bin",
-            "src/weights/quantised.bin",
-            "Schoenemann-0.5.0/src/quantised.bin",
-            "../Schoenemann-0.5.0/src/quantised.bin",
-            NULL
-        };
-        for (int i = 0; candidates[i] != NULL; i++) {
-            f = fopen(candidates[i], "rb");
-            if (f) { opened = candidates[i]; break; }
+    } else {
+        /* No path specified, or "<empty>" / "default": use embedded weights */
+        if (gEmbeddedNetSize < (size_t)NNUE_TOTAL_SHORTS * sizeof(int16_t)) {
+            printf("info string NNUE error: embedded network is missing or too small (%u bytes)\n",
+                   gEmbeddedNetSize);
+            fflush(stdout);
+            return 0;
         }
-    }
-    if (!f) {
-        printf("info string NNUE: no network file found\n");
-        fflush(stdout);
-        return 0;
-    }
-
-    /* Load into a fresh buffer so a failed reload cannot corrupt the
-     * network that is currently in use. */
-    NNUE_Weights *w = (NNUE_Weights *)nnue_aligned_alloc(64, sizeof(NNUE_Weights));
-    if (!w) {
-        fclose(f);
-        return 0;
-    }
-
-    size_t read = 0;
-    read += fread(w->ft_w, sizeof(int16_t), NNUE_INPUT_SIZE * NNUE_HIDDEN_SIZE, f);
-    read += fread(w->ft_b, sizeof(int16_t), NNUE_HIDDEN_SIZE, f);
-    read += fread(w->out_w, sizeof(int16_t), NNUE_OUTPUT_BUCKETS * NNUE_HIDDEN_SIZE * 2, f);
-    read += fread(w->out_b, sizeof(int16_t), NNUE_OUTPUT_BUCKETS, f);
-
-    long extra = 0;
-    {
-        long here = ftell(f);
-        if (here >= 0 && fseek(f, 0, SEEK_END) == 0) {
-            long end = ftell(f);
-            if (end > here) extra = end - here;
+        w = (NNUE_Weights *)nnue_aligned_alloc(64, sizeof(NNUE_Weights));
+        if (!w) {
+            printf("info string NNUE error: memory allocation failed\n");
+            fflush(stdout);
+            return 0;
         }
-    }
-    fclose(f);
-
-    if (read < (size_t)NNUE_TOTAL_SHORTS) {
-        printf("info string NNUE load failed: expected %zu shorts, read %zu\n",
-               (size_t)NNUE_TOTAL_SHORTS, read);
-        fflush(stdout);
-        nnue_aligned_free(w);
-        return 0;
-    }
-    if (extra != 0 && extra != NNUE_BULLET_PADDING) {
-        printf("info string NNUE warning: '%s' has %ld unexpected trailing bytes "
-               "(different architecture or layout?)\n", opened, extra);
+        memcpy(w, gEmbeddedNetData, sizeof(NNUE_Weights));
+        opened = "embedded network (weights/quantised.bin)";
     }
 
     int max_abs_out = 0;
@@ -687,6 +687,7 @@ int nnue_init(const char *path) {
     nnue_loaded = 1;
     if (old) nnue_aligned_free(old);
 
+    printf("info string NNUE: loaded %s\n", opened);
     if (g_out_needs_exact) {
         printf("info string NNUE: output weights reach %d (fast kernel needs <= %d); "
                "using the exact kernel. Retrain with weight clipping for full speed.\n",

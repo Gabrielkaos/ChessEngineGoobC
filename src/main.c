@@ -21,6 +21,7 @@ int main(int argc, char *argv[])
 
     S_BOARD pos[1];
     pos->search = alloc_search_thread();
+    pos->useNNUE = TRUE;
     S_SEARCHINFO info[1];
     info->quit=FALSE;
     info->threadNum = 1;

@@ -178,27 +178,15 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
     }
 
 
-    else if (!strncmp(line, "setoption name UseNNUE value ", 29)) {
-        char *ptrTrue = strstr(line, "true");
-        if (ptrTrue != NULL) {
-            pos->useNNUE = TRUE;
-            if (!nnue_loaded) {
-                if (nnue_init(NULL)) {
-                    nnue_refresh_accumulator(pos);
-                }
-            }
-            printf("info string UseNNUE set to true\n");
-        } else {
-            pos->useNNUE = FALSE;
-            printf("info string UseNNUE set to false\n");
-        }
-        clearEvalTable(pos->eTable);
-    }
-
     else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
         char path[512] = {0};
         sscanf(line, "%*s %*s %*s %*s %511s", path);
-        if (strlen(path) > 0 && strcmp(path, "<empty>") != 0) {
+        if (strlen(path) == 0 || strcmp(path, "<empty>") == 0 || strcmp(path, "default") == 0) {
+            if (nnue_init(NULL)) {
+                nnue_refresh_accumulator(pos);
+                printf("info string EvalFile reset to embedded network\n");
+            }
+        } else {
             if (nnue_init(path)) {
                 nnue_refresh_accumulator(pos);
                 printf("info string EvalFile loaded: %s\n", path);
@@ -648,7 +636,6 @@ void uciPrint(){
     printf("option name UCI_Chess960 type check default false\n"); //18
     printf("option name BruteForceMode type check default false\n"); //19
     printf("option name useFiftyMoveRule type check default true\n"); //20
-    printf("option name UseNNUE type check default false\n");
     printf("option name EvalFile type string default <empty>\n");
     printf("option name UsePKNet type check default false\n");
     printf("option name PKNetFile type string default <empty>\n");
@@ -670,7 +657,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     pos->contemptDrawPenalty     =0;
     pos->contempt                =0;
     pos->chess960                =FALSE;
-    pos->useNNUE                 =FALSE;
+    pos->useNNUE                 =TRUE;
     EngineOptions->analysisMode  =FALSE;
 	EngineOptions->uciElo        =defaultElo;
 	info->setOptionPonder        =FALSE;
