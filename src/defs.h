@@ -51,12 +51,8 @@ typedef int16_t ContCorrectionTable[6][64][6][64];
 #define AUTHOR "Gabriel Montes"
 #define VER "2.2-BETA"
 
-#define MATEIN5 "2kr4/p1p2pQ1/P1p2Np1/2P4p/7B/1P6/5PPP/R4K2 w - - 0 3"
 #define QUEENG3 "5rk1/pp4pp/4p3/2R3Q1/3n4/2q4r/P1P2PPP/5RK1 b - - 0 1"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-#define TEST_SEARCH "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-#define KING_RACE "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - - 0 1"
-#define QUEENXF3 "4r1k1/p1pb1ppp/Qbp1r3/8/1P6/2Pq1B2/R2P1PPP/2B2RK1 b - - 0 1"
 #define MVFLAGEP 0x40000
 #define MVFLAGPS 0x80000
 #define MVFLAGCA 0x1000000
@@ -79,7 +75,6 @@ enum {  MAXDEPTH=128,
         VALUE_NONE=AB_BOUND+1};
 enum {evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
-enum {OPENING,ENDING};
 enum {
     EMPTY = 0,
     wP = PAWN,     wN = KNIGHT,     wB = BISHOP,     wR = ROOK,     wQ = QUEEN,     wK = KING,
@@ -100,7 +95,6 @@ enum {WHITE = 0, BLACK = 1, BOTH = 2, COLOR_NB = 2};
 #define MIRROR64(sq)         ((sq) ^ 56)
 #define RELATIVE_SQ(c, sq)   ((sq) ^ ((c) * 56))
 #define RELATIVE_RANK(c, sq) ((c) == WHITE ? RANK_OF(sq) : 7 - RANK_OF(sq))
-enum {UCIMODE,XBOARDMODE,CONSOLEMODE};
 enum {
     A1,B1,C1,D1,E1,F1,G1,H1,
     A2,B2,C2,D2,E2,F2,G2,H2,
@@ -136,21 +130,13 @@ typedef struct {
     int score;
 } S_MOVE;
 
-//PV ENtry
+//PV Entry
 typedef struct{
-
-    /*U64 posKey;
-    int move;
-    int score;
-    int depth;
-    int flags;*/
-
     U64 smp_data;
     uint32_t smp_key;
     int16_t eval;
     uint8_t generation;
     uint8_t padding;
-
 } S_PVENTRY;
 
 typedef struct{
@@ -281,7 +267,6 @@ typedef struct {
 
 //Engine options
 typedef struct{
-    //int useBook;
     int analysisMode;
     int uciElo;
 } S_OPTIONS;
@@ -310,25 +295,17 @@ extern S_PVTABLE pvTable[1];
 extern U64 king_attacks[BOARD_NUMS_SQ];
 extern U64 knight_attacks[BOARD_NUMS_SQ];
 extern U64 pawn_attacks[BOTH][BOARD_NUMS_SQ];
-extern const int pieceKnight[16];
 extern const int pieceKing[16];
-extern const int pieceRookQueen[16];
-extern const int pieceBishopQueen[16];
 extern const char pieceChar[];
 extern const char sideChar[];
 extern const char fileChar[];
 extern const char rankChar[];
-extern const int pieceBig[16];
-extern const int pieceMin[16];
-extern const int pieceMaj[16];
 extern const int pieceCol[16];
 extern const int piecePawn[16];
 extern const int pieceType[16];
 extern const int filesBoard[BOARD_NUMS_SQ];
 extern const int ranksBoard[BOARD_NUMS_SQ];
-extern const int Mirror64[64];
 extern S_OPTIONS EngineOptions[1];
-//extern int mvvLvaScore[13][13];
 
 
 

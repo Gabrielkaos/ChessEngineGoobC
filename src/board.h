@@ -41,7 +41,6 @@ typedef struct {
     int rootEffortMove[MAXPOSMOVES];
     U64 rootEffortNodes[MAXPOSMOVES];
     int rootEffortCount;
-    int rootPvMove;
     int quietsTried[MAXDEPTH][MAXPOSMOVES];
     int capturesTried[MAXDEPTH][MAXPOSMOVES];
     S_MOVEPICKER movePickers[MAXDEPTH];
@@ -136,9 +135,6 @@ typedef struct {
 
 } S_BOARD;
 
-#define pieces_all(pos)          ((pos)->byTypeBB[ALL_PIECES])
-#define pieces_color(pos, c)     ((pos)->byColorBB[(c)])
-#define pieces_type(pos, pt)     ((pos)->byTypeBB[(pt)])
 #define pieces_cp(pos, c, pt)    ((pos)->byColorBB[(c)] & (pos)->byTypeBB[(pt)])
 
 #include "correction.h"

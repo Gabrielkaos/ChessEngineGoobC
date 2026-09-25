@@ -66,11 +66,6 @@ int nnue_init(const char *path);
 /* Full rebuild of pos->search->nnue_accumulators[ply] for both perspectives. */
 void nnue_refresh_accumulator(S_BOARD *pos);
 
-/* Compatibility hooks for move updates (search uses dirtyPieces) */
-void nnue_update_add(S_BOARD *pos, int piece, int sq);
-void nnue_update_remove(S_BOARD *pos, int piece, int sq);
-void nnue_update_move(S_BOARD *pos, int piece, int from, int to);
-
 /* Evaluate board position using NNUE.
  * Returns centipawns from the SIDE-TO-MOVE's perspective.
  * Works without a search context (pos->search == NULL) and beyond MAXDEPTH,
@@ -551,10 +546,6 @@ static void nnue_update_perspective_to_ply(S_BOARD *pos, int us, int target_ply)
         }
     }
 }
-
-void nnue_update_add(S_BOARD *pos, int piece, int sq) { (void)pos; (void)piece; (void)sq; }
-void nnue_update_remove(S_BOARD *pos, int piece, int sq) { (void)pos; (void)piece; (void)sq; }
-void nnue_update_move(S_BOARD *pos, int piece, int from, int to) { (void)pos; (void)piece; (void)from; (void)to; }
 
 /* ── Evaluation ──────────────────────────────────────────────────────────── */
 static inline int nnue_output_bucket(const S_BOARD *pos) {

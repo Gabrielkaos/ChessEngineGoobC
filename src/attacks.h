@@ -97,24 +97,6 @@ INLINE U64 pawnRightAttacks(U64 pawns, U64 targets, int colour) {
                                       : (pawns >> 9) & ~FileBBMask[FILE_H]);
 }
 
-INLINE U64 pawnAttackSpan(U64 pawns, U64 targets, int colour) {
-    ASSERT(SideValid(colour));
-    return pawnLeftAttacks(pawns, targets, colour)
-        | pawnRightAttacks(pawns, targets, colour);
-}
-
-INLINE U64 pawnAttackDouble(U64 pawns, U64 targets, int colour) {
-    ASSERT(SideValid(colour));
-    return pawnLeftAttacks(pawns, targets, colour)
-        & pawnRightAttacks(pawns, targets, colour);
-}
-
-INLINE U64 pawnAttacks(int color, int sq) {
-    ASSERT(SideValid(color));
-    ASSERT(SqOnBoard(sq));
-    return color == WHITE ? pawn_attacks[WHITE][sq] : pawn_attacks[BLACK][sq];
-}
-
 INLINE U64 attackersToKingSq(const S_BOARD *pos, int side) {
     ASSERT(SideValid(side));
 
@@ -134,7 +116,6 @@ INLINE U64 attackersToKingSq(const S_BOARD *pos, int side) {
          | (king_attacks[ksq]         & enemyBB & pos->byTypeBB[KING]);
 }
 
-extern U64 discoveredAttacks(S_BOARD *pos, int sq, int US);
 extern U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq);
 extern U64 allAttackedSquares(const S_BOARD *pos, int side);
 extern void InitAttacks();

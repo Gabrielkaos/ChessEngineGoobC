@@ -13,4 +13,4 @@ bestmove f1e1
 
 ## perfttest
 33 / 33 positions passed
-Total nodes: 1225549258, total time: 37795ms, avg 33122952 nps
+Total nodes: 1225549258, total time: 36175ms, avg 34043034 nps

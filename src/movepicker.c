@@ -254,7 +254,6 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     //quiet score: butterfly + continuation histories plus the
                     //shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
-                                            //  + getMainHistory(pos, move, mp->threats)
                                              + 2 * getPawnHistory(pos, move);
 
                     //low-ply history boost near the root, fading out with ply

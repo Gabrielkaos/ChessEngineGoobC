@@ -74,10 +74,6 @@ int strEquals(char *str1, char *str2) {
 int strStartsWith(char *str, char *key) {
     return strstr(str, key) == str;
 }
-int strContains(char *str, char *key) {
-    return strstr(str, key) != NULL;
-}
-
 
 void UciReportCurrentMove(int depth,int move,int currmovenumber){
     printf("info depth %d currmove %s currmovenumber %d\n",depth,

@@ -96,32 +96,6 @@ void printFen(const S_BOARD *pos,char *fen){
     sprintf(fen," %d %d",pos->st->fiftyMove,1+(pos->hisPly-(pos->side==BLACK))/2);
 }
 
-void printBitBoard(U64 bb) {
-
-	U64 shiftMe = 1ULL;
-
-	int rank = 0;
-	int file = 0;
-	int sq64 = 0;
-
-	for(rank = RANK_8; rank >= RANK_1; --rank) {
-        printf("%d",rank+1);
-		for(file = FILE_A; file <= FILE_H; ++file) {
-			sq64 = FRtoSQ(file,rank);	// 120 based
-			//sq64 = SQ64(sq); // 64 based
-
-			if((shiftMe << sq64) & bb)
-				printf("X");
-			else
-				printf("-");
-
-		}
-		printf("\n");
-	}
-	printf(" abcdefgh\n");
-    printf("\n\n");
-}
-
 int ParseMove(char *ptrChar, S_BOARD *pos){
     if (ptrChar[1] > '8' || ptrChar[1] < '1') return NOMOVE;
     if (ptrChar[3] > '8' || ptrChar[3] < '1') return NOMOVE;
@@ -167,24 +141,4 @@ int ParseMove(char *ptrChar, S_BOARD *pos){
     }
 
     return NOMOVE;
-}
-
-void PrintMoveList(const S_MOVELIST *list,S_BOARD *pos){
-    int index;
-    int move=0;
-    int illegal=0;
-    int moveNumber=0;
-
-    printf("MoveList: \n");
-
-    for(index=0;index<list->count;++index){
-        move=list->moves[index].move;
-        if(!MoveExists(pos,move)){
-            illegal++;
-            continue;
-        }
-        printf("Move:%d -> %s\n",++moveNumber,PrMove(move));
-    }
-
-    printf("\nTotal Moves: %d",list->count-illegal);
 }

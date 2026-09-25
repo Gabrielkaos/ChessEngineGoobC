@@ -88,8 +88,6 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     info->depthOneComplete=FALSE; 
 
-    pos->search->rootPvMove = NOMOVE;
-
     pos->nmpMinPly = 0;
 
     //low-ply history is refreshed every search (Stockfish fills it with 102)
@@ -755,8 +753,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(bestScore > maxValue) bestScore = maxValue;
 
     //update TT
-    if(rootNode) pos->search->rootPvMove = bestMove;
-
     if(!rootNode || (pos->currentPvNum==0 && pos->excludedRootMoveCount==0)){
         ttBound = bestScore>=beta    ? HFBETA
                 : bestScore>oldAlpha ? HFEXACT : HFALPHA;
@@ -978,7 +974,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     S_PVTABLE *table     = workerthread->ttable;
     int threadNum        = workerthread->threadNumber;
 
-    int currentDepth,numberOfPvMoves=0,bestScore;
+    int currentDepth,bestScore;
     int pvNum;
     S_PVLINE rootPv;
     S_PVLINE bestRootPv;

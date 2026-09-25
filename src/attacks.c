@@ -525,20 +525,3 @@ U64 allAttackedSquares(const S_BOARD *pos, int side) {
 
     return attacks;
 }
-
-U64 discoveredAttacks(S_BOARD *pos, int sq, int US) {
-    ASSERT(SideValid(US));
-    ASSERT(SqOnBoard(sq));
-
-    U64 enemy    = pos->byColorBB[!US];
-    U64 occupied = pos->byTypeBB[ALL_PIECES];
-
-    U64 rAttacks = get_rook_attacks(sq,occupied);
-    U64 bAttacks = get_bishop_attacks(sq,occupied);
-
-    U64 rooks   = (enemy & pos->byTypeBB[ROOK]) & ~rAttacks;
-    U64 bishops = (enemy & pos->byTypeBB[BISHOP]) & ~bAttacks;
-
-    return (  rooks &  get_rook_attacks(sq, occupied & ~rAttacks))
-         | (bishops & get_bishop_attacks(sq, occupied & ~bAttacks));
-}

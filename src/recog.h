@@ -77,7 +77,4 @@ INLINE int recog_draw(const S_BOARD *pos) {
            drawKBPRP(pos);
 }
 
-extern int drawRepetition(const S_BOARD *pos);
-extern int drawByRepetitionEthereals(const S_BOARD *pos);
-
 #endif // RECOG_H

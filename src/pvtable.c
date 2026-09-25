@@ -87,31 +87,6 @@ int valueToTT(int score,int ply){
     return score;
 }
 
-int getPvLine(const int depth,S_BOARD *pos, S_PVTABLE *table){
-
-    int move=ProbePvTable(pos, table);
-    int count =0;
-    int startPly = pos->ply;
-    StateInfo st[MAXDEPTH];
-
-    while(move != NOMOVE && count <depth){
-
-        if(MoveExists(pos,move)){
-            makeMove(pos, move, &st[count]);
-            pos->search->pvArray[count++]=move;
-        }else{
-            break;
-        }
-        move=ProbePvTable(pos, table);
-    }
-
-    while(pos->ply > startPly){
-        takeMove(pos);
-    }
-
-    return count;
-}
-
 void clearPvTable(S_PVTABLE *table){
     memset(table->pTable, 0, table->numEntries * sizeof(S_PVBUCKET));
 }
