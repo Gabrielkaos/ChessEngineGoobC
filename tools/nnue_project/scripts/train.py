@@ -259,8 +259,8 @@ def main():
     model = NNUE().to(device)
     print(f"Model architecture: {model.num_features} -> ({model.l1_size}x2) -> 1x{model.num_buckets}")
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
-    sched = torch.optim.lr_scheduler.StepLR(
-        opt, step_size=max(1, args.epochs // 4), gamma=0.3
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt, T_max=args.epochs, eta_min=1e-5
     )
     loss_fn = nn.MSELoss()
 
