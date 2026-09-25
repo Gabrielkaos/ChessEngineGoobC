@@ -1,5 +1,3 @@
-
-
 #ifndef EVAL_H
 #define EVAL_H
 
@@ -7,100 +5,9 @@
 #include "defs.h"
 #include "board.h"
 
-
-//Evaluation info structure
-typedef struct{
-    int kingSq[2]; //stores king squares
-    int pkSafety[2]; //stores safety score of pawn king
-    U64 attackedByBishops[2]; //bitboards attacked by bishops
-    U64 attackedByKnights[2]; //bitboards attacked by knights
-    U64 occupiedMinusBishops[2]; //occupancy except bishop
-    U64 occupiedMinusRooks[2]; //occupancy except rook
-    U64 mobilityAreas[2]; //mobility
-    int attWeight[2]; //for attackers
-    int attCnt[2]; //how many attackers
-    int kingAttacksCount[2]; //how many attacks on king
-    U64 passers[2]; //passer pawn
-    int pawnEval[2]; //pawn eval
-    U64 attacks_array_minors[2]; //attacks of minors bitboard
-    U64 attacks_array_rooks[2]; //attacks of rooks bitboards
-    U64 attacks_array_queens[2]; //attacks of queens bitboards
-    U64 attacks_array_pawns[2]; //pawn attacks
-    U64 rammedPawns[2]; //rammed pawns
-    U64 attackedBy2[2]; //stores bitboards attacked by two piece
-    U64 attacked[2]; //squares attacked
-    U64 kingAreas[2]; //areas surrounding king
-    U64 pawnAttackedBy2[2]; //squares attacked by 2 pawns
-    
-    U64 pawnsBB, knightsBB, bishopsBB, rooksBB, queensBB;
-} EVAL_INFO;
-
-enum {
-    SCALE_DRAW             =   0,
-    SCALE_OCB_BISHOPS_ONLY =  64,
-    SCALE_OCB_ONE_KNIGHT   = 106,
-    SCALE_OCB_ONE_ROOK     =  96,
-    SCALE_LONE_QUEEN       =  88,
-    SCALE_NORMAL           = 128,
-    SCALE_LARGE_PAWN_ADV   = 144,
-};
-
-#define MakeScore(mg, eg) ((int)((unsigned int)(eg) << 16) + (mg))
-#define S(mg, eg) (MakeScore((mg), (eg)))
-#define ScoreMG(s) ((int16_t)((uint16_t)((unsigned)((s)))))
-#define ScoreEG(s) ((int16_t)((uint16_t)((unsigned)((s) + 0x8000) >> 16)))
-
-//VARIABLES
-#define PHASE_OPENING 0
-#define PHASE_MIDDLE 43
-#define PHASE_ENDING 171
-#define PHASE_PAWN_ENDING 256
 extern int DistanceBetween[64][64];
-extern int PSQTMATTABLE[16][64];
-extern int tuneMode;
+extern void initDistancesForEval(void);
 
-// tunable evaluation weights (defined in evaluate.c)
-//
-// In a normal build they are `static const` inside evaluate.c (non-global, so
-// the compiler can fully optimize the evaluation). They are therefore not
-// declared here at all in that case.
-//
-// When compiled with -DTUNE they become mutable extern globals (see the
-// TUNABLE macro in evaluate.c) so tools/tuner.c can adjust them; declare them
-// extern here for the tuner's weight registry.
-#ifdef TUNE
-extern int PiecesVal[7];
-extern int QueenTabless[64], PawnTabless[64], KingTabless[64];
-extern int KnightTabless[64], BishopTabless[64], RookTabless[64];
-extern int PassedPawn[2][2][8];
-extern int PassedFriendlyDistance[8], PassedEnemyDistance[8];
-extern int PassedSafePromotionPath, PassedProtectedByRook;
-extern int SafetyKnightWeight, SafetyBishopWeight, SafetyRookWeight, SafetyQueenWeight;
-extern int SafetyAttackValue, SafetyWeakSquares, SafetyNoEnemyQueens;
-extern int SafetySafeQueenCheck, SafetySafeRookCheck, SafetySafeBishopCheck, SafetySafeKnightCheck;
-extern int SafetyAdjustment, SafetyFlightSquares[9], SafetyStorm[2][8], SafetyShelter[2][8];
-extern int KingStorm[2][4][8], KingDefenders[12], KingShelter[2][8][8];
-extern int KingPawnFileProximity[8], KingUncastled;
-extern int QueenRelativePin, QueenMobility[28];
-extern int RookFile[2], RookEnemyKingFile[2], RookOnSeventh, RookMobility[15];
-extern int KnightBehindPawn, KnightOutpost[2][2], KnightMobility[9], KnightInSiberia[4];
-extern int BishopMobility[14], BishopRammedPawns, bishopPair, BishopLongDiagonal, BishopBehindPawn, BishopOutpost[2][2];
-extern int PawnCandidatePasser[2][8], PawnIsolated[8], PawnStacked[2][8];
-extern int PawnBackwards[2][8], PawnConnected32[32];
-extern int BishopTrapped[2], RookTrapped;
-extern int ThreatWeakPawn, ThreatMinorAttackedByPawn, ThreatMinorAttackedByMinor, ThreatMinorAttackedByMajor;
-extern int ThreatRookAttackedByLesser, ThreatMinorAttackedByKing, ThreatRookAttackedByKing;
-extern int ThreatQueenAttackedByOne, ThreatOverloadedPieces, ThreatByPawnPush;
-extern int SpaceRestrictPiece, SpaceRestrictEmpty, SpaceCenterControl, PawnCentralDuo;
-extern int ClosednessKnightAdjustment[9], ClosednessRookAdjustment[9];
-extern int ComplexityTotalPawns, ComplexityPawnFlanks, ComplexityPawnEndgame, ComplexityAdjustment;
-extern int tempo;
-#endif
-
-//FUNCTIONS
-extern void initPQSTMAT();
-extern void initDistancesForEval();
-//extern int RewardForOppKingDistanceFromCenter(int oppKing,int friendKing);
 extern int EvalPosition(S_BOARD *pos);
 
 #endif // EVAL_H

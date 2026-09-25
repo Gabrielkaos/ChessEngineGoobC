@@ -17,7 +17,6 @@
 #include "tinycthread.h"
 #include "thread.h"
 #include "nnue_loader.h"
-#include "pknet_loader.h"
 #include "syzygy.h"
 #include "correction.h"
 
@@ -220,7 +219,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Hashtables cleared\n");
         clearPvTable(pvTable);
         clearEvalTable(pos->eTable);
-        clearPawnKingTable(pos->pawnKingTable);
         ClearThreadTables(info->threadNum);
         clearCorrectionHistory(pos);
         pos->shared->ttMoveHistory = 0;
@@ -232,16 +230,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         if(EvalMb < 4) EvalMb = 4;
         if(EvalMb > maxHash) EvalMb = maxHash;
         InitEvalTable(pos->eTable, EvalMb,1);
-        ReallocThreadTables(currentPawnHashMB, EvalMb);
-    }
-
-    else if (!strncmp(line, "setoption name PawnHash value ", 30)) {
-        int pawnMb=pawnHashMB;
-        sscanf(line,"%*s %*s %*s %*s %d",&pawnMb);
-        if(pawnMb < 4) pawnMb = 4;
-        if(pawnMb > maxHash) pawnMb = maxHash;
-        InitPawnKingTable(pos->pawnKingTable, pawnMb,1);
-        ReallocThreadTables(pawnMb, currentEvalHashMB);
+        ReallocThreadTables(EvalMb);
     }
 
     else if (!strncmp(line, "setoption name Ponder value ", 28)) {
@@ -289,26 +278,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Elo set to %d\n",uciElo);
     }
 
-    else if (!strncmp(line, "setoption name ContemptDrawPenalty value ", 41)) {
-        int contemptDraw=0;
-        sscanf(line,"%*s %*s %*s %*s %d",&contemptDraw);
-        if(contemptDraw < -300) contemptDraw = -300;
-        if(contemptDraw > 300) contemptDraw = 300;
-        pos->contemptDrawPenalty=contemptDraw;
-        clearEvalTable(pos->eTable);
-        printf("info string ContemptDrawPenalty set to %d\n",contemptDraw);
-    }
-
-    else if (!strncmp(line, "setoption name ContemptComplexity value ", 40)) {
-        int contemptDraw=0;
-        sscanf(line,"%*s %*s %*s %*s %d",&contemptDraw);
-        if(contemptDraw < -300) contemptDraw = -300;
-        if(contemptDraw > 300) contemptDraw = 300;
-        pos->contemptComplexity=contemptDraw;
-        clearEvalTable(pos->eTable);
-        printf("info string ContemptComplexity set to %d\n",contemptDraw);
-    }
-
     else if (!strncmp(line, "setoption name UCI_Chess960 value ", 34)) {
         char *ptrTrue=NULL;
         ptrTrue=strstr(line,"true");
@@ -347,24 +316,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
             printf("info string Set useFiftyMoveRule to false\n");
         }
     }
-
-    else if (!strncmp(line, "setoption name UsePKNet value ", 30)) {
-        pos->usePKNet = strstr(line,"true") ? TRUE : FALSE;
-        printf("info string UsePKNet set to %s\n", pos->usePKNet?"true":"false");
-        clearEvalTable(pos->eTable);
-     }
-
-     else if (!strncmp(line, "setoption name PKNetFile value ", 31)) {
-        char path[512]={0};
-        sscanf(line, "%*s %*s %*s %*s %511s", path);
-        if (strlen(path)>0 && strcmp(path,"<empty>")!=0) {
-            pknet_init(path);
-        }else{
-            pknet_clear();
-            printf("info string PKNet cleared\n");
-        }
-        clearEvalTable(pos->eTable);
-     }
 
     else if (!strncmp(line, "setoption name SyzygyPath value ", 32)) {
         //paths can be a ';'(Windows)/':'(Unix) separated list of
@@ -564,12 +515,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     //init things
     info->ponder        = ponder;
     info->stopOnPonderhit = FALSE;
-    int contempt        = MakeScore(pos->contemptDrawPenalty + pos->contemptComplexity, pos->contemptDrawPenalty);
-    pos->contempt       = pos->side==WHITE ? contempt:-contempt;
 
-    /*if (pos->USE_NNUE){
-        printf("info string Using NNUE evaluation\n");
-    }*/
     mainSearchThread = LaunchSearchThread(pos, info, table);
 }
 void parsePosition(char* lineIn,S_BOARD *pos){
@@ -624,9 +570,6 @@ void uciPrint(){
     printf("option name MultiPV type spin default 1 min 1 max %d\n",MAXPOSMOVES); //1b
     printf("option name Hash type spin default %d min 4 max %d\n",defaultHash,maxHash); //1
     printf("option name EvalHash type spin default %d min 4 max %d\n",evalHashMB,maxHash); //3
-    printf("option name PawnHash type spin default %d min 4 max %d\n",pawnHashMB,maxHash); //4
-    printf("option name ContemptDrawPenalty type spin default 0 min -300 max 300\n"); //5
-    printf("option name ContemptComplexity type spin default 0 min -300 max 300\n"); //6
     printf("option name Move Overhead type spin default 50 min 0 max 5000\n");
     printf("option name Clear Hash type button\n"); //12
     printf("option name Ponder type check default false\n"); //10
@@ -637,8 +580,6 @@ void uciPrint(){
     printf("option name BruteForceMode type check default false\n"); //19
     printf("option name useFiftyMoveRule type check default true\n"); //20
     printf("option name EvalFile type string default <empty>\n");
-    printf("option name UsePKNet type check default false\n");
-    printf("option name PKNetFile type string default <empty>\n");
     printf("option name SyzygyPath type string default <empty>\n");
     printf("option name SyzygyProbeDepth type spin default 1 min 0 max 100\n");
     printf("option name Syzygy50MoveRule type check default true\n");
@@ -653,11 +594,7 @@ void uciPrint(){
 
 void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     pos->useFiftyMoveRule        =TRUE;
-    pos->contemptComplexity      =0;
-    pos->contemptDrawPenalty     =0;
-    pos->contempt                =0;
     pos->chess960                =FALSE;
-    pos->useNNUE                 =TRUE;
     EngineOptions->analysisMode  =FALSE;
 	EngineOptions->uciElo        =defaultElo;
 	info->setOptionPonder        =FALSE;
@@ -669,7 +606,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     info->previousTimeReduction = 1.0;   // SF starts this at 1
     info->bestPreviousScore = INFINITE_BOUND; // SF starts this effectively "infinite" so first move isn't treated as a falling eval
     info->bestPreviousAverageScore = INFINITE_BOUND;
-    pos->usePKNet                =FALSE;
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
     info->showWDL                =FALSE;
@@ -697,7 +633,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             parsePosition("position startpos\n",pos);
             clearPvTable(pvTable);
             clearEvalTable(pos->eTable);
-            clearPawnKingTable(pos->pawnKingTable);
             ClearThreadTables(info->threadNum);
             resetContinuationTable(pos);
             clearCorrectionHistory(pos);

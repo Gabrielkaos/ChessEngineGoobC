@@ -77,7 +77,7 @@ enum {  MAXDEPTH=128,
         ISMATE=AB_BOUND-MAXDEPTH,
         TB_WIN_VALUE=ISMATE-1000,
         VALUE_NONE=AB_BOUND+1};
-enum {pawnHashMB=16,evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
+enum {evalHashMB=32,defaultElo=2700,defaultHash=64,maxHash=1024};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
 enum {OPENING,ENDING};
 enum {
@@ -129,20 +129,6 @@ typedef struct {
     int numEntries;
 } EVAL_TABLE;
 
-//Pawn Entry
-typedef struct{
-    U64 pawnPosKey;
-    int whiteScore;
-    int blackScore;
-    U64 passed[2];
-
-} PAWNKING_ENTRY;
-
-//Pawn Tables
-typedef struct {
-    PAWNKING_ENTRY *paTable;
-    int numEntries;
-} PAWNKING_TABLE;
 
 //Move Entry
 typedef struct {

@@ -132,30 +132,6 @@ else
 endif
 
 # ---------------------------------------------------------------------------
-# Texel tuner
-# Built from a separate object directory with -DTUNE so evaluation tunables
-# are mutable there while engine objects stay const.
-# Always compiled native for speed; -fopenmp enables parallel tuning.
-# ---------------------------------------------------------------------------
-TUNEOBJDIR  := obj/tune
-TUNER_SRCS  := $(filter-out main.c, $(SRCS))
-TUNER_OBJS  := $(patsubst %.c, $(TUNEOBJDIR)/%.o, $(TUNER_SRCS))
-TUNE_CFLAGS := $(BASE_CFLAGS) $(MARCH_native) -fopenmp -DTUNE
-
-$(OUTDIR)/tuner$(EXE): $(TUNER_OBJS) ../tools/tuner.c | $(OUTDIR)
-	$(CC) $(TUNE_CFLAGS) -I. $(TUNER_OBJS) ../tools/tuner.c -o $@ $(LDFLAGS)
-	@echo "  LD  $@"
-
-$(TUNEOBJDIR)/%.o: %.c | $(TUNEOBJDIR)
-	$(CC) $(TUNE_CFLAGS) -c $< -o $@
-
-$(TUNEOBJDIR):
-	$(MKDIR) $(TUNEOBJDIR)
-
-.PHONY: tuner
-tuner: $(OUTDIR)/tuner$(EXE)
-
-# ---------------------------------------------------------------------------
 # Clean
 # ---------------------------------------------------------------------------
 .PHONY: clean
@@ -163,7 +139,7 @@ clean:
 ifeq ($(OS), Windows_NT)
 	-rmdir /S /Q obj bin\windows bin\linux 2>NUL
 else
-	$(RM) -rf obj $(OUTDIR) $(TUNEOBJDIR)
+	$(RM) -rf obj $(OUTDIR)
 endif
 
 # ---------------------------------------------------------------------------
@@ -203,12 +179,9 @@ pgo:
 # Rebuilds dependents whenever a header changes.
 # ---------------------------------------------------------------------------
 -include $(wildcard obj/*/*.d)
--include $(wildcard $(TUNEOBJDIR)/*.d)
 
 # Rebuild nnue_loader.o whenever the embedded network binary changes
 obj/%/nnue_loader.o: $(EVALFILE)
-$(TUNEOBJDIR)/nnue_loader.o: $(EVALFILE)
-
 
 # ---------------------------------------------------------------------------
 # Legacy 'depend' target (kept for compatibility)
@@ -217,12 +190,3 @@ $(TUNEOBJDIR)/nnue_loader.o: $(EVALFILE)
 depend: $(SRCS)
 	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|obj/x86-64/\1.o:|' > .depend
 -include .depend
-# ---------------------------------------------------------------------------
-# Python Shared Library for Evaluation
-# ---------------------------------------------------------------------------
-../tools/libgoob.so: $(SRCS)
-	$(CC) $(TUNE_CFLAGS) -fPIC -shared -I. $(SRCS) -o $@ $(LDFLAGS)
-	@echo "  LD  $@"
-
-.PHONY: python-eval
-python-eval: ../tools/libgoob.so

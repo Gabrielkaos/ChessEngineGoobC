@@ -53,5 +53,4 @@ void AllInit(){
     InitAttacks();
     initLMRTable();
     initDistancesForEval();
-    initPQSTMAT();
 }

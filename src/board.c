@@ -32,15 +32,6 @@ void initStacks(S_BOARD *pos){
     pos->shared->ttMoveHistory = 0;
 }
 
-int getGamePhase(const S_BOARD *pos){
-    int gamePhase = 24 - 4 * COUNTBIT(pos->byTypeBB[QUEEN])
-                       - 2 * COUNTBIT(pos->byTypeBB[ROOK])
-                       - 1 * COUNTBIT(pos->byTypeBB[KNIGHT] | pos->byTypeBB[BISHOP]);
-
-    gamePhase = gamePhase < 0 ? 0 : gamePhase;
-    return (gamePhase * 256 + 12) / 24;
-}
-
 int checkBoard(const S_BOARD *pos){
     int pt;
 
@@ -141,17 +132,12 @@ void MirrorBoard(S_BOARD *pos){
 void updateListMaterial(S_BOARD *pos){
     int piece,sq,index,color,pt;
 
-    pos->st->psqtmat = 0;
-
     for(index=0;index<BOARD_NUMS_SQ;++index){
         sq=index;
         piece=pos->pieces[index];
         if(piece != EMPTY){
             color=COLOR_OF(piece);
             pt=TYPE_OF(piece);
-
-            //psqtmat
-            pos->st->psqtmat += PSQTMATTABLE[piece][sq];
 
             U64 mask = 1ULL << sq;
             pos->byColorBB[color] |= mask;
@@ -161,7 +147,7 @@ void updateListMaterial(S_BOARD *pos){
     //update occupancy for both
     pos->byTypeBB[ALL_PIECES] = (pos->byColorBB[WHITE] | pos->byColorBB[BLACK]);
 
-    if (!tuneMode) nnue_refresh_accumulator(pos);
+    nnue_refresh_accumulator(pos);
 }
 
 int ParseFEN(char *fen ,S_BOARD *pos){
@@ -333,7 +319,6 @@ void ResetBoard(S_BOARD *pos){
     pos->st->npHash[WHITE]=0ULL;
     pos->st->npHash[BLACK]=0ULL;
     pos->st->minorHash=0ULL;
-    pos->st->psqtmat=0;
     pos->st->repetition=0;
     pos->st->previous=NULL;
 }

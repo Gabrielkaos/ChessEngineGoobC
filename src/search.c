@@ -945,9 +945,6 @@ int SearchPositionThread(void *data){
     launcherPos->eTable->evalTable = threadEvalTable[0].evalTable;
     launcherPos->eTable->numEntries = threadEvalTable[0].numEntries;
 
-    launcherPos->pawnKingTable->paTable = threadPawnTable[0].paTable;
-    launcherPos->pawnKingTable->numEntries = threadPawnTable[0].numEntries;
-
     launcherPos->ply = 0;
     nnue_refresh_accumulator(launcherPos);
 
@@ -1593,9 +1590,6 @@ static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_P
 
     w->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
     w->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;
-
-    w->originalPos->pawnKingTable->paTable = threadPawnTable[threadNum].paTable;
-    w->originalPos->pawnKingTable->numEntries = threadPawnTable[threadNum].numEntries;
 
     w->workerData.originalPos  = w->originalPos;
     w->workerData.info         = info;

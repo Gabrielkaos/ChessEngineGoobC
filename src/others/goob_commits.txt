@@ -1816,7 +1816,11 @@
     ->delta > -4 to delta > 0
     ->added more evaluation terms
 
-    //Previous Best - /home/gabriel/Desktop/engines/GOOB-2-2-BETA-native-OLD(Base)
+    ////////////////////////////////////////////////////
+    //                                                //
+    //   OVERHAUL-REMOVE CLASSICAL EVAL NNUE ONLY     //
+    //                                                //
+    ////////////////////////////////////////////////////
     
 
 	*/

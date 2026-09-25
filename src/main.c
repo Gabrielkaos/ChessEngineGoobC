@@ -21,7 +21,6 @@ int main(int argc, char *argv[])
 
     S_BOARD pos[1];
     pos->search = alloc_search_thread();
-    pos->useNNUE = TRUE;
     S_SEARCHINFO info[1];
     info->quit=FALSE;
     info->threadNum = 1;
@@ -32,9 +31,6 @@ int main(int argc, char *argv[])
 
 	pos->eTable->evalTable=NULL;
 	InitEvalTable(pos->eTable,evalHashMB,0);
-
-	pos->pawnKingTable->paTable=NULL;
-	InitPawnKingTable(pos->pawnKingTable,pawnHashMB,0);
 
     //S_SHARED_TABLES declares ALIGN64 members, so the allocation must be
     //64-byte aligned too (plain malloc only guarantees 16-byte alignment)
@@ -54,7 +50,6 @@ int main(int argc, char *argv[])
     setbuf(stdout, NULL);
 
     nnue_init(NULL);
-    // pknet_init("models/pknet.bin");
 
 #ifdef DEBUG
     printf("\nWARNING! DEBUG DEFINED MIGHT SLOW DOWN ENGINE\n");
@@ -90,7 +85,6 @@ int main(int argc, char *argv[])
 
 	free(pvTable->pTable);
 	free(pos->eTable->evalTable);
-	free(pos->pawnKingTable->paTable);
 	FreeAllThreadTables();
 	FreeThreadPool();
     free(pos->shared);

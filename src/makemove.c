@@ -295,14 +295,12 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
 
         HASH_PCE(capPce, capsq);
         HASH_PK(capPce, capsq);
-        pos->st->psqtmat -= PSQTMATTABLE[capPce][capsq];
         removePiece(pos, capsq);
 
         HASH_PCE(pce, from);
         HASH_PCE(pce, to);
         HASH_PK(pce, from);
         HASH_PK(pce, to);
-        pos->st->psqtmat += PSQTMATTABLE[pce][to] - PSQTMATTABLE[pce][from];
         movePiece(pos, from, to);
     }
     else if (move & MVFLAGCA) {
@@ -317,7 +315,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         HASH_PK(pce, to);
         HASH_NP(pce, from, side);
         HASH_NP(pce, to, side);
-        pos->st->psqtmat += PSQTMATTABLE[pce][to] - PSQTMATTABLE[pce][from];
         movePiece(pos, from, to);
 
         int rfrom = 0, rto = 0;
@@ -340,7 +337,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         HASH_PCE(rookPce, rto);
         HASH_NP(rookPce, rfrom, side);
         HASH_NP(rookPce, rto, side);
-        pos->st->psqtmat += PSQTMATTABLE[rookPce][rto] - PSQTMATTABLE[rookPce][rfrom];
         movePiece(pos, rfrom, rto);
     }
     else {
@@ -368,7 +364,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
                 if (capPt == KNIGHT || capPt == BISHOP)
                     HASH_MINOR(captured, to);
             }
-            pos->st->psqtmat -= PSQTMATTABLE[captured][to];
             removePiece(pos, to);
         } else {
             dp->remove_count = 1;
@@ -377,7 +372,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         if (promotedPiece != EMPTY) {
             HASH_PCE(pce, from);
             HASH_PK(pce, from);
-            pos->st->psqtmat -= PSQTMATTABLE[pce][from];
             removePiece(pos, from);
 
             int promPt = TYPE_OF(promotedPiece);
@@ -385,7 +379,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
             HASH_NP(promotedPiece, to, side);
             if (promPt == KNIGHT || promPt == BISHOP)
                 HASH_MINOR(promotedPiece, to);
-            pos->st->psqtmat += PSQTMATTABLE[promotedPiece][to];
             putPiece(pos, promotedPiece, to);
         } else {
             HASH_PCE(pce, from);
@@ -402,7 +395,6 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
                     HASH_MINOR(pce, to);
                 }
             }
-            pos->st->psqtmat += PSQTMATTABLE[pce][to] - PSQTMATTABLE[pce][from];
             movePiece(pos, from, to);
 
             if (pt == PAWN && (move & MVFLAGPS)) {

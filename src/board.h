@@ -81,7 +81,6 @@ typedef struct StateInfo {
     int fiftyMove;
     int pliesFromNull;
     int enPas;
-    int psqtmat;
     int repetition;
     U64 checkersBB;
     U64 blockersForKing[COLOR_NB];
@@ -103,33 +102,14 @@ typedef struct {
     S_SEARCH_THREAD *search;
     int hisPly; //total number of moves played on the board
     int useFiftyMoveRule; //flag
-    int contemptDrawPenalty; //penalty
-    int contemptComplexity; //penalty
-    int contempt; //stores the contempt score
-    int gamePhase; //game phase
     int chess960; //flag
 
     //tables
     EVAL_TABLE   eTable[1]; //storing evaluation for positions
-    PAWNKING_TABLE   pawnKingTable[1]; //stores scores and evaluation for pawn king
 
     //for search
     int ply; //search ply
     int seldepth;
-
-
-
-
-
-
-
-
-    //per-thread low-ply history (cleared to 102 at the start of each search)
-
-
-
-    int useNNUE;   // flag: use NNUE evaluation
-    int usePKNet;
 
     int tbHit;
     int tbRootMoveCount;
@@ -166,7 +146,6 @@ typedef struct {
 //board.c
 extern void resetContinuationTable(S_BOARD *pos);
 extern void initStacks(S_BOARD *pos);
-extern int getGamePhase(const S_BOARD *pos);
 extern int checkBoard(const S_BOARD *pos);
 extern void ResetBoard(S_BOARD *pos);
 extern int ParseFEN(char *fen ,S_BOARD *pos);
