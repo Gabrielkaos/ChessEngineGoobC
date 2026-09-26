@@ -2,6 +2,12 @@
 /src/obj/*
 /src/obj-tune/*
 /src/weights
+/src/*.txt
+/src/*.bin
+/src/*.so
+/src/*.d
+/src/*.epd
+/src/*.fen
 
 /src/models/*
 tools/__pycache__/

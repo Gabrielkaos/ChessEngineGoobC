@@ -11,5 +11,6 @@ extern int strStartsWith(char *str, char *key);
 extern void UCILoop(S_BOARD *pos,S_SEARCHINFO *info);
 extern void UciReportCurrentMove(int depth,int move,int currmovenumber);
 extern void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves,int multiPvNum);
+extern void UciTune(char *args);
 
 #endif // UCI_H

@@ -6,6 +6,7 @@
 #include "evaluate.h"
 #include "init.h"
 #include "attacks.h"
+#include "tune.h"
 
 //got this from ethereals
 U64 RAND_64() {
@@ -51,6 +52,9 @@ void AllInit(){
     //InitMvvLva();
     //InitPolyBook("Performance.bin");
     InitAttacks();
+    //Search parameters come from tune.c's table; this must run before
+    //initLMRTable() because the LMR table is derived from ST.
+    tuneSetDefaults();
     initLMRTable();
     initDistancesForEval();
 }

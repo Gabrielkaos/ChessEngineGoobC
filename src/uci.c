@@ -362,6 +362,88 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
 #endif
 
 }
+
+/* `tune` -- inspect and override the runtime search parameters.
+ *
+ *   tune                              list every parameter, default and current
+ *   tune get <name>                   print one value
+ *   tune set <name> <value>           set one value (clamped to its bounds)
+ *   tune reset                        back to the shipping defaults
+ *   tune load <file>                  replay "tune set ..." lines from a file
+ *
+ * `tune load` exists so the tuner's output file is directly consumable: the
+ * tuner writes exactly the lines this command accepts, so the tuning result
+ * can be applied to a real engine with no manual transcription.
+ */
+void UciTune(char *args){
+    while (*args == ' ') args++;
+    if (*args == '\0' || !strncmp(args, "list", 4)){
+        tunePrintAll(stdout);
+        return;
+    }
+
+    if (!strncmp(args, "get", 3)){
+        char name[128];
+        if (sscanf(args+3, "%127s", name) != 1){ printf("tune get: expected a name\n"); return; }
+        if (tuneFind(name) < 0){ printf("info string tune: unknown parameter '%s'\n", name); return; }
+        printf("info string tune %s = %d\n", name, tuneGetByName(name));
+        return;
+    }
+
+    if (!strncmp(args, "set", 3)){
+        char name[128];
+        int  value = 0;
+        if (sscanf(args+3, "%127s %d", name, &value) != 2){ printf("tune set: expected <name> <value>\n"); return; }
+        if (tuneSetByName(name, value) != 0){ printf("info string tune: unknown parameter '%s'\n", name); return; }
+        tuneClampAndRebuild();
+        printf("info string tune %s = %d\n", name, tuneGetByName(name));
+        return;
+    }
+
+    if (!strncmp(args, "reset", 5)){
+        tuneSetDefaults();
+        tuneClampAndRebuild();
+        printf("info string tune: reset %d parameters to defaults\n", tuneNumEntries);
+        return;
+    }
+
+    if (!strncmp(args, "load", 4)){
+        char path[512];
+        if (sscanf(args+4, "%511s", path) != 1){ printf("tune load: expected a file\n"); return; }
+        FILE *f = fopen(path, "r");
+        if (!f){ printf("info string tune: cannot open '%s'\n", path); return; }
+        char line[512];
+        int applied = 0, bad = 0;
+        while (fgets(line, sizeof(line), f)){
+            // Accept the tuner's own output ("tune set NAME VALUE"), a shorter
+            // "set NAME VALUE", or a bare "NAME VALUE" pair. Anything that does
+            // not tokenise into one of those is ignored, so a header line or a
+            // comment cannot abort the load.
+            char a[128], b[128], c[128], d[128];
+            a[0]=b[0]=c[0]=d[0]='\0';
+            // Skip blanks and '#' comments explicitly: the tuner's output file
+            // has a commented header, and without this every header line would
+            // be counted as an unknown name in the summary below.
+            if (line[0] == '#' || line[0] == '\0') continue;
+            int got = sscanf(line, "%127s %127s %127s %127s", a, b, c, d);
+            const char *name; int value;
+            if (got >= 4 && !strcmp(a, "tune") && !strcmp(b, "set")) { name = c; value = atoi(d); }
+            else if (got >= 3 && !strcmp(a, "set"))                    { name = b; value = atoi(c); }
+            else if (got >= 2 && strcmp(a, "tune") && strcmp(a, "set")){ name = a; value = atoi(b); }
+            else continue;
+            if (tuneSetByName(name, value) == 0) applied++;
+            else bad++;
+        }
+        fclose(f);
+        tuneClampAndRebuild();
+        printf("info string tune: loaded %d values from '%s'%s\n",
+               applied, path, bad ? " (some lines had unknown names)" : "");
+        return;
+    }
+
+    printf("tune: expected list | get | set | reset | load\n");
+}
+
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
 
     info->timeSet     =FALSE;
@@ -690,6 +772,16 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
         }
 
+        /* Word-boundary match, unlike the neighbouring perft: there is no
+           "tunetest" command, and a typo should say so rather than be parsed
+           as an argument to `tune`.  The search is joined first because these
+           are the constants the running search is reading. */
+        else if(strStartsWith(str, "tune") && (str[4] == ' ' || str[4] == '\0')) {
+            if (searchThreadValid) joinSearchThread(info);
+            UciTune(str+4);
+            fflush(stdout);
+        }
+
         else if(strStartsWith(str, "perft")) {
             int perft=0;
 			sscanf(str, "perft %d", &perft);
@@ -708,7 +800,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
 		}
 
-		else if(strEquals(str, "help")) {
+        else if(strEquals(str, "help")) {
             printf("commands:\n");
             printf("-uci\n");
             printf("-ucinewgame\n");
@@ -720,6 +812,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             printf("-stop\n");
             printf("-print\n");
             printf("-evaluate\n");
+            printf("-tune list | get <name> | set <name> <value> | reset | load <file>\n");
             printf("-perft(useful for debugging) x\n");
             printf("-uperft(faster) x\n");
             printf("-perfttest(test on positions)\n");

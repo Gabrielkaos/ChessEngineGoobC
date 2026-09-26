@@ -31,15 +31,32 @@
 
 int LMRTable[64][64];
 void initLMRTable(){
+    // base + log(i)*log(j)/div, with base and div carried as integers scaled
+    // by 1000 so the whole table stays integral. The 750/2250 defaults are
+    // exactly 0.75 and 2.25 in binary floating point, so this reproduces the
+    // original expression bit for bit.
+    const double base = ST.lmrBaseMilli / 1000.0;
+    const double div  = ST.lmrDivMilli  / 1000.0;
     int i,j;
     for(i=1;i<64;++i){
+        const double li = log(i);
         for(j=1;j<64;++j){
-            LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
+            int r = (int)(base + li * log(j) / div);
+            LMRTable[i][j] = r < 0 ? 0 : r;
         }
     }
 }
 
+int tuneQuiet = 0;   // when 1, the search prints nothing (set once per run)
+
 int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
+
+// Reporting / time-management thresholds. Deliberately NOT tuned: they only
+// change how often we print, and a fixed-node tuning run never reaches them,
+// so a gradient with respect to them would be pure noise.
+static const int UciCurrMoveTime  = 2500;
+static const int BoundReportTime  = 2500;
+static const int DepthOneGraceMs  = 300;
 
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
@@ -179,13 +196,13 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     //if even the best possible capture (or the DeltaMarginQ floor, whichever
     //is larger) can't close the gap to alpha, there's no point generating
     //or trying any capture here at all
-    if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
+    if(MAX(ST.deltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
         return eval;
 
     if (ttMove != NOMOVE && !moveIsTactical(pos, ttMove)) ttMove = NOMOVE;
 
     S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
-    initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin), ttMove);
+    initNoisyMovePicker(mp, MAX(1,alpha-eval-ST.qseeMargin), ttMove);
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
 
@@ -294,7 +311,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //TT research margin (Ethereal): an upper-bound entry from only one
         //ply shallower that fails hard against alpha needs no re-search
         if(!pvNode && ttDepth >= depth - 1 && ttBound==HFALPHA &&
-           ttValue + TTResearchMargin <= alpha && depth>=2 && 
+           ttValue + ST.ttResearchMargin <= alpha && depth>=2 && 
            !inCheck && pos->st->fiftyMove < 96){
             return alpha;
         }
@@ -348,33 +365,33 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     if(!info->bruteForceMode){
         if(priorReduction >= 3 && !opponentWorsening) depth++;
-        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->search->eval_stack[pos->ply-1] > HindsightMargin) depth--;
+        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->search->eval_stack[pos->ply-1] > ST.hindsightMargin) depth--;
     }
 
     //RAZORING
     //if staticEval is far below alpha, a full search is very unlikely to
     //recover — verify with qsearch instead of expanding this node
     if(!info->bruteForceMode && !pvNode && !inCheck &&
-    depth <= RazoringDepth &&
-    eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
+    depth <= ST.razoringDepth &&
+    eval < alpha - ST.razorMarginBase - ST.razorMarginCoeff * depth * depth){
         int r = Quiescence(alpha,beta,pos,info,table);
         if(r <= alpha) return r;
     }
 
 
     // seemargin for this depth
-    seeMargin[0] = SEENoisyMargin * depth * depth;
-    seeMargin[1] = SEEQuietMargin * depth;
+    seeMargin[0] = ST.seeNoisyMargin * depth * depth;
+    seeMargin[1] = ST.seeQuietMargin * depth;
 
     if(!info->bruteForceMode && !inCheck && !pvNode){
 
-        if(depth <= BetaPruningDepth && eval - BetaMargin*depth > beta){
+        if(depth <= ST.betaPruningDepth && eval - ST.betaMargin*depth > beta){
             return eval;
         }
 
         //alpha pruning (Ethereal): in non-PV nodes a shallow position whose
         //eval is hopelessly far below alpha cannot be rescued by any move
-        if(depth <= AlphaPruningDepth && eval + AlphaMargin <= alpha){
+        if(depth <= ST.alphaPruningDepth && eval + ST.alphaMargin <= alpha){
             return eval;
         }
 
@@ -386,7 +403,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //if the position is favorable, we are likely to prune
             if(!rootNode &&
                 eval >= beta &&
-                depth >= defaultNullMoveDepth &&
+                depth >= ST.defaultNullMoveDepth &&
                 pos->ply >= pos->nmpMinPly &&
                 boardHasNonPawnMaterial(pos,pos->side) &&
                 (pos->ply < 1 || pos->search->moveStack[pos->ply-1] != NULLMOVE) &&
@@ -409,7 +426,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     //at low depth or already inside a verification subtree,
                     //trust the null move result directly — not worth the
                     //extra search cost
-                    if(pos->nmpMinPly > 0 || depth < NMPVerifyDepth) return beta;
+                    if(pos->nmpMinPly > 0 || depth < ST.nmpVerifyDepth) return beta;
 
                     //verification search: disable NMP until ply passes this
                     //threshold, to avoid a recursive false-positive, then
@@ -430,7 +447,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //IIR — reduce depth when no TT move is available.
     //All-nodes get a stronger reduction (-2) since they are least likely
     //to have a useful move from the TT.
-    if(!info->bruteForceMode && depth>=IIRDepth && ttMove==NOMOVE)
+    if(!info->bruteForceMode && depth>=ST.iirDepth && ttMove==NOMOVE)
         depth -= (1 + allNode);
 
     //PROBCUT
@@ -442,11 +459,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //or static eval + move bestcase >= beta + margin
     if (!info->bruteForceMode &&
         !pvNode &&
-        depth >=probCutDepth &&
+        depth >=ST.probCutDepth &&
         abs(beta) < ISMATE &&
-        (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
+        (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + ST.probCutMargin)){
 
-            int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
+            int rBeta = MIN(beta + ST.probCutMargin, ISMATE - 1);
             int move_in_prob;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
@@ -460,10 +477,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, &lpv);
+                if(depth>=2*ST.probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, &lpv);
 
                 //now at shallow depth perform a more deeper search to confirm
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, &lpv);
+                if (depth<2*ST.probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, &lpv);
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
@@ -515,22 +532,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //Futility pruning
             //checking if this position is likely to improve
             //if not then we skip it
-            if (   depth <= FutilityPruningDepth
-                && (eval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
+            if (   depth <= ST.futilityPruningDepth
+                && (eval + ST.futilityMargin * depth + ST.futilityMarginNoHistory) <= alpha){
                     skipQuiets = 1;
                 }
 
             if (   !skipQuiets
                 && !isSpecial
-                && depth <= FutilityPruningDepth
-                && (eval + FutilityMargin * depth) <= alpha
-                && hist < FutilityPruningHistoryLimit[improving]){
+                && depth <= ST.futilityPruningDepth
+                && (eval + ST.futilityMargin * depth) <= alpha
+                && hist < ST.futilityHistLimit[improving]){
                     continue;
                 }
 
             //if weve searched for quite a while Late moves that are quiet are pruned based on threshold
-            if (depth<=LateMovePruningDepth &&
-                quietsSeen>=LateMovePruningCounts[improving][depth]){
+            if (depth<=ST.lmpPruningDepth &&
+                quietsSeen>=ST.lmpCounts[improving][MIN(depth, TUNE_LMP_SLOTS-1)]){
                     skipQuiets = 1;
                 }
 
@@ -539,14 +556,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
             if ( !isSpecial
-                && cmhist < CounterMoveHistoryLimit[improving]
-                && depth - R <= CounterMovePruningDepth[improving]){
+                && cmhist < ST.counterMoveHistLimit[improving]
+                && depth - R <= ST.counterMovePruneDepth[improving]){
                     continue;
                 }
 
             if ( !isSpecial
-                && fmhist < FollowUpMoveHistoryLimit[improving]
-                && depth - R <= FollowUpMovePruningDepth[improving]){
+                && fmhist < ST.followUpHistLimit[improving]
+                && depth - R <= ST.followUpPruneDepth[improving]){
                     continue;
                 }
         }
@@ -558,7 +575,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             &&  !info->bruteForceMode
             &&  bestScore > -ISMATE
             && !isExempt
-            &&  depth <= SEEPruningDepth
+            &&  depth <= ST.seePruningDepth
             && !StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])){
             continue;
         }
@@ -571,7 +588,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         Legal++;
 
         //uci report the current move
-        if(threadNum==0)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
+        if(!tuneQuiet && threadNum==0)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
 
 
         //Singular Extensions and Multi Cut
@@ -588,7 +605,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
             extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, &st)
-                        :(inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit));
+                        :(inCheck || (quietMove && pvNode && cmhist > ST.histexLimit && fmhist > ST.histexLimit));
 
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
 
@@ -623,16 +640,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             // Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation Deficit
             // 1. Sibling Surprise: If an earlier reduced sibling scored > alpha, move ordering
             //    at this node is volatile; damp reduction on subsequent siblings (R -= 1).
-            // 2. Deficit: When severely behind (evalDiff > EVAL_DEFICIT_MARGIN), reduce
-            //    late quiet moves (Legal >= EVAL_MOVE_LIMIT) by +1, while protecting early quiets.
+            // 2. Deficit: When severely behind (evalDiff > evalDeficitMargin), reduce
+            //    late quiet moves (Legal >= evalMoveLimit) by +1, while protecting early quiets.
             // 3. Surplus: When statically winning/ahead of alpha, reduce promising quiets less.
             if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
                 int evalDiff = alpha - staticEval;
                 if (siblingSurprise) {
                     R -= 1;
-                } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
+                } else if (evalDiff > ST.evalDeficitMargin && Legal >= ST.evalMoveLimit) {
                     R += 1;
-                } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
+                } else if (evalDiff < -ST.evalSurplusMargin && R > 1) {
                     R -= 1;
                 }
             }
@@ -640,7 +657,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             //scale up reduction further at expected all-nodes, proportional to
             //existing R rather than a flat bump, so it doesn't dominate at low depth
-            if(allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);
+            if(allNode) R += R * ST.allNodeScale / (256 * depth + ST.allNodeBase);
 
             R = MIN(depth - 1, MAX(R, 1));
         }
@@ -732,7 +749,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(!pvNode){
         int bonus = (bestMove == ttMove) ? 918 : -747;
         int entry = pos->shared->ttMoveHistory;
-        entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
+        entry += bonus - entry * abs(bonus) / ST.ttMoveHistoryMax;
         pos->shared->ttMoveHistory = entry;
     }
 
@@ -797,10 +814,10 @@ static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int th
         if(value>rBeta)break;
 
         quietMove ? quiets++ : tacticals++;
-        skipQuiets = quiets >= SingularQuietLimit;
+        skipQuiets = quiets >= ST.singularQuietLimit;
 
         //break the loop if skip quiets and has seen too many tactical moves
-        if(skipQuiets && tacticals >= SingularTacticalLimit)break;
+        if(skipQuiets && tacticals >= ST.singularTacticalLimit)break;
     }
 
     //MultiCut
@@ -823,7 +840,7 @@ static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int th
     if(value <= rBeta){
         int extension = 1;
 
-        int adjustedDoubleMargin = DoubleExtMargin - pos->shared->ttMoveHistory / TTMoveHistoryScale;
+        int adjustedDoubleMargin = ST.doubleExtMargin - pos->shared->ttMoveHistory / ST.ttMoveHistoryScale;
 
         if(value < rBeta - adjustedDoubleMargin) extension++;
         return extension;
@@ -1045,13 +1062,13 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
             pos->currentPvNum = pvNum;
 
-            delta       = ScoreWindow + (threadNum % 8);
+            delta       = ST.scoreWindow + (threadNum % 8);
             alpha       = -INFINITE_BOUND;
             beta        =  INFINITE_BOUND;
             searchDepth = currentDepth;
 
             
-            if(currentDepth >= WindowDepth && !info->bruteForceMode){
+            if(currentDepth >= ST.windowDepth && !info->bruteForceMode){
                 alpha = MAX(-INFINITE_BOUND, pvScore[pvNum]-delta);
                 beta  = MIN( INFINITE_BOUND, pvScore[pvNum]+delta);
             }
@@ -1067,7 +1084,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 if(info->bruteForceMode)break;
 
                 //report a fail-low/fail-high bound if it's taking a while (single PV mode only)
-                if(threadNum==0 && multiPV==1
+                if(!tuneQuiet && threadNum==0 && multiPV==1
                     && (bestScore<=alpha || bestScore>=beta)
                     && (getTimeMs()-info->starttime)>BoundReportTime){
                         for (int i = 0; i < rootPv.count; i++) {
@@ -1157,7 +1174,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
 
         //reporting to interface (Thread 0 only)
-        if (threadNum==0){
+        if (!tuneQuiet && threadNum==0){
             for(int i = 0; i < completedLinesCount; i++){
                 int pCount = depthLines[i].pv.count;
                 if(pCount > MAXDEPTH) pCount = MAXDEPTH;
@@ -1677,4 +1694,63 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     for (int i = 0; i < info->threadNum; ++i) {
         waitWorkerSearch(i);
     }
+}
+
+/* Single-threaded, silent, fixed-budget search for the tuner.
+ *
+ * This deliberately does *not* go through SearchPosition(): that spins up the
+ * lazy-SMP thread pool, which is exactly what a 12-way OpenMP tuner cannot
+ * afford (one nested pool per worker) and would make each sample depend on
+ * how many threads happened to vote. Instead it drives the real
+ * IterativeDeepening() on a stack-local worker, so the aspiration windows,
+ * the reductions and every pruning test are the same code the engine plays
+ * with -- the only things switched off are the thread pool, the UCI output
+ * and the time manager.
+ *
+ * The caller owns `table` and must have already set up pos->search,
+ * pos->shared and pos->eTable, and must clear `table` between positions: a
+ * transposition table left over from another position would make the sample
+ * depend on the order positions were visited in, which is fatal for a
+ * finite-difference gradient.
+ *
+ * Returns the final root score from the side to move's point of view, or
+ * VALUE_NONE when the position has no legal move.
+ */
+int SearchPositionFixed(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table,
+                        int maxDepth, U64 nodeLimit){
+    THREAD_SEARCH_WORKER worker;
+
+    worker.ttable          = table;
+    worker.info            = info;
+    worker.originalPos     = pos;
+    worker.ponderMove      = NOMOVE;
+    worker.bestMove        = NOMOVE;
+    worker.threadNumber    = 0;
+    worker.voteScore       = 0;
+    worker.voteDepth       = 0;
+    worker.votePvLineCount = 0;
+    worker.completedPv.count = 0;
+
+    info->UciInfinite = FALSE;
+    info->timeSet     = FALSE;
+    info->softTimeSet = FALSE;
+    info->nodeSet     = (nodeLimit > 0);
+    info->nodeLimit   = nodeLimit;
+    info->depthSet    = (maxDepth > 0);
+    info->depth       = maxDepth;
+    info->depthOneComplete = FALSE;
+    // Seeded to a sentinel so a search that bails out before completing depth
+    // 1 (only possible with a pathologically small node limit) is detectable
+    // by the caller instead of silently returning a stale score.
+    info->bestPreviousScore = VALUE_NONE;
+
+    InitSearcher(pos, info, table);
+    nnue_refresh_accumulator(pos);
+    TBProbeRoot(pos);
+
+    IterativeDeepening(&worker);
+
+    // IterativeDeepening publishes the last completed depth through
+    // bestPreviousScore (and bestPreviousAverageScore).
+    return info->bestPreviousScore;
 }

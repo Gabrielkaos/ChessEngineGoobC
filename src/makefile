@@ -122,6 +122,40 @@ $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 all: $(ALL_BINS)
 
 # ---------------------------------------------------------------------------
+# Search-constant tuner (tools/search_tuner.c)
+# ---------------------------------------------------------------------------
+# The tuner links the engine's own translation units, minus main.c, and supplies
+# its own main().  That matters for two reasons:
+#   * main() must exist exactly once, and the tuner owns the one in main.c.
+#   * the tuner gives every OpenMP worker its own TT / eval cache / shared
+#     history tables, so it must not silently fall back to the singletons that
+#     the engine's UCI path shares between threads.
+# It also needs -fopenmp, which the engine itself does not use.
+#
+# Result: bin/linux/search-tuner  (run with --help)
+TUNER_SRC   := ../tools/search_tuner.c
+TUNER_OBJS  := $(patsubst %.c,obj/tuner/%.o,$(filter-out main.c,$(SRCS))) \
+               obj/tuner/search_tuner.o
+TUNER_CFLAGS := $(BASE_CFLAGS) $(MARCH_native) -fopenmp -D_GNU_SOURCE -I.
+TUNER_BIN    := $(OUTDIR)/search-tuner$(EXE)
+
+.PHONY: tuner
+tuner: $(TUNER_BIN)
+
+$(TUNER_BIN): $(TUNER_OBJS) | $(OUTDIR)
+	$(CC) $(TUNER_CFLAGS) $(TUNER_OBJS) -o $@ $(LDFLAGS) -fopenmp
+	@echo "  LD  $@"
+
+obj/tuner/%.o: %.c | obj/tuner
+	$(CC) $(TUNER_CFLAGS) -c $< -o $@
+
+obj/tuner/search_tuner.o: ../tools/search_tuner.c | obj/tuner
+	$(CC) $(TUNER_CFLAGS) -c $< -o $@
+
+obj/tuner:
+	$(MKDIR) obj/tuner
+
+# ---------------------------------------------------------------------------
 # Output directory
 # ---------------------------------------------------------------------------
 $(OUTDIR):
