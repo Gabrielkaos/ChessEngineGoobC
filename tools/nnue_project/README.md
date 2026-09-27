@@ -32,6 +32,23 @@ cd scripts
 python prepare_data.py --n-train 8000000 --n-val 50000
 ```
 
+### Alternatively: Prepare from local `lichess_db_eval.jsonl.zst` (Fastest, no internet required)
+
+If you have downloaded `lichess_db_eval.jsonl.zst` into `data_json/`:
+
+```bash
+cd scripts
+python prepare_data_jsonl.py
+```
+By default, this streams the entire JSONL archive to the end of the file, allocating **95% of positions to `data/train.bin`** and **5% to `data/val.bin`**.
+
+Optional arguments:
+- `--val-fraction 0.05`: Adjust the validation split fraction.
+- `--out-dir ../data`: Custom output directory.
+- `--min-depth 20`: Filter positions below Stockfish depth (default: 20).
+- `--n-train N` / `--n-val M`: Cap to explicit maximum counts if you don't want the full dataset.
+
+
 This streams `Lichess/chess-position-evaluations` (the parquet dataset has
 ~958M de-normalized rows / ~512M positions in the plain cp+mate form),
 filters out shallow-depth rows and extreme centipawn outliers, and writes
