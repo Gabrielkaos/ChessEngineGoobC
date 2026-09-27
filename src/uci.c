@@ -18,6 +18,7 @@
 #include "nnue_loader.h"
 #include "syzygy.h"
 #include "correction.h"
+#include "cpu.h"
 
 #define INPUTBUFFER 65536
 #define Euler 2.8
@@ -567,7 +568,7 @@ void parsePosition(char* lineIn,S_BOARD *pos){
     nnue_refresh_accumulator(pos);
 }
 void uciPrint(){
-    printf("id name %s %s\n",NAME,VER);
+    printf("id name %s %s (%s)\n",NAME,VER,g_cpu_tier_name);
     printf("id author %s\n",AUTHOR);
     printf("option name Threads type spin default 1 min 1 max %d\n",MAXTHREADS); //1
     printf("option name MultiPV type spin default 1 min 1 max %d\n",MAXPOSMOVES); //1b
@@ -621,6 +622,10 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         if(strEquals(str,"uci")){
             uciPrint();
             fflush(stdout);
+        }
+
+        else if(strEquals(str,"compiler")){
+            print_compiler_info();
         }
 
         else if(strEquals(str,"isready")){

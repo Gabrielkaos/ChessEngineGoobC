@@ -91,6 +91,7 @@ extern int nnue_loaded;
 #if defined(_WIN32)
 #include <malloc.h>
 #endif
+#include "cpu.h"
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #define NNUE_ARCH_X86 1
@@ -101,6 +102,10 @@ extern int nnue_loaded;
 #include <immintrin.h>
 #if defined(__AVX512BW__)
 #define NNUE_USE_AVX512 1            /* compile-time selected, no dispatch   */
+#elif defined(UNIVERSAL_BUILD)
+#define NNUE_USE_AVX512 1            /* compile AVX-512 kernels via target attr */
+#define NNUE_HAVE_AVX2_DISPATCH 1    /* compile AVX2 kernels via target attr    */
+#define NNUE_UNIVERSAL 1
 #else
 #define NNUE_HAVE_AVX2_DISPATCH 1    /* AVX2 if compiled in or detected      */
 #endif
@@ -110,6 +115,14 @@ extern int nnue_loaded;
 #define NNUE_UNROLL _Pragma("GCC unroll 16")
 #else
 #define NNUE_UNROLL
+#endif
+
+#if defined(NNUE_USE_AVX512)
+#if defined(__AVX512BW__)
+#define NNUE_AVX512_FN
+#else
+#define NNUE_AVX512_FN __attribute__((target("avx512bw,avx512f,avx512vl,avx512dq")))
+#endif
 #endif
 
 /* AVX2 kernels get a target attribute only when the whole build is not
@@ -210,6 +223,7 @@ static inline int32_t nnue_finish(int32_t sum, int bucket) {
 #if defined(NNUE_USE_AVX512)
 #define NNUE_TILE_REGS_512 16   /* 16 zmm x 32 lanes = 512 int16 per tile */
 
+NNUE_AVX512_FN
 static inline void nnue_acc_apply_avx512(int16_t *dst, const int16_t *src,
                                          const int16_t *const *adds, int n_add,
                                          const int16_t *const *subs, int n_sub) {
@@ -236,6 +250,7 @@ static inline void nnue_acc_apply_avx512(int16_t *dst, const int16_t *src,
     }
 }
 
+NNUE_AVX512_FN
 static inline void nnue_acc_1add_1sub_avx512(int16_t *curr, const int16_t *prev,
                                              const int16_t *row_add, const int16_t *row_sub) {
     for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 32) {
@@ -246,6 +261,7 @@ static inline void nnue_acc_1add_1sub_avx512(int16_t *curr, const int16_t *prev,
     }
 }
 
+NNUE_AVX512_FN
 static inline int32_t nnue_forward_avx512(const int16_t *us, const int16_t *them, int bucket) {
     const __m512i zero = _mm512_setzero_si512();
     const __m512i qa = _mm512_set1_epi16(NNUE_QA);
@@ -265,6 +281,7 @@ static inline int32_t nnue_forward_avx512(const int16_t *us, const int16_t *them
 
 /* Exact variant for nets with |out_w| > 128: v^2 (<= 65025) is widened to
  * 32 bits and multiplied by the sign-extended weight. */
+NNUE_AVX512_FN
 static inline int32_t nnue_forward_exact_avx512(const int16_t *us, const int16_t *them, int bucket) {
     const __m512i zero = _mm512_setzero_si512();
     const __m512i qa = _mm512_set1_epi16(NNUE_QA);
@@ -415,11 +432,26 @@ static inline int32_t nnue_forward_scalar(const int16_t *us, const int16_t *them
     return nnue_finish(sum, bucket);
 }
 
+#if defined(UNIVERSAL_BUILD)
+typedef void (*nnue_acc_apply_fn)(int16_t *dst, const int16_t *src,
+                                  const int16_t *const *adds, int n_add,
+                                  const int16_t *const *subs, int n_sub);
+typedef void (*nnue_acc_1add_1sub_fn)(int16_t *curr, const int16_t *prev,
+                                      const int16_t *row_add, const int16_t *row_sub);
+typedef int32_t (*nnue_forward_fn)(const int16_t *us, const int16_t *them, int bucket);
+
+static nnue_acc_apply_fn    s_acc_apply    = nnue_acc_apply_scalar;
+static nnue_acc_1add_1sub_fn s_acc_1add_1sub = nnue_acc_1add_1sub_scalar;
+static nnue_forward_fn      s_forward      = nnue_forward_scalar;
+#endif
+
 /* ── Dispatchers ─────────────────────────────────────────────────────────── */
 static inline void nnue_acc_apply(int16_t *dst, const int16_t *src,
                                   const int16_t *const *adds, int n_add,
                                   const int16_t *const *subs, int n_sub) {
-#if defined(NNUE_USE_AVX512)
+#if defined(UNIVERSAL_BUILD)
+    s_acc_apply(dst, src, adds, n_add, subs, n_sub);
+#elif defined(NNUE_USE_AVX512)
     nnue_acc_apply_avx512(dst, src, adds, n_add, subs, n_sub);
 #else
 #if defined(NNUE_HAVE_AVX2_DISPATCH)
@@ -431,7 +463,9 @@ static inline void nnue_acc_apply(int16_t *dst, const int16_t *src,
 
 static inline void nnue_acc_1add_1sub(int16_t *curr, const int16_t *prev,
                                       const int16_t *row_add, const int16_t *row_sub) {
-#if defined(NNUE_USE_AVX512)
+#if defined(UNIVERSAL_BUILD)
+    s_acc_1add_1sub(curr, prev, row_add, row_sub);
+#elif defined(NNUE_USE_AVX512)
     nnue_acc_1add_1sub_avx512(curr, prev, row_add, row_sub);
 #else
 #if defined(NNUE_HAVE_AVX2_DISPATCH)
@@ -442,7 +476,9 @@ static inline void nnue_acc_1add_1sub(int16_t *curr, const int16_t *prev,
 }
 
 static inline int32_t nnue_forward(const int16_t *us, const int16_t *them, int bucket) {
-#if defined(NNUE_USE_AVX512)
+#if defined(UNIVERSAL_BUILD)
+    return s_forward(us, them, bucket);
+#elif defined(NNUE_USE_AVX512)
     return g_out_needs_exact ? nnue_forward_exact_avx512(us, them, bucket)
                              : nnue_forward_avx512(us, them, bucket);
 #else
@@ -667,6 +703,21 @@ int nnue_init(const char *path) {
     g_weights = w;
     g_out_needs_exact = max_abs_out > NNUE_FAST_OUT_W_LIMIT;
     nnue_loaded = 1;
+#if defined(UNIVERSAL_BUILD)
+    if (g_cpu_tier == ARCH_AVX512) {
+        s_acc_apply    = nnue_acc_apply_avx512;
+        s_acc_1add_1sub = nnue_acc_1add_1sub_avx512;
+        s_forward      = g_out_needs_exact ? nnue_forward_exact_avx512 : nnue_forward_avx512;
+    } else if (g_cpu_tier == ARCH_AVX2 || g_cpu_tier == ARCH_AVX2_BMI2) {
+        s_acc_apply    = nnue_acc_apply_avx2;
+        s_acc_1add_1sub = nnue_acc_1add_1sub_avx2;
+        s_forward      = g_out_needs_exact ? nnue_forward_exact_avx2 : nnue_forward_avx2;
+    } else {
+        s_acc_apply    = nnue_acc_apply_scalar;
+        s_acc_1add_1sub = nnue_acc_1add_1sub_scalar;
+        s_forward      = nnue_forward_scalar;
+    }
+#endif
     if (old) nnue_aligned_free(old);
 
     printf("info string NNUE: loaded %s\n", opened);

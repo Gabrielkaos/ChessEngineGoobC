@@ -3,22 +3,29 @@
 # =============================================================================
 # Produces one binary per x86-64 ISA tier, named:
 #
-#   Linux  : bin/linux/GOOB-2.2-BETA-x86-64
+#   Linux  : bin/linux/GOOB-2.2-BETA-universal     (Autodetects AVX-512/AVX2/BMI2)
+#            bin/linux/GOOB-2.2-BETA-x86-64
 #            bin/linux/GOOB-2.2-BETA-x86-64-v2
 #            bin/linux/GOOB-2.2-BETA-x86-64-v3     (BMI2/PEXT)
+#            bin/linux/GOOB-2.2-BETA-x86-64-v4     (AVX-512)
 #            bin/linux/GOOB-2.2-BETA-native         (host-tuned, local dev)
 #
-#   Windows: bin/windows/GOOB-2.2-BETA-x86-64.exe
+#   Windows: bin/windows/GOOB-2.2-BETA-universal.exe
+#            bin/windows/GOOB-2.2-BETA-x86-64.exe
 #            bin/windows/GOOB-2.2-BETA-x86-64-v2.exe
 #            bin/windows/GOOB-2.2-BETA-x86-64-v3.exe
+#            bin/windows/GOOB-2.2-BETA-x86-64-v4.exe
 #            bin/windows/GOOB-2.2-BETA-native.exe
 #
 # ISA tier summary
 # -----------------------------------------------------------------------------
+#  universal: Single binary containing AVX-512, AVX2, BMI2, SSE4.2, and baseline
+#             code paths; autodetects host CPU hardware at runtime (Stockfish style).
 #  x86-64   : baseline SSE2 – widest compatibility, magic slider fallback.
-#  x86-64-v2: + SSE4.2 / POPCNT.  tbprobe gets HW popcount via __SSE4_2__.
-#  x86-64-v3: + AVX2 / BMI2.  attacks.c switches to PEXT (USE_PEXT+__BMI2__).
-#  native   : same ISA as v3 but tuned to the host CPU; for local benchmarking.
+#  x86-64-v2: + SSE4.2 / POPCNT.
+#  x86-64-v3: + AVX2 / BMI2.  attacks.c switches to PEXT.
+#  x86-64-v4: + AVX-512 (BW, F, VL, DQ).
+#  native   : tuned to the host CPU; for local benchmarking.
 #
 # Key design decisions
 # -----------------------------------------------------------------------------
@@ -112,9 +119,11 @@ BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLA
 # ---------------------------------------------------------------------------
 # Per-ISA march flags
 # ---------------------------------------------------------------------------
+MARCH_universal := -march=x86-64 -DUNIVERSAL_BUILD
 MARCH_x86-64    := -march=x86-64
 MARCH_x86-64-v2 := -march=x86-64-v2
 MARCH_x86-64-v3 := -march=x86-64-v3
+MARCH_x86-64-v4 := -march=x86-64-v4
 MARCH_native    := -march=native
 
 # ---------------------------------------------------------------------------
@@ -124,7 +133,7 @@ MARCH_native    := -march=native
 #   * A dedicated obj directory   obj/<arch>/
 #   * A pattern rule              obj/<arch>/%.o : %.c
 #   * A link rule                 $(OUTDIR)/NAME-<arch>[.exe]
-#   * A phony shorthand           make x86-64-v3   (etc.)
+#   * A phony shorthand           make universal  make x86-64-v3  (etc.)
 #
 # Invoked as: $(call ISA_RULES,<arch>)
 # ---------------------------------------------------------------------------
@@ -151,14 +160,14 @@ $(1): $$(BIN_$(1))
 endef
 
 # Expand rules for every architecture tier
-ARCHS := x86-64 x86-64-v2 x86-64-v3 native
+ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
 $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 
 # ---------------------------------------------------------------------------
-# Default target – build all ISA tiers
+# Default target – build universal binary (or all with 'make all')
 # ---------------------------------------------------------------------------
-.PHONY: all
-.DEFAULT_GOAL := all
+.PHONY: all universal-default
+.DEFAULT_GOAL := universal
 all: $(ALL_BINS)
 
 # ---------------------------------------------------------------------------
@@ -166,10 +175,10 @@ all: $(ALL_BINS)
 # ---------------------------------------------------------------------------
 .PHONY: windows win linux
 windows win:
-	$(MAKE) TARGET=windows all
+	$(MAKE) TARGET=windows universal
 
 linux:
-	$(MAKE) TARGET=linux all
+	$(MAKE) TARGET=linux universal
 
 # ---------------------------------------------------------------------------
 # Output directory

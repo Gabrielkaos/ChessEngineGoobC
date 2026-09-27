@@ -399,6 +399,16 @@ U64 set_occupancy(int index,int bits_in_mask,U64 attack_mask){
 
 
 
+static inline uint64_t do_pext(uint64_t val, uint64_t mask) {
+#if defined(__BMI2__)
+    return _pext_u64(val, mask);
+#else
+    uint64_t res;
+    __asm__ ("pext %2, %1, %0" : "=r"(res) : "r"(val), "r"(mask));
+    return res;
+#endif
+}
+
 void initSliderPiecesAttacks(int bishop){
     int sq,index;
     int offset=0;
@@ -425,8 +435,11 @@ void initSliderPiecesAttacks(int bishop){
 
             //bishop
             if(bishop){
-#ifdef PEXT_ATTACKS
+#if defined(PEXT_ATTACKS)
                 int magic_index=(int)_pext_u64(occupancy,attack_mask);
+#elif defined(UNIVERSAL_BUILD)
+                int magic_index = g_use_pext ? (int)do_pext(occupancy, attack_mask)
+                                             : (int)((occupancy*bishop_magic_numbers[sq]) >> (64-bishop_relevant_bits[sq]));
 #else
                 int magic_index=(occupancy*bishop_magic_numbers[sq]) >> (64-bishop_relevant_bits[sq]);
 #endif
@@ -434,8 +447,11 @@ void initSliderPiecesAttacks(int bishop){
             }
             //rook
             else{
-#ifdef PEXT_ATTACKS
+#if defined(PEXT_ATTACKS)
                 int magic_index=(int)_pext_u64(occupancy,attack_mask);
+#elif defined(UNIVERSAL_BUILD)
+                int magic_index = g_use_pext ? (int)do_pext(occupancy, attack_mask)
+                                             : (int)((occupancy*rook_magic_numbers[sq]) >> (64-rook_relevant_bits[sq]));
 #else
                 int magic_index=(occupancy*rook_magic_numbers[sq]) >> (64-rook_relevant_bits[sq]);
 #endif

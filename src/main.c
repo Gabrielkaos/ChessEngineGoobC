@@ -12,9 +12,16 @@
 #include "search.h"
 #include "syzygy.h"
 #include "nnue_loader.h"
+#include "cpu.h"
 
 int main(int argc, char *argv[])
 {
+    init_cpu_features();
+
+    if (argc > 1 && strcmp(argv[1], "compiler") == 0) {
+        print_compiler_info();
+        return 0;
+    }
 
     AllInit();
 
@@ -51,7 +58,7 @@ int main(int argc, char *argv[])
     printf("\nWARNING! DEBUG DEFINED MIGHT SLOW DOWN ENGINE\n");
 #endif // DEBUG
 
-    printf("\nUCI engine by Gabriel M.\n");
+    printf("\nUCI engine by Gabriel M. [%s]\n", g_cpu_tier_name);
     printf("type 'uci' then 'help' for commands\n\n");
 
 
@@ -67,6 +74,9 @@ int main(int argc, char *argv[])
 		if (!strncmp(line, "uci",3)) {
 			UCILoop(pos, info);
 			if(info->quit == TRUE) break;
+			continue;
+		}else if (!strncmp(line, "compiler", 8)){
+			print_compiler_info();
 			continue;
 		}else if (!strncmp(line, "bb",2)){
             TestHASH(QUEENG3);

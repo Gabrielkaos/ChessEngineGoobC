@@ -296,8 +296,27 @@ typedef struct{
 #define TOSQ(m) (((m)>>7) & 0x7F)
 #define CAPTURED(m) (((m)>>14) & 0xF)
 #define PROMOTED(m) (((m)>>20) & 0xF)
+extern int g_has_popcnt;
+
+static inline int count_bits(uint64_t x) {
+#if defined(__POPCNT__)
+    return __builtin_popcountll(x);
+#else
+    if (__builtin_expect(g_has_popcnt, 1)) {
+        uint64_t res;
+        __asm__ ("popcnt %1, %0" : "=r"(res) : "r"(x));
+        return (int)res;
+    } else {
+        x = x - ((x >> 1) & 0x5555555555555555ULL);
+        x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+        x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+        return (int)((x * 0x0101010101010101ULL) >> 56);
+    }
+#endif
+}
+
 #define LSBINDEX(x) __builtin_ctzll(x)
-#define COUNTBIT(bitboard) __builtin_popcountll(bitboard)
+#define COUNTBIT(bitboard) count_bits(bitboard)
 #define FRtoSQ(f,r) (r*8+f)
 #define GETBIT(bitboard,square) (bitboard & (1ULL << square))
 #define POPBIT(bb,sq) (GETBIT(bb,sq) ? bb ^= (1ULL << sq):0)
