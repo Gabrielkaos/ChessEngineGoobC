@@ -4,14 +4,14 @@
 # Produces one binary per x86-64 ISA tier, named:
 #
 #   Linux  : bin/linux/GOOB-2.2-BETA-x86-64
-#             bin/linux/GOOB-2.2-BETA-x86-64-v2
-#             bin/linux/GOOB-2.2-BETA-x86-64-v3     (BMI2/PEXT)
-#             bin/linux/GOOB-2.2-BETA-native         (host-tuned, local dev)
+#            bin/linux/GOOB-2.2-BETA-x86-64-v2
+#            bin/linux/GOOB-2.2-BETA-x86-64-v3     (BMI2/PEXT)
+#            bin/linux/GOOB-2.2-BETA-native         (host-tuned, local dev)
 #
 #   Windows: bin/windows/GOOB-2.2-BETA-x86-64.exe
-#             bin/windows/GOOB-2.2-BETA-x86-64-v2.exe
-#             bin/windows/GOOB-2.2-BETA-x86-64-v3.exe
-#             bin/windows/GOOB-2.2-BETA-native.exe
+#            bin/windows/GOOB-2.2-BETA-x86-64-v2.exe
+#            bin/windows/GOOB-2.2-BETA-x86-64-v3.exe
+#            bin/windows/GOOB-2.2-BETA-native.exe
 #
 # ISA tier summary
 # -----------------------------------------------------------------------------
@@ -27,30 +27,71 @@
 #  * USE_PEXT is passed for all tiers.  attacks.c gates actual PEXT use on
 #    __BMI2__ which is only set when -march implies BMI2 (v3 / native).
 #    On x86-64 / v2 it silently falls back to classic magics – no extra flag.
-#  * On Linux   we link with -pthread (tinycthread wraps pthreads).
-#    On Windows  we link without -pthread (tinycthread uses Win32 API directly).
+#  * On Linux we link with -pthread (tinycthread wraps pthreads).
+#    On Windows we link without -pthread (tinycthread uses Win32 API directly),
+#    with -static (no missing DLL dependencies), and with a 16MB stack.
 #  * tbprobe.c detects _WIN32 at compile time for its own platform paths.
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Platform detection
+# Target platform detection
 # ---------------------------------------------------------------------------
-ifeq ($(OS), Windows_NT)
-    CC             := gcc
-    RM             := del /Q
-    MKDIR          := mkdir
+TARGET ?=
+ifeq ($(TARGET),)
+    ifneq ($(findstring mingw,$(CC)),)
+        TARGET := windows
+    else ifeq ($(OS),Windows_NT)
+        TARGET := windows
+    else
+        TARGET := linux
+    endif
+endif
+
+# ---------------------------------------------------------------------------
+# Host shell detection (Windows cmd.exe vs POSIX shell: Linux, MSYS2, Git-Bash)
+# ---------------------------------------------------------------------------
+IS_CMD := 0
+ifeq ($(OS),Windows_NT)
+    ifeq ($(findstring sh,$(SHELL)),)
+        IS_CMD := 1
+    endif
+endif
+
+ifeq ($(IS_CMD),1)
+    MKDIR_CMD = if not exist $(subst /,\,$(1)) mkdir $(subst /,\,$(1))
+    RMDIR_CMD = if exist $(subst /,\,$(1)) rmdir /s /q $(subst /,\,$(1))
+    RM_CMD    = if exist $(subst /,\,$(1)) del /q /f $(subst /,\,$(1))
+else
+    MKDIR_CMD = mkdir -p $(1)
+    RMDIR_CMD = rm -rf $(1)
+    RM_CMD    = rm -f $(1)
+endif
+
+# ---------------------------------------------------------------------------
+# Platform-specific toolchain and flags
+# ---------------------------------------------------------------------------
+ifeq ($(TARGET),windows)
+    ifeq ($(origin CC),default)
+        ifeq ($(OS),Windows_NT)
+            CC := gcc
+        else
+            CC := x86_64-w64-mingw32-gcc
+        endif
+    endif
     EXE            := .exe
     THREAD_FLAGS   :=
     PLATFORM_FLAGS := -DPLATFORM_WINDOWS
     OUTDIR         := bin/windows
+    LDFLAGS        := -lm -flto=auto -static -Wl,--stack,16777216
 else
-    CC             := cc
-    RM             := rm -f
-    MKDIR          := mkdir -p
+    ifeq ($(origin CC),default)
+        CC := cc
+    endif
     EXE            :=
     THREAD_FLAGS   := -pthread
     PLATFORM_FLAGS := -DPLATFORM_LINUX
     OUTDIR         := bin/linux
+    LDFLAGS        := -lm -flto=auto
 endif
 
 # ---------------------------------------------------------------------------
@@ -67,7 +108,6 @@ EVALFILE ?= weights/quantised.bin
 #               path; the inner #ifdef __BMI2__ guard makes it a no-op on
 #               CPUs that do not have BMI2.
 BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\"
-LDFLAGS     := -lm -flto=auto
 
 # ---------------------------------------------------------------------------
 # Per-ISA march flags
@@ -103,7 +143,7 @@ obj/$(1)/%.o: %.c | obj/$(1)
 	$(CC) $$(CFLAGS_$(1)) -c $$< -o $$@
 
 obj/$(1):
-	$(MKDIR) obj/$(1)
+	@$$(call MKDIR_CMD,obj/$(1))
 
 .PHONY: $(1)
 $(1): $$(BIN_$(1))
@@ -122,25 +162,30 @@ $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 all: $(ALL_BINS)
 
 # ---------------------------------------------------------------------------
+# OS explicit targets
+# ---------------------------------------------------------------------------
+.PHONY: windows win linux
+windows win:
+	$(MAKE) TARGET=windows all
+
+linux:
+	$(MAKE) TARGET=linux all
+
+# ---------------------------------------------------------------------------
 # Output directory
 # ---------------------------------------------------------------------------
 $(OUTDIR):
-ifeq ($(OS), Windows_NT)
-	$(MKDIR) $(subst /,\,$(OUTDIR))
-else
-	$(MKDIR) $(OUTDIR)
-endif
+	@$(call MKDIR_CMD,$(OUTDIR))
 
 # ---------------------------------------------------------------------------
 # Clean
 # ---------------------------------------------------------------------------
 .PHONY: clean
 clean:
-ifeq ($(OS), Windows_NT)
-	-rmdir /S /Q obj bin\windows bin\linux 2>NUL
-else
-	$(RM) -rf obj $(OUTDIR)
-endif
+	@$(call RMDIR_CMD,obj)
+	@$(call RMDIR_CMD,bin/windows)
+	@$(call RMDIR_CMD,bin/linux)
+	@$(call RM_CMD,.depend)
 
 # ---------------------------------------------------------------------------
 # Rebuild
@@ -162,14 +207,14 @@ PGO_BIN         := $(OUTDIR)/$(NAME)-native$(EXE)
 .PHONY: pgo
 pgo:
 	@echo "=== PGO Phase 1: instrumented build ==="
-	$(MKDIR) obj/pgo-gen
-	$(MKDIR) $(OUTDIR)
+	@$(call MKDIR_CMD,obj/pgo-gen)
+	@$(call MKDIR_CMD,$(OUTDIR))
 	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo-gen/$(basename $(src)).o;)
 	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS_GEN) -o $(PGO_BIN_GEN) $(LDFLAGS)
 	@echo "=== PGO Phase 2: collecting profile ==="
 	$(PGO_BIN_GEN) bench || true
 	@echo "=== PGO Phase 3: optimised build ==="
-	$(MKDIR) obj/pgo-use
+	@$(call MKDIR_CMD,obj/pgo-use)
 	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo-use/$(basename $(src)).o;)
 	$(CC) $(PGO_CFLAGS_USE) $(PGO_OBJS_USE) -o $(PGO_BIN) $(LDFLAGS)
 	@echo "  LD  $(PGO_BIN) (PGO)"

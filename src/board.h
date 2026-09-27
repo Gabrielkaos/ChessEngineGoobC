@@ -51,10 +51,15 @@ typedef struct {
 
 static inline S_SEARCH_THREAD* alloc_search_thread(void) {
     size_t size = (sizeof(S_SEARCH_THREAD) + 63) & ~(size_t)63;
-    S_SEARCH_THREAD *ptr = (S_SEARCH_THREAD*) aligned_alloc(64, size);
+    S_SEARCH_THREAD *ptr = (S_SEARCH_THREAD*) goob_aligned_alloc(64, size);
     if (ptr) memset(ptr, 0, sizeof(S_SEARCH_THREAD));
     return ptr;
 }
+
+static inline void free_search_thread(S_SEARCH_THREAD *ptr) {
+    if (ptr) goob_aligned_free(ptr);
+}
+
 
 //Board structure
 typedef struct {

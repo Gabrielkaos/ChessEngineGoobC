@@ -46,6 +46,7 @@ void TestHASH(char *fen){
         takeMove(pos);
         DataCheck(list->moves[moveNum].move);
     }
+    if (pos->search) free_search_thread(pos->search);
 }
 
 
@@ -97,9 +98,9 @@ void InitPvTable(S_PVTABLE *table,const int mb,int noisy){
     int rawEntries = PvSize / sizeof(S_PVBUCKET);
     table->numEntries = floorPowerOf2(rawEntries);
 
-    if(table->pTable != NULL) free(table->pTable);
+    if(table->pTable != NULL) goob_aligned_free(table->pTable);
 
-    table->pTable=(S_PVBUCKET *) aligned_alloc(64, table->numEntries*sizeof(S_PVBUCKET));
+    table->pTable=(S_PVBUCKET *) goob_aligned_alloc(64, table->numEntries*sizeof(S_PVBUCKET));
 
     if(table->pTable==NULL){
         if(noisy)printf("info string PV HashTable Initialization failed with %d MB\n",mb);
@@ -203,8 +204,9 @@ static int ttProbe(S_BOARD *pos, S_PVTABLE *table, U64 key){
 int runTTReplacementTests(void){
     S_PVTABLE table[1];
     S_BOARD pos[1];
-    pos->search = alloc_search_thread();
     memset(pos, 0, sizeof(S_BOARD));
+    pos->search = alloc_search_thread();
+    pos->st = &pos->stateTable[0];
     pos->ply = 0;
 
     InitPvTable(table, 1, 0);
@@ -265,7 +267,8 @@ int runTTReplacementTests(void){
 
     printf(fails == 0 ? "\nAll TT tests PASSED\n\n" : "\nTT tests FAILED (%d)\n\n", fails);
 
-    free(table->pTable);
+    if (pos->search) free_search_thread(pos->search);
+    if (table->pTable) goob_aligned_free(table->pTable);
     return fails == 0;
 }
 

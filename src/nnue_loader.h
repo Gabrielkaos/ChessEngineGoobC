@@ -583,20 +583,11 @@ int nnue_eval(S_BOARD *pos) {
 
 /* ── Weight Loading & Initialization ─────────────────────────────────────── */
 static void *nnue_aligned_alloc(size_t align, size_t size) {
-#if defined(_WIN32)
-    return _aligned_malloc(size, align);
-#else
-    size = (size + align - 1) & ~(align - 1);   /* C11 requires a multiple */
-    return aligned_alloc(align, size);
-#endif
+    return goob_aligned_alloc(align, size);
 }
 
 static void nnue_aligned_free(void *p) {
-#if defined(_WIN32)
-    _aligned_free(p);
-#else
-    free(p);
-#endif
+    goob_aligned_free(p);
 }
 
 int nnue_init(const char *path) {

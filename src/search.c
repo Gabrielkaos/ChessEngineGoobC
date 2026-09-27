@@ -1626,7 +1626,7 @@ void FreeThreadPool(void) {
 
         if (w->originalPos) {
             if (w->originalPos->search) {
-                free(w->originalPos->search);
+                free_search_thread(w->originalPos->search);
                 w->originalPos->search = NULL;
             }
             free(w->originalPos);
@@ -1637,7 +1637,7 @@ void FreeThreadPool(void) {
 
     if (launcherPos) {
         if (launcherPos->search) {
-            free(launcherPos->search);
+            free_search_thread(launcherPos->search);
             launcherPos->search = NULL;
         }
         free(launcherPos);

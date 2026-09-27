@@ -21,6 +21,34 @@
 
 typedef uint64_t U64;
 #define ALIGN64 alignas(64)
+
+#if defined(_WIN32) || defined(_MSC_VER)
+#include <malloc.h>
+static inline void* goob_aligned_alloc(size_t align, size_t size) {
+    return _aligned_malloc(size, align);
+}
+static inline void goob_aligned_free(void* ptr) {
+    if (ptr) _aligned_free(ptr);
+}
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+static inline void* goob_aligned_alloc(size_t align, size_t size) {
+    size = (size + align - 1) & ~(align - 1);
+    return aligned_alloc(align, size);
+}
+static inline void goob_aligned_free(void* ptr) {
+    free(ptr);
+}
+#else
+static inline void* goob_aligned_alloc(size_t align, size_t size) {
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, align, size) != 0) return NULL;
+    return ptr;
+}
+static inline void goob_aligned_free(void* ptr) {
+    free(ptr);
+}
+#endif
+
 //Stockfish-style continuation history: indexed by the move played
 //1, 2, 4 and 6 plies ago (counter, follow-up, plus two deeper continuations)
 enum{CONT_HIST_SLOTS=4};

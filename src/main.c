@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     //S_SHARED_TABLES declares ALIGN64 members, so the allocation must be
     //64-byte aligned too (plain malloc only guarantees 16-byte alignment)
     size_t sharedSize = (sizeof(S_SHARED_TABLES) + 63) & ~(size_t)63;
-    pos->shared = (S_SHARED_TABLES*) aligned_alloc(64, sharedSize);
+    pos->shared = (S_SHARED_TABLES*) goob_aligned_alloc(64, sharedSize);
     if(pos->shared == NULL){
         printf("info string FATAL: shared table allocation failed\n");
         return 1;
@@ -79,9 +79,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	free(pvTable->pTable);
+	if (pvTable->pTable) goob_aligned_free(pvTable->pTable);
 	FreeThreadPool();
-    free(pos->shared);
+    if (pos->shared) goob_aligned_free(pos->shared);
+    if (pos->search) free_search_thread(pos->search);
 	TBFree();
 
 	/*
