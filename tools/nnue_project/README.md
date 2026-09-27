@@ -40,13 +40,17 @@ If you have downloaded `lichess_db_eval.jsonl.zst` into `data_json/`:
 cd scripts
 python prepare_data_jsonl.py
 ```
-By default, this streams the entire JSONL archive to the end of the file, allocating **95% of positions to `data/train.bin`** and **5% to `data/val.bin`**.
+By default, this streams the entire JSONL archive to the end of the file:
+- **Quiet positions only**: Automatically excludes positions in check, moves that capture, promotions, and moves that give check.
+- **Fixed 5M validation set**: Writes the first **5,000,000 valid quiet positions** to `data/val.bin`.
+- **All remaining to train**: Streams all subsequent quiet positions into `data/train.bin` until EOF.
 
 Optional arguments:
-- `--val-fraction 0.05`: Adjust the validation split fraction.
-- `--out-dir ../data`: Custom output directory.
+- `--n-val 5000000`: Target number of validation records (default: 5,000,000; set 0 to disable).
+- `--n-train N`: Cap to explicit maximum train records (default: stream remaining to EOF).
 - `--min-depth 20`: Filter positions below Stockfish depth (default: 20).
-- `--n-train N` / `--n-val M`: Cap to explicit maximum counts if you don't want the full dataset.
+- `--no-quiet`: Disable quiet filtering (include checks, captures, and promotions).
+- `--out-dir ../data`: Custom output directory.
 
 
 This streams `Lichess/chess-position-evaluations` (the parquet dataset has

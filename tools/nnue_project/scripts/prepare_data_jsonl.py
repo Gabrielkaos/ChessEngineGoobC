@@ -2,10 +2,11 @@
 Prepare binary NNUE training dataset (train.bin / val.bin) directly from a local
 Lichess evaluations JSONL file (e.g., lichess_db_eval.jsonl.zst).
 
-This replaces the slow Hugging Face network stream with blazing-fast local
-decompression and multi-process parsing.
-
 Features:
+  - Quiet positions only: filters out positions in check, moves that capture,
+    promotions, and moves that give check.
+  - Validation split: exactly 5,000,000 validation records (by default), with all
+    subsequent records streaming into training until the end of the file.
   - Supports compressed archives (.zst via zstd CLI or zstandard, .gz) or raw .jsonl.
   - Position evaluation:
       * Selects the evaluation with the highest depth (tie-broken by knodes).
@@ -13,30 +14,26 @@ Features:
       * Evaluations are verified White-relative, matching GoobC's NNUE format.
   - Multi-process pipeline:
       * Main process streams lines from zstd and distributes batches to worker pool.
-      * Workers parse JSON, extract highest-depth PV1, filter, and pack to 68-byte records.
-      * Main process partitions into train/val sets and flushes to disk in large buffers.
+      * Workers parse JSON, extract highest-depth PV1, filter quiet positions, and pack to 68-byte records.
+      * Main process flushes to disk in large buffers.
   - Safe writing & error handling:
       * Graceful SIGINT/Ctrl+C handling with truncation safeguard to 68-byte alignment.
       * Resume support via --skip-lines and --append.
 
 Usage examples:
-    # Generate 8M train records and 50k val records (default):
+    # Default: processes to end of file, 5M val records, remaining to train:
     python prepare_data_jsonl.py
 
-    # Custom paths and record counts:
+    # Custom paths and capped train records:
     python prepare_data_jsonl.py --input data_json/lichess_db_eval.jsonl.zst \
-        --out-dir ../data --train-name train1.bin --val-name val1.bin \
-        --n-train 10000000 --n-val 100000 --min-depth 22
-
-    # Process all positions in the file (unlimited train):
-    python prepare_data_jsonl.py --n-train 0 --n-val 100000
+        --out-dir ../data --train-name train.bin --val-name val.bin \
+        --n-val 5000000 --n-train 20000000
 """
 
 import argparse
 import gzip
 import json
 import os
-import random
 import shutil
 import struct
 import subprocess
@@ -46,6 +43,8 @@ import traceback
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 
+import chess
+
 from fen_utils import pack_record, RECORD_SIZE
 
 try:
@@ -54,7 +53,6 @@ try:
 except ImportError:
     HAVE_TQDM = False
 
-VAL_FRACTION_DEFAULT = 0.006  # fallback ~0.6% validation fraction
 FLUSH_BYTES = 8 * 1024 * 1024  # Flush output files in 8 MB chunks
 
 
@@ -122,8 +120,14 @@ def open_input_stream(input_path: str):
         return fh, fh
 
 
-def process_batch_lines(lines: list, min_depth: int, max_abs_cp: int, keep_mate: bool) -> tuple:
-    """Worker function: parses JSON lines, selects highest depth PV1, filters, and packs records.
+def process_batch_lines(
+    lines: list,
+    min_depth: int,
+    max_abs_cp: int,
+    keep_mate: bool,
+    quiet_only: bool = True,
+) -> tuple:
+    """Worker function: parses JSON lines, selects highest depth PV1, filters quiet positions, and packs records.
     
     Returns:
         (packed_blob: bytes, valid_count: int, parsed_count: int)
@@ -178,6 +182,30 @@ def process_batch_lines(lines: list, min_depth: int, max_abs_cp: int, keep_mate:
         if not fen:
             continue
 
+        # Quiet position filter: no check, no captures, no promotions
+        if quiet_only:
+            line_str = pv1.get("line", "")
+            if not line_str:
+                continue
+            best_move_str = line_str.split()[0]
+            # UCI promotion is 5 characters (e.g. e7e8q)
+            if len(best_move_str) > 4:
+                continue
+
+            try:
+                board = chess.Board(fen, chess960=True)
+                if board.is_check():
+                    continue
+                move = chess.Move.from_uci(best_move_str)
+                if move.promotion is not None:
+                    continue
+                if board.is_capture(move):
+                    continue
+                if board.gives_check(move):
+                    continue
+            except Exception:
+                continue
+
         try:
             rec = pack_record(fen, cp, mate)
             records.append(rec)
@@ -219,7 +247,7 @@ def batched_stream(line_iter, batch_size: int, skip_lines: int = 0, max_lines: i
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Prepare 68-byte NNUE binary dataset from Lichess JSONL evaluations."
+        description="Prepare 68-byte NNUE binary dataset from Lichess JSONL evaluations (quiet positions only)."
     )
     parser.add_argument(
         "--input", "-i",
@@ -242,22 +270,21 @@ def main():
         help="Filename for val split (default: val.bin).",
     )
     parser.add_argument(
+        "--n-val",
+        type=int,
+        default=5_000_000,
+        help="Target number of validation positions (default: 5,000,000; set 0 to disable).",
+    )
+    parser.add_argument(
         "--n-train",
         type=int,
         default=None,
-        help="Optional max train positions to produce (default: stream until end of file).",
+        help="Optional max train positions to produce (default: None = stream remaining to end of file).",
     )
     parser.add_argument(
-        "--n-val",
-        type=int,
-        default=None,
-        help="Optional max val positions to produce (default: stream until end of file at --val-fraction).",
-    )
-    parser.add_argument(
-        "--val-fraction",
-        type=float,
-        default=0.05,
-        help="Fraction of dataset to allocate to validation (default: 0.05 = 5%).",
+        "--no-quiet",
+        action="store_true",
+        help="Disable quiet filtering (include checks, captures, and promotions). Default: quiet only.",
     )
     parser.add_argument(
         "--min-depth",
@@ -312,12 +339,6 @@ def main():
         help="Maximum batches queued/running concurrently (default: 4x workers).",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for train/val split (default: 42).",
-    )
-    parser.add_argument(
         "--progress-every",
         type=int,
         default=50_000,
@@ -326,6 +347,7 @@ def main():
 
     args = parser.parse_args()
 
+    quiet_only = not args.no_quiet
     input_file = resolve_path(args.input)
     out_dir = resolve_path(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
@@ -336,17 +358,12 @@ def main():
     if args.max_in_flight is None:
         args.max_in_flight = max(4, args.workers * 4)
 
-    rng = random.Random(args.seed)
-
-    # Compute validation fraction
-    val_fraction = args.val_fraction
-
     open_mode = "ab" if args.append else "wb"
     existing_train = (os.path.getsize(train_path) // RECORD_SIZE) if (args.append and os.path.exists(train_path)) else 0
     existing_val = (os.path.getsize(val_path) // RECORD_SIZE) if (args.append and os.path.exists(val_path)) else 0
 
-    train_target_str = f"{args.n_train:,} records" if (args.n_train and args.n_train > 0) else f"End of file ({(1.0 - val_fraction):.0%})"
-    val_target_str = f"{args.n_val:,} records" if (args.n_val and args.n_val > 0) else f"End of file ({val_fraction:.0%})"
+    val_target_str = f"{args.n_val:,} records" if (args.n_val and args.n_val > 0) else "0 (disabled)"
+    train_target_str = f"{args.n_train:,} records" if (args.n_train and args.n_train > 0) else "All remaining to end of file"
 
     print("=" * 70)
     print("GoobC NNUE - Lichess JSONL Dataset Preparation")
@@ -354,9 +371,9 @@ def main():
     print(f"Input file      : {input_file}")
     print(f"Output train    : {train_path} {'(append)' if args.append else '(overwrite)'}")
     print(f"Output val      : {val_path} {'(append)' if args.append else '(overwrite)'}")
-    print(f"Target train    : {train_target_str}")
     print(f"Target val      : {val_target_str}")
-    print(f"Validation split: {val_fraction:.1%} val / {(1.0 - val_fraction):.1%} train")
+    print(f"Target train    : {train_target_str}")
+    print(f"Quiet only      : {quiet_only} (no checks, no captures, no promotions)")
     print(f"Filters         : min_depth={args.min_depth}, max_abs_cp={args.max_abs_cp}, keep_mate={args.keep_mate}")
     print(f"Parallelism     : {args.workers} workers, batch_size={args.batch_size:,}, in_flight={args.max_in_flight}")
     if args.append and (existing_train > 0 or existing_val > 0):
@@ -377,7 +394,11 @@ def main():
     n_records_valid = 0
     start_time = time.time()
 
-    pbar = tqdm(total=args.n_train if (args.n_train and args.n_train > 0) else None, unit="rec", desc="train") if HAVE_TQDM else None
+    total_target = None
+    if args.n_train and args.n_train > 0:
+        total_target = (args.n_val if (args.n_val and args.n_val > 0) else 0) + args.n_train
+
+    pbar = tqdm(total=total_target, unit="rec", desc="records") if HAVE_TQDM else None
 
     train_buf = bytearray()
     val_buf = bytearray()
@@ -403,6 +424,7 @@ def main():
                         args.min_depth,
                         args.max_abs_cp,
                         args.keep_mate,
+                        quiet_only,
                     )
                     futures.append(fut)
                 except StopIteration:
@@ -418,29 +440,23 @@ def main():
                 n_lines_scanned += parsed_n
                 n_records_valid += valid_n
 
-                # Route records from blob (each record is exactly RECORD_SIZE = 68 bytes)
+                # Route records: first n_val records go to val, remainder stream to train
                 for i in range(0, len(blob), RECORD_SIZE):
                     rec = blob[i : i + RECORD_SIZE]
-                    r = rng.random()
 
-                    wants_val = (r < val_fraction)
-                    can_write_val = (args.n_val is None or args.n_val <= 0 or n_val_written < args.n_val)
-                    can_write_train = (args.n_train is None or args.n_train <= 0 or n_train_written < args.n_train)
-
-                    if wants_val and can_write_val:
+                    if args.n_val and args.n_val > 0 and n_val_written < args.n_val:
                         val_buf += rec
                         n_val_written += 1
-                    elif can_write_train:
+                        if pbar is not None:
+                            pbar.update(1)
+                    elif args.n_train is None or args.n_train <= 0 or n_train_written < args.n_train:
                         train_buf += rec
                         n_train_written += 1
                         if pbar is not None:
                             pbar.update(1)
-                    elif can_write_val:
-                        val_buf += rec
-                        n_val_written += 1
 
                     if (args.n_train is not None and args.n_train > 0 and n_train_written >= args.n_train) and \
-                       (args.n_val is not None and args.n_val > 0 and n_val_written >= args.n_val):
+                       (not args.n_val or args.n_val <= 0 or n_val_written >= args.n_val):
                         done = True
                         break
 
@@ -453,32 +469,26 @@ def main():
                     val_buf.clear()
 
                 # Progress reporting
+                tot = n_train_written + n_val_written
                 if pbar is not None:
-                    if n_train_written % 1000 == 0 or done:
-                        tot = n_train_written + n_val_written
-                        val_pct = (n_val_written / tot * 100) if tot > 0 else 0
+                    if tot % 1000 == 0 or done:
+                        val_str = f"{n_val_written:,}/{args.n_val:,}" if (args.n_val and n_val_written < args.n_val) else f"{n_val_written:,} (done)"
                         pbar.set_postfix(
-                            val=f"{n_val_written:,} ({val_pct:.1f}%)",
+                            train=f"{n_train_written:,}",
+                            val=val_str,
                             scanned=f"{n_lines_scanned:,}",
                             refresh=False,
                         )
                 elif n_lines_scanned % args.progress_every < args.batch_size:
                     elapsed = time.time() - start_time
-                    rate = n_train_written / elapsed if elapsed > 0 else 0
-                    tot = n_train_written + n_val_written
-                    val_pct = (n_val_written / tot * 100) if tot > 0 else 0
-                    if args.n_train and args.n_train > 0:
-                        rem = max(0, args.n_train - n_train_written)
-                        eta_s = rem / rate if rate > 0 else 0
-                        eta_str = f"eta={eta_s/60:.1f}m"
-                    else:
-                        eta_str = f"{val_pct:.1f}% val"
+                    rate = tot / elapsed if elapsed > 0 else 0
+                    val_str = f"{n_val_written:,}/{args.n_val:,}" if (args.n_val and n_val_written < args.n_val) else f"{n_val_written:,} (done)"
                     print(
                         f"scanned={n_lines_scanned:,} | "
-                        f"valid={n_records_valid:,} | "
+                        f"quiet={n_records_valid:,} | "
                         f"train={n_train_written:,} | "
-                        f"val={n_val_written:,} ({val_pct:.1f}%) | "
-                        f"rate={rate:,.0f} rec/s | {eta_str}",
+                        f"val={val_str} | "
+                        f"rate={rate:,.0f} rec/s",
                         flush=True,
                     )
 
@@ -526,21 +536,18 @@ def main():
     total_train = (os.path.getsize(train_path) // RECORD_SIZE) if os.path.exists(train_path) else 0
     total_val = (os.path.getsize(val_path) // RECORD_SIZE) if os.path.exists(val_path) else 0
     tot_written = n_train_written + n_val_written
-    train_pct = (n_train_written / tot_written * 100) if tot_written > 0 else 0
-    val_pct = (n_val_written / tot_written * 100) if tot_written > 0 else 0
 
     print("\n" + "=" * 70)
     print("Dataset Preparation Completed")
     print("=" * 70)
-    print(f"Total lines scanned: {n_lines_scanned:,}")
-    print(f"Valid positions    : {n_records_valid:,} ({(n_records_valid / max(1, n_lines_scanned)):.1%})")
-    print(f"New train written  : {n_train_written:,} ({train_pct:.1f}%) -> {train_path}")
-    print(f"New val written    : {n_val_written:,} ({val_pct:.1f}%) -> {val_path}")
-    print(f"Total records      : {total_train:,} train, {total_val:,} val")
-    print(f"Record layout      : {RECORD_SIZE} bytes per position")
-    print(f"Elapsed time       : {elapsed:.2f}s ({elapsed/60:.2f} min)")
+    print(f"Total lines scanned  : {n_lines_scanned:,}")
+    print(f"Quiet positions      : {n_records_valid:,} ({(n_records_valid / max(1, n_lines_scanned)):.1%})")
+    print(f"Val records written  : {n_val_written:,} (total in file: {total_val:,}) -> {val_path}")
+    print(f"Train records written: {n_train_written:,} (total in file: {total_train:,}) -> {train_path}")
+    print(f"Record layout        : {RECORD_SIZE} bytes per position")
+    print(f"Elapsed time         : {elapsed:.2f}s ({elapsed/60:.2f} min)")
     if elapsed > 0:
-        print(f"Overall throughput : {n_lines_scanned/elapsed:,.0f} lines/s ({n_train_written/elapsed:,.0f} train rec/s)")
+        print(f"Overall throughput   : {n_lines_scanned/elapsed:,.0f} lines/s ({tot_written/elapsed:,.0f} valid rec/s)")
     print("=" * 70)
 
 
