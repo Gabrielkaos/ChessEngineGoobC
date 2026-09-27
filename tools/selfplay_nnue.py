@@ -132,7 +132,7 @@ class EngineTimeout(Exception):
 class Engine:
     """Manages a single UCI engine process with non-blocking I/O and timeouts."""
 
-    def __init__(self, engine_path: str, cwd: str, hash_mb: int = 16, eval_hash_mb: int = 4):
+    def __init__(self, engine_path: str, cwd: str, hash_mb: int = 16):
         self.engine_path = engine_path
         self.cwd = cwd
         self.p = subprocess.Popen(
@@ -150,7 +150,6 @@ class Engine:
         self.read_until("uciok")
         self.send("setoption name Threads value 1")
         self.send(f"setoption name Hash value {hash_mb}")
-        self.send(f"setoption name EvalHash value {eval_hash_mb}")
         self.isready()
 
     def send(self, line: str):
@@ -674,7 +673,6 @@ def worker_loop(
                     engine_path=args.engine,
                     cwd=args.engine_cwd,
                     hash_mb=args.hash,
-                    eval_hash_mb=args.eval_hash,
                 )
                 with engines_lock:
                     active_engines.add(eng)
@@ -748,7 +746,6 @@ def main():
     parser.add_argument("--engine-cwd", default=None, help="Engine working directory (containing weights/). Auto-detected if omitted")
     parser.add_argument("--workers", type=int, default=min(os.cpu_count() or 4, 16), help="Number of concurrent engine processes")
     parser.add_argument("--hash", type=int, default=16, help="Hash table size in MB per engine worker")
-    parser.add_argument("--eval-hash", type=int, default=4, help="Eval hash size in MB per engine worker")
     parser.add_argument("--pos-cap", type=int, default=16, help="Max quiet positions kept per game (0 = keep all)")
     parser.add_argument("--min-ply", type=int, default=4, help="Plies to skip after opening book before recording")
     parser.add_argument("--max-ply", type=int, default=160, help="Maximum plies per game before draw termination")

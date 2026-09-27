@@ -5,7 +5,6 @@
 #include "bitboards.h"
 #include "evaluate.h"
 #include "some_maths.h"
-#include "tt_eval.h"
 #include "nnue_loader.h"
 
 int DistanceBetween[64][64];
@@ -25,13 +24,5 @@ int EvalPosition(S_BOARD *pos) {
         return -pos->search->eval_stack[pos->ply - 1] + 40;
     }
 
-    int hashedEval = ProbeTTEval(pos);
-    if (hashedEval != VALUE_NONE) {
-        return (pos->side == WHITE ? hashedEval : -hashedEval);
-    }
-
-    int nn_score = nnue_eval(pos);
-    int white_relative = (pos->side == WHITE) ? nn_score : -nn_score;
-    StoreTTEval(pos, white_relative);
-    return nn_score;
+    return nnue_eval(pos);
 }

@@ -6,7 +6,6 @@
 #include "evaluate.h"
 #include "stdlib.h"
 #include "uci.h"
-#include "tt_eval.h"
 #include "inttypes.h"
 #include "some_maths.h"
 #include "pvtable.h"
@@ -222,7 +221,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
                 printf("info string EvalFile reset to embedded network\n");
             }
         }
-        clearEvalTable(pos->eTable);
     }
 
 
@@ -247,19 +245,8 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
     else if (!strncmp(line, "setoption name Clear Hash", 25)) {
         printf("info string Hashtables cleared\n");
         clearPvTable(pvTable);
-        clearEvalTable(pos->eTable);
-        ClearThreadTables(info->threadNum);
         clearCorrectionHistory(pos);
         pos->shared->ttMoveHistory = 0;
-    }
-
-    else if (!strncmp(line, "setoption name EvalHash value ", 30)) {
-        int EvalMb=evalHashMB;
-        sscanf(line,"%*s %*s %*s %*s %d",&EvalMb);
-        if(EvalMb < 4) EvalMb = 4;
-        if(EvalMb > maxHash) EvalMb = maxHash;
-        InitEvalTable(pos->eTable, EvalMb,1);
-        ReallocThreadTables(EvalMb);
     }
 
     else if (!strncmp(line, "setoption name Ponder value ", 28)) {
@@ -585,7 +572,6 @@ void uciPrint(){
     printf("option name Threads type spin default 1 min 1 max %d\n",MAXTHREADS); //1
     printf("option name MultiPV type spin default 1 min 1 max %d\n",MAXPOSMOVES); //1b
     printf("option name Hash type spin default %d min 4 max %d\n",defaultHash,maxHash); //1
-    printf("option name EvalHash type spin default %d min 4 max %d\n",evalHashMB,maxHash); //3
     printf("option name Move Overhead type spin default 50 min 0 max 5000\n");
     printf("option name Clear Hash type button\n"); //12
     printf("option name Ponder type check default false\n"); //10
@@ -646,8 +632,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             if (searchThreadValid) joinSearchThread(info);
             parsePosition("position startpos\n",pos);
             clearPvTable(pvTable);
-            clearEvalTable(pos->eTable);
-            ClearThreadTables(info->threadNum);
             resetContinuationTable(pos);
             clearCorrectionHistory(pos);
             info->originalTimeAdjust = -1.0;

@@ -102,8 +102,6 @@ typedef struct {
     int hisPly; //total number of moves played on the board
     int useFiftyMoveRule; //flag
 
-    //tables
-    EVAL_TABLE   eTable[1]; //storing evaluation for positions
 
     //for search
     int ply; //search ply

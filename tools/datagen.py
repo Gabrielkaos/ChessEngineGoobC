@@ -75,7 +75,6 @@ class Engine:
         # small so many workers fit in RAM.
         self.send("setoption name Threads value 1")
         self.send("setoption name Hash value 16")
-        self.send("setoption name EvalHash value 4")
         self.send(f"setoption name MultiPV value {MULTIPV}")
         self.isready()
 

@@ -18,7 +18,6 @@
 #include "attacks.h"
 #include "thread.h"
 #include "tinycthread.h"
-#include "tt_eval.h"
 #include "syzygy.h"
 #include "correction.h"
 #include "nnue_loader.h"
@@ -938,9 +937,6 @@ int SearchPositionThread(void *data){
 
     memcpy(launcherPos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
 
-    launcherPos->eTable->evalTable = threadEvalTable[0].evalTable;
-    launcherPos->eTable->numEntries = threadEvalTable[0].numEntries;
-
     launcherPos->ply = 0;
     nnue_refresh_accumulator(launcherPos);
 
@@ -1584,9 +1580,6 @@ static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_P
 
     memcpy(w->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
 
-    w->originalPos->eTable->evalTable = threadEvalTable[threadNum].evalTable;
-    w->originalPos->eTable->numEntries = threadEvalTable[threadNum].numEntries;
-
     w->workerData.originalPos  = w->originalPos;
     w->workerData.info         = info;
     w->workerData.ttable       = table;
@@ -1661,9 +1654,6 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
 
     //Syzygy root probe
     TBProbeRoot(pos);
-
-    //ensure persistent per-thread tables are allocated
-    EnsureThreadTables(info->threadNum);
 
     //ensure persistent thread pool has enough workers
     EnsureThreadPool(info->threadNum);

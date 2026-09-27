@@ -8,9 +8,8 @@
 #include "bitboards.h"
 #include "inttypes.h"
 #include "uci.h"
-#include "tt_eval.h"
 #include "init.h"
-#include "board.h"
+#include "search.h"
 #include "syzygy.h"
 #include "nnue_loader.h"
 
@@ -28,9 +27,6 @@ int main(int argc, char *argv[])
     //init Tables
     pvTable->pTable=NULL;
     InitPvTable(pvTable,defaultHash,0);
-
-	pos->eTable->evalTable=NULL;
-	InitEvalTable(pos->eTable,evalHashMB,0);
 
     //S_SHARED_TABLES declares ALIGN64 members, so the allocation must be
     //64-byte aligned too (plain malloc only guarantees 16-byte alignment)
@@ -84,8 +80,6 @@ int main(int argc, char *argv[])
 	}
 
 	free(pvTable->pTable);
-	free(pos->eTable->evalTable);
-	FreeAllThreadTables();
 	FreeThreadPool();
     free(pos->shared);
 	TBFree();
