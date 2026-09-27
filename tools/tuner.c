@@ -489,7 +489,6 @@ int main(int argc, char **argv) {
                 board_batch[i].contempt = 0;
                 board_batch[i].contemptDrawPenalty = 0;
                 board_batch[i].contemptComplexity = 0;
-                board_batch[i].chess960 = 0;
                 
                 setup_pos(&board_batch[i], &posdata[b_start + i]);
                 batch_base_evals[i] = white_eval(&board_batch[i]);

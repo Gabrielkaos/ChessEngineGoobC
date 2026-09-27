@@ -101,7 +101,6 @@ typedef struct {
     S_SEARCH_THREAD *search;
     int hisPly; //total number of moves played on the board
     int useFiftyMoveRule; //flag
-    int chess960; //flag
 
     //tables
     EVAL_TABLE   eTable[1]; //storing evaluation for positions

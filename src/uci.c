@@ -274,19 +274,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Elo set to %d\n",uciElo);
     }
 
-    else if (!strncmp(line, "setoption name UCI_Chess960 value ", 34)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            pos->chess960=TRUE;
-            printf("info string Set UCI_Chess960 to true\n");
-        }else{
-            pos->chess960=FALSE;
-            printf("info string Set UCI_Chess960 to false\n");
-            clearEvalTable(pos->eTable);
-        }
-    }
-
     else if (!strncmp(line, "setoption name BruteForceMode value ", 36)) {
         char *ptrTrue=NULL;
         ptrTrue=strstr(line,"true");
@@ -572,7 +559,6 @@ void uciPrint(){
     printf("option name UCI_AnalyseMode type check default false\n"); //15
     printf("option name UCI_LimitStrength type check default false\n"); //16
     printf("option name UCI_Elo type spin default %d min 1200 max %d\n",defaultElo,defaultElo); //17
-    printf("option name UCI_Chess960 type check default false\n"); //18
     printf("option name BruteForceMode type check default false\n"); //19
     printf("option name useFiftyMoveRule type check default true\n"); //20
     printf("option name EvalFile type string default <empty>\n");
@@ -590,7 +576,6 @@ void uciPrint(){
 
 void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     pos->useFiftyMoveRule        =TRUE;
-    pos->chess960                =FALSE;
     EngineOptions->analysisMode  =FALSE;
 	EngineOptions->uciElo        =defaultElo;
 	info->setOptionPonder        =FALSE;
