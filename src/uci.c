@@ -115,33 +115,45 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
 
     printf("info depth %d seldepth %d multipv %d score %s %d%s", currentDepth, pos->seldepth, multiPvNum, type, score, bound);
 
-    //WDL: convert centipawn score to win/draw/loss milliprobabilities
-    //using a logistic model.  For mate/TB scores, use exact values.
-    if(info->showWDL){
-        int wdl_w, wdl_d, wdl_l;
-        if(bounded >= ISMATE){
-            wdl_w = 1000; wdl_d = 0; wdl_l = 0;
-        } else if(bounded <= -ISMATE){
-            wdl_w = 0; wdl_d = 0; wdl_l = 1000;
-        } else if(is_tb_win){
-            wdl_w = 1000; wdl_d = 0; wdl_l = 0;
-        } else if(is_tb_loss){
-            wdl_w = 0; wdl_d = 0; wdl_l = 1000;
-        } else {
-            //sigmoid: P(win) = 1 / (1 + exp(-score / 111.714))
-            //with a draw model: P(draw) = 1 - P(win) - P(loss)
-            double s = (double)bounded / 111.714;
-            double pw = 1.0 / (1.0 + exp(-s));
-            double pl = 1.0 / (1.0 + exp(s));
-            double pd = 1.0 - pw - pl;
-            if(pd < 0.0) pd = 0.0;
-            wdl_w = (int)(pw * 1000.0 + 0.5);
-            wdl_d = (int)(pd * 1000.0 + 0.5);
-            wdl_l = 1000 - wdl_w - wdl_d;
-            if(wdl_l < 0) wdl_l = 0;
+        //WDL: convert centipawn score to win/draw/loss milliprobabilities
+        //using a logistic model.  For mate/TB scores, use exact values.
+        if(info->showWDL){
+            int wdl_w, wdl_d, wdl_l;
+            if(bounded >= ISMATE){
+                wdl_w = 1000; wdl_d = 0; wdl_l = 0;
+            } else if(bounded <= -ISMATE){
+                wdl_w = 0; wdl_d = 0; wdl_l = 1000;
+            } else if(is_tb_win){
+                wdl_w = 1000; wdl_d = 0; wdl_l = 0;
+            } else if(is_tb_loss){
+                wdl_w = 0; wdl_d = 0; wdl_l = 1000;
+            } else {
+                // Third order polynomial fit calibrated for NNUE WDL
+                static const double as[4] = {0.01538655, -1.33196512, 7.43032607, 152.07701643};
+                static const double bs[4] = {-2.66442843, 18.35463702, -38.91760538, 56.27652511};
+
+                int ply = pos->hisPly;
+                if (ply < 0) ply = 0;
+                if (ply > 240) ply = 240;
+                double m = (double)ply / 64.0;
+                double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
+                double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
+
+                double x = (double)bounded;
+                if (x < -4000.0) x = -4000.0;
+                if (x > 4000.0)  x = 4000.0;
+
+                wdl_w = (int)(0.5 + 1000.0 / (1.0 + exp((a - x) / b)));
+                wdl_l = (int)(0.5 + 1000.0 / (1.0 + exp((a + x) / b)));
+                wdl_d = 1000 - wdl_w - wdl_l;
+                if (wdl_d < 0) {
+                    wdl_d = 0;
+                    wdl_l = 1000 - wdl_w;
+                    if (wdl_l < 0) wdl_l = 0;
+                }
+            }
+            printf("wdl %d %d %d ", wdl_w, wdl_d, wdl_l);
         }
-        printf("wdl %d %d %d ", wdl_w, wdl_d, wdl_l);
-    }
 
     printf("time %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
            elapsed, info->nodes, hashfullTT(table), info->tbhits);
@@ -165,7 +177,15 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
     }
     else if (!strncmp(line, "setoption name Move Overhead value ", 35)) {
         int mo = 50;
-        sscanf(line,"%*s %*s %*s %*s %d",&mo);
+        sscanf(line, "%*s %*s %*s %*s %*s %d", &mo);
+        if(mo < 0) mo = 0;
+        if(mo > 5000) mo = 5000;
+        info->moveOverhead = mo;
+        printf("info string Move Overhead set to %d\n", mo);
+    }
+    else if (!strncmp(line, "setoption name MoveOverhead value ", 34)) {
+        int mo = 50;
+        sscanf(line, "%*s %*s %*s %*s %d", &mo);
         if(mo < 0) mo = 0;
         if(mo > 5000) mo = 5000;
         info->moveOverhead = mo;
@@ -175,18 +195,31 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
 
     else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
         char path[512] = {0};
-        sscanf(line, "%*s %*s %*s %*s %511s", path);
-        if (strlen(path) == 0 || strcmp(path, "<empty>") == 0 || strcmp(path, "default") == 0) {
+        if (sscanf(line, "%*s %*s %*s %*s %511[^\r\n]", path) == 1) {
+            char *p = path;
+            while (*p == ' ') p++;
+            char *end = p + strlen(p) - 1;
+            while (end >= p && (*end == ' ' || *end == '\r' || *end == '\n')) {
+                *end = '\0';
+                end--;
+            }
+            if (strlen(p) == 0 || strcmp(p, "<empty>") == 0 || strcmp(p, "default") == 0) {
+                if (nnue_init(NULL)) {
+                    nnue_refresh_accumulator(pos);
+                    printf("info string EvalFile reset to embedded network\n");
+                }
+            } else {
+                if (nnue_init(p)) {
+                    nnue_refresh_accumulator(pos);
+                    printf("info string EvalFile loaded: %s\n", p);
+                } else {
+                    printf("info string EvalFile FAILED to load: %s\n", p);
+                }
+            }
+        } else {
             if (nnue_init(NULL)) {
                 nnue_refresh_accumulator(pos);
                 printf("info string EvalFile reset to embedded network\n");
-            }
-        } else {
-            if (nnue_init(path)) {
-                nnue_refresh_accumulator(pos);
-                printf("info string EvalFile loaded: %s\n", path);
-            } else {
-                printf("info string EvalFile FAILED to load: %s\n", path);
             }
         }
         clearEvalTable(pos->eTable);
