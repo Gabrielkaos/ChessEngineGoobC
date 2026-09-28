@@ -155,6 +155,7 @@ static inline int cpu_supports_avx2(void) {
 #define NNUE_SCALE             400
 #define NNUE_QA                255
 #define NNUE_QB                64
+#define NNUE_REFRESH_THRESHOLD 32
 
 /* The fast SCReLU kernel computes (w * v) in int16 before the madd, with
  * v in [0, QA]. That product only fits if |w| <= 128 (128 * 255 = 32640),
@@ -566,7 +567,7 @@ static void nnue_update_perspective_to_ply(S_BOARD *pos, int us, int target_ply)
 
     // With 768 features, king moves never force a full refresh!
     // Refresh only if we don't have a recent ancestor in search tree.
-    if (ancestor < 0 || (target_ply - ancestor > 4)) {
+    if (ancestor < 0 || (target_ply - ancestor > NNUE_REFRESH_THRESHOLD)) {
         nnue_refresh_perspective(pos, us, pos->search->nnue_accumulators[target_ply].accumulation[us]);
         pos->search->nnue_accumulators[target_ply].computed[us] = 1;
         return;
