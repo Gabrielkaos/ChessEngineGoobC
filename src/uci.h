@@ -9,6 +9,7 @@ extern int getInput(char *str);
 extern int strEquals(char *str1, char *str2);
 extern int strStartsWith(char *str, char *key);
 extern void UCILoop(S_BOARD *pos,S_SEARCHINFO *info);
+extern void parsePosition(char* lineIn, S_BOARD *pos);
 extern void UciReportCurrentMove(int depth,int move,int currmovenumber);
 extern void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha,int beta,int value,int currentDepth,int pvMoves,int multiPvNum);
 

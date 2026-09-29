@@ -21,7 +21,7 @@ static const int QSSeeMargin     = 110;
 
 static const int TTResearchMargin   = 128;   // Ethereal
 static const int AlphaPruningDepth  = 5;     // Ethereal
-static const int AlphaMargin        = 3000;  // Ethereal
+static const int AlphaMargin        = 350;  // Ethereal
 
 static const int ScoreWindow = 10;
 
@@ -29,15 +29,15 @@ static const int probCutDepth = 5;
 
 static const int probCutMargin = 80;
 
-static const int HistexLimit = 10000;
+static const int HistexLimit = 5000;
 static const int FutilityMargin = 65;
-static const int FutilityMarginNoHistory = 210;
+static const int FutilityMarginNoHistory = 120;
 static const int FutilityPruningDepth = 8;
 static const int FutilityPruningHistoryLimit[] = { 12000, 6000 };
 static const int CounterMovePruningDepth[] = { 3, 2 };
 static const int CounterMoveHistoryLimit[] = { 0, -1000 };
 static const int FollowUpMovePruningDepth[] = { 3, 2 };
-static const int FollowUpMoveHistoryLimit[] = { -2000, -4000 };
+static const int FollowUpMoveHistoryLimit[] = { -500, -1500 };
 static const int defaultNullMoveDepth = 2;
 static const int LateMovePruningDepth = 8;
 static const int LateMovePruningCounts[2][9] = {
@@ -54,8 +54,8 @@ static const int BetaMargin = 85;
 static const int WindowDepth = 5;
 
 #define RazoringDepth      2      
-#define RazorMarginBase    316    
-#define RazorMarginCoeff   259
+#define RazorMarginBase    200    
+#define RazorMarginCoeff   140
 
 
 #define IIRDepth 6

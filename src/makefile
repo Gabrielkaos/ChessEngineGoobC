@@ -116,6 +116,17 @@ EVALFILE ?= weights/quantised.bin
 #               CPUs that do not have BMI2.
 BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\"
 
+# Trace search heuristic tracking
+TRACE ?= 0
+ifeq ($(TRACE),1)
+    BASE_CFLAGS += -DTRACE
+    OBJ_SUFFIX := -trace
+    BIN_SUFFIX := -trace
+else
+    OBJ_SUFFIX :=
+    BIN_SUFFIX :=
+endif
+
 # ---------------------------------------------------------------------------
 # Per-ISA march flags
 # ---------------------------------------------------------------------------
@@ -130,7 +141,7 @@ MARCH_native    := -march=native
 # Build rule generator macro
 # ---------------------------------------------------------------------------
 # For each ISA tier we synthesise:
-#   * A dedicated obj directory   obj/<arch>/
+#   * A dedicated obj directory   obj/<arch>/ (or obj/<arch>-trace/)
 #   * A pattern rule              obj/<arch>/%.o : %.c
 #   * A link rule                 $(OUTDIR)/NAME-<arch>[.exe]
 #   * A phony shorthand           make universal  make x86-64-v3  (etc.)
@@ -138,8 +149,8 @@ MARCH_native    := -march=native
 # Invoked as: $(call ISA_RULES,<arch>)
 # ---------------------------------------------------------------------------
 define ISA_RULES
-OBJS_$(1)   := $$(patsubst %.c, obj/$(1)/%.o, $(SRCS))
-BIN_$(1)    := $(OUTDIR)/$(NAME)-$(1)$(EXE)
+OBJS_$(1)   := $$(patsubst %.c, obj/$(1)$(OBJ_SUFFIX)/%.o, $(SRCS))
+BIN_$(1)    := $(OUTDIR)/$(NAME)-$(1)$(BIN_SUFFIX)$(EXE)
 CFLAGS_$(1) := $(BASE_CFLAGS) $$(MARCH_$(1))
 
 ALL_BINS += $$(BIN_$(1))
@@ -147,12 +158,15 @@ ALL_BINS += $$(BIN_$(1))
 $$(BIN_$(1)): $$(OBJS_$(1)) | $(OUTDIR)
 	$(CC) $$(CFLAGS_$(1)) $$(OBJS_$(1)) -o $$@ $(LDFLAGS)
 	@echo "  LD  $$@"
+ifeq ($(TRACE),1)
+	@cp -f $$@ $(OUTDIR)/$(NAME)-$(1)$(EXE) 2>/dev/null || true
+endif
 
-obj/$(1)/%.o: %.c | obj/$(1)
+obj/$(1)$(OBJ_SUFFIX)/%.o: %.c | obj/$(1)$(OBJ_SUFFIX)
 	$(CC) $$(CFLAGS_$(1)) -c $$< -o $$@
 
-obj/$(1):
-	@$$(call MKDIR_CMD,obj/$(1))
+obj/$(1)$(OBJ_SUFFIX):
+	@$$(call MKDIR_CMD,obj/$(1)$(OBJ_SUFFIX))
 
 .PHONY: $(1)
 $(1): $$(BIN_$(1))
@@ -162,6 +176,10 @@ endef
 # Expand rules for every architecture tier
 ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
 $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
+
+.PHONY: trace
+trace:
+	$(MAKE) TRACE=1 native
 
 # ---------------------------------------------------------------------------
 # Default target – build universal binary (or all with 'make all')

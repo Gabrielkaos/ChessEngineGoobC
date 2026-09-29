@@ -21,6 +21,7 @@
 #include "syzygy.h"
 #include "correction.h"
 #include "nnue_loader.h"
+#include "trace.h"
 
 //NOTE
 /*
@@ -147,6 +148,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     //update for uci
     info->nodes++;
+    TRACE_INC(pos, qs_nodes);
     pos->seldepth=MAX(pos->seldepth,pos->ply);
 
     //if draw
@@ -157,9 +159,11 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     int ttMove=NOMOVE, ttValue=0, ttDepth=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit;
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval))){
+        TRACE_INC(pos, qs_tt_hits);
         ttValue = valueFromTT(ttValue,pos->ply);
         if(pos->st->fiftyMove < 96){
             if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
+                TRACE_INC(pos, qs_tt_cutoffs);
                 return ttValue;
             }
         }
@@ -167,19 +171,27 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     //standing pat: save the corrected static eval for history, then deflate
     //it on the fifty-move rule (Berserk) and use it as our floor
+    if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
     int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
     int eval = adjustEvalOnFmr(pos, staticEval);
     best = eval;
+    TRACE_INC(pos, qs_stand_pat_evals);
     alpha = MAX(alpha, eval);
-    if(alpha >= beta) return eval;
+    if(alpha >= beta) {
+        TRACE_INC(pos, qs_stand_pat_cutoffs);
+        return eval;
+    }
 
     //DELTA PRUNING
     //if even the best possible capture (or the DeltaMarginQ floor, whichever
     //is larger) can't close the gap to alpha, there's no point generating
     //or trying any capture here at all
-    if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval)
+    TRACE_INC(pos, qs_delta_attempted);
+    if(MAX(DeltaMarginQ, MoveBestCaseValue(pos)) < alpha - eval){
+        TRACE_INC(pos, qs_delta_pruned);
         return eval;
+    }
 
     if (ttMove != NOMOVE && !moveIsTactical(pos, ttMove)) ttMove = NOMOVE;
 
@@ -187,6 +199,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     initNoisyMovePicker(mp, MAX(1,alpha-eval-QSSeeMargin), ttMove);
 
     while((moveInLoop = selectNextMove(mp,pos,FALSE)) != NOMOVE){
+        TRACE_INC(pos, qs_moves_tried);
 
         if(!legal(pos, moveInLoop)) continue;
 
@@ -205,7 +218,10 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
             }
         }
 
-        if(alpha>=beta)return best;
+        if(alpha>=beta){
+            TRACE_INC(pos, qs_beta_cutoffs);
+            return best;
+        }
     }
 
     return best;
@@ -260,6 +276,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //for uci updates
     pos->seldepth=rootNode ? 0 : MAX(pos->seldepth,pos->ply);
     info->nodes++;
+    TRACE_INC(pos, ab_nodes);
 
 
     //if not rootNode check some things
@@ -279,6 +296,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //probing Transposition Table
     if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
+        TRACE_INC(pos, tt_hits);
 
         ttValue = valueFromTT(ttValue,pos->ply);
 
@@ -286,6 +304,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if(    ttBound==HFEXACT
                || (ttBound==HFALPHA && ttValue <= alpha)
                || (ttBound==HFBETA  && ttValue >= beta)){
+                TRACE_INC(pos, tt_cutoffs);
                 return ttValue;
                }
         }
@@ -295,6 +314,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!pvNode && ttDepth >= depth - 1 && ttBound==HFALPHA &&
            ttValue + TTResearchMargin <= alpha && depth>=2 && 
            !inCheck && pos->st->fiftyMove < 96){
+            TRACE_INC(pos, tt_research_cutoffs);
             return alpha;
         }
 
@@ -302,9 +322,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //Syzygy interior-node probe
     if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth && !pos->tbHit){
+        TRACE_INC(pos, syzygy_probes);
         int tbScore, tbBound;
         if(TBProbeWDLSearch(pos, pos->ply, &tbScore, &tbBound)){
             info->tbhits++;
+            TRACE_INC(pos, syzygy_hits);
             
             if (tbBound == HFEXACT
                 || (tbBound == HFBETA && tbScore >= beta)
@@ -325,6 +347,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //store in eval_stack each staticEval
     //history stays independent of how much correction was already
     //applied when this position was last stored
+    if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
 
     //store in eval_stack each staticEval (corrected, used for all pruning)
@@ -346,18 +369,30 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int opponentWorsening = pos->ply >= 1 && staticEval > -pos->search->eval_stack[pos->ply-1];
 
     if(!info->bruteForceMode){
-        if(priorReduction >= 3 && !opponentWorsening) depth++;
-        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->search->eval_stack[pos->ply-1] > HindsightMargin) depth--;
+        if(priorReduction >= 3 && !opponentWorsening) {
+            depth++;
+            TRACE_INC(pos, hindsight_ext);
+        }
+        if(priorReduction >= 2 && depth >= 2 && staticEval + pos->search->eval_stack[pos->ply-1] > HindsightMargin) {
+            depth--;
+            TRACE_INC(pos, hindsight_red);
+        }
     }
 
     //RAZORING
     //if staticEval is far below alpha, a full search is very unlikely to
     //recover — verify with qsearch instead of expanding this node
     if(!info->bruteForceMode && !pvNode && !inCheck &&
-    depth <= RazoringDepth &&
-    eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
-        int r = Quiescence(alpha,beta,pos,info,table);
-        if(r <= alpha) return r;
+    depth <= RazoringDepth) {
+        TRACE_INC(pos, razoring_attempted);
+        if (eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
+            TRACE_INC(pos, razoring_qs_called);
+            int r = Quiescence(alpha,beta,pos,info,table);
+            if(r <= alpha) {
+                TRACE_INC(pos, razoring_cutoffs);
+                return r;
+            }
+        }
     }
 
 
@@ -367,14 +402,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     if(!info->bruteForceMode && !inCheck && !pvNode){
 
-        if(depth <= BetaPruningDepth && eval - BetaMargin*depth > beta){
-            return eval;
+        if(depth <= BetaPruningDepth) {
+            TRACE_INC(pos, beta_prune_attempted);
+            if(eval - BetaMargin*depth > beta){
+                TRACE_INC(pos, beta_prune_cutoffs);
+                return eval;
+            }
         }
 
         //alpha pruning (Ethereal): in non-PV nodes a shallow position whose
         //eval is hopelessly far below alpha cannot be rescued by any move
-        if(depth <= AlphaPruningDepth && eval + AlphaMargin <= alpha){
-            return eval;
+        if(depth <= AlphaPruningDepth) {
+            TRACE_INC(pos, alpha_prune_attempted);
+            if(eval + AlphaMargin <= alpha){
+                TRACE_INC(pos, alpha_prune_cutoffs);
+                return eval;
+            }
         }
 
         //null move
@@ -392,6 +435,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 (pos->ply < 2 || pos->search->moveStack[pos->ply-2] != NULLMOVE) &&
                 (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
 
+                TRACE_INC(pos, nmp_attempted);
                 StateInfo nullSt;
                 makeNullMove(pos, &nullSt);
 
@@ -408,11 +452,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     //at low depth or already inside a verification subtree,
                     //trust the null move result directly — not worth the
                     //extra search cost
-                    if(pos->nmpMinPly > 0 || depth < NMPVerifyDepth) return beta;
+                    if(pos->nmpMinPly > 0 || depth < NMPVerifyDepth) {
+                        TRACE_INC(pos, nmp_direct_cutoffs);
+                        return beta;
+                    }
 
                     //verification search: disable NMP until ply passes this
                     //threshold, to avoid a recursive false-positive, then
                     //confirm the cutoff holds without the null-move shortcut
+                    TRACE_INC(pos, nmp_verification_started);
                     pos->nmpMinPly = pos->ply + 3 * (depth - R) / 4;
 
                     int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE, &lpv);
@@ -420,7 +468,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     pos->nmpMinPly = 0;
 
                     if(info->stopped==TRUE)return 0;
-                    if(v >= beta) return beta;
+                    if(v >= beta) {
+                        TRACE_INC(pos, nmp_verification_passed);
+                        return beta;
+                    } else {
+                        TRACE_INC(pos, nmp_verification_failed);
+                    }
                 }
             }
         }
@@ -429,8 +482,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //IIR — reduce depth when no TT move is available.
     //All-nodes get a stronger reduction (-2) since they are least likely
     //to have a useful move from the TT.
-    if(!info->bruteForceMode && depth>=IIRDepth && ttMove==NOMOVE)
-        depth -= (1 + allNode);
+    if(!info->bruteForceMode && depth>=IIRDepth) {
+        TRACE_INC(pos, iir_attempted);
+        if(ttMove==NOMOVE) {
+            depth -= (1 + allNode);
+            TRACE_INC(pos, iir_reduced);
+        }
+    }
 
     //PROBCUT
     //prune unlikely moves
@@ -445,6 +503,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         abs(beta) < ISMATE &&
         (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
 
+            TRACE_INC(pos, probcut_attempted);
             int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
             int move_in_prob;
 
@@ -453,6 +512,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
                 if (!legal(pos, move_in_prob)) continue;
+                TRACE_INC(pos, probcut_moves_tried);
                 StateInfo probSt;
                 makeMove(pos, move_in_prob, &probSt);
                 prefetchTT(table, pos->st->posKey);
@@ -466,7 +526,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
-                if(value>=rBeta)return value;
+                if(value>=rBeta) {
+                    TRACE_INC(pos, probcut_cutoffs);
+                    return value;
+                }
 
             }
     }
@@ -483,6 +546,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //main move loop
     while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
+        TRACE_INC(pos, moves_considered);
 
         int isExempt      = (mp->lastStage==STAGE_TABLE || mp->lastStage==STAGE_GOOD_NOISY);
         int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE || mp->lastStage==STAGE_FOLLOWUP_MOVE);
@@ -514,40 +578,53 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //Futility pruning
             //checking if this position is likely to improve
             //if not then we skip it
-            if (   depth <= FutilityPruningDepth
-                && (eval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
+            if (depth <= FutilityPruningDepth) {
+                TRACE_INC(pos, futility_skip_attempted);
+                if ((eval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
                     skipQuiets = 1;
+                    TRACE_INC(pos, futility_skip_pruned);
                 }
+            }
 
             if (   !skipQuiets
                 && !isSpecial
-                && depth <= FutilityPruningDepth
-                && (eval + FutilityMargin * depth) <= alpha
-                && hist < FutilityPruningHistoryLimit[improving]){
+                && depth <= FutilityPruningDepth) {
+                TRACE_INC(pos, futility_move_attempted);
+                if ((eval + FutilityMargin * depth) <= alpha
+                    && hist < FutilityPruningHistoryLimit[improving]){
+                    TRACE_INC(pos, futility_move_pruned);
                     continue;
                 }
+            }
 
             //if weve searched for quite a while Late moves that are quiet are pruned based on threshold
-            if (depth<=LateMovePruningDepth &&
-                quietsSeen>=LateMovePruningCounts[improving][depth]){
+            if (depth<=LateMovePruningDepth) {
+                TRACE_INC(pos, lmp_attempted);
+                if (quietsSeen>=LateMovePruningCounts[improving][depth]){
                     skipQuiets = 1;
+                    TRACE_INC(pos, lmp_pruned);
                 }
+            }
 
             //check the countermove and follow up moves
             //prune them if they have a low history performance
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
-            if ( !isSpecial
-                && cmhist < CounterMoveHistoryLimit[improving]
-                && depth - R <= CounterMovePruningDepth[improving]){
+            if (!isSpecial && depth - R <= CounterMovePruningDepth[improving]) {
+                TRACE_INC(pos, countermove_attempted);
+                if (cmhist < CounterMoveHistoryLimit[improving]) {
+                    TRACE_INC(pos, countermove_pruned);
                     continue;
                 }
+            }
 
-            if ( !isSpecial
-                && fmhist < FollowUpMoveHistoryLimit[improving]
-                && depth - R <= FollowUpMovePruningDepth[improving]){
+            if (!isSpecial && depth - R <= FollowUpMovePruningDepth[improving]) {
+                TRACE_INC(pos, followup_attempted);
+                if (fmhist < FollowUpMoveHistoryLimit[improving]) {
+                    TRACE_INC(pos, followup_pruned);
                     continue;
                 }
+            }
         }
 
         //SEE
@@ -557,13 +634,25 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             &&  !info->bruteForceMode
             &&  bestScore > -ISMATE
             && !isExempt
-            &&  depth <= SEEPruningDepth
-            && !StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])){
-            continue;
+            &&  depth <= SEEPruningDepth) {
+            if (quietMove) {
+                TRACE_INC(pos, see_quiet_attempted);
+                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])) {
+                    TRACE_INC(pos, see_quiet_pruned);
+                    continue;
+                }
+            } else {
+                TRACE_INC(pos, see_noisy_attempted);
+                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])) {
+                    TRACE_INC(pos, see_noisy_pruned);
+                    continue;
+                }
+            }
         }
 
         U64 nodesBeforeMove = info->nodes;
         if(!legal(pos, moveInLoop)) continue;
+        TRACE_INC(pos, moves_legal);
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -586,8 +675,29 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      && !isShuffling(pos, moveInLoop);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
-            extension = singular ? Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, &st)
-                        :(inCheck || (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit));
+            if (singular) {
+                TRACE_INC(pos, singular_attempted);
+                extension = Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, &st);
+                if (multiCut == TRUE) {
+                    TRACE_INC(pos, singular_multicut);
+                } else if (extension > 1) {
+                    TRACE_INC(pos, singular_double_ext);
+                } else if (extension == 1) {
+                    TRACE_INC(pos, singular_single_ext);
+                } else if (extension < 0) {
+                    TRACE_INC(pos, singular_negative_ext);
+                }
+            } else {
+                if (inCheck) {
+                    TRACE_INC(pos, check_ext);
+                    extension = 1;
+                } else if (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit) {
+                    TRACE_INC(pos, history_ext);
+                    extension = 1;
+                } else {
+                    extension = 0;
+                }
+            }
 
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
 
@@ -606,6 +716,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //prunes if the move is quiet and that this is one of the many moves searched already
         //we prune if the move is unlikely promising
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
+            TRACE_INC(pos, lmr_quiet_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
             R += !improving + !pvNode + extension;
@@ -628,10 +739,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
                 int evalDiff = alpha - staticEval;
                 if (siblingSurprise) {
+                    TRACE_INC(pos, srd_sibling_triggered);
                     R -= 1;
                 } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
+                    TRACE_INC(pos, srd_deficit_triggered);
                     R += 1;
                 } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
+                    TRACE_INC(pos, srd_surplus_triggered);
                     R -= 1;
                 }
             }
@@ -642,14 +756,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if(allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);
 
             R = MIN(depth - 1, MAX(R, 1));
+            if (R > 1) {
+                TRACE_INC(pos, lmr_quiet_reduced);
+            }
         }
         //for non quiet moves
         //we reduce search based on their performance history (more granular)
         else if (!quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
+            TRACE_INC(pos, lmr_noisy_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
             R -= MAX(-2, MIN(2, hist / 5000));
             R = MIN(depth - 1, MAX(R, 1));
+            if (R > 1) {
+                TRACE_INC(pos, lmr_noisy_reduced);
+            }
         }else{
             R = 1;
         }
@@ -665,6 +786,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //PVS
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
+            if (R != 1 && Score > alpha) {
+                TRACE_INC(pos, lmr_researches);
+            }
 #if USE_SURPRISE_SRD
             if (SurpriseSRDEnabled && R > 1) {
                 siblingSurprise = 1;
@@ -711,7 +835,28 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     }
                 }
 
-                if(alpha>=beta)break;
+                if(alpha>=beta) {
+                    TRACE_INC(pos, beta_cutoffs);
+                    if (Legal == 1) {
+                        TRACE_INC(pos, cutoff_first_move);
+                    }
+                    if (moveInLoop == ttMove) {
+                        TRACE_INC(pos, cutoff_tt_move);
+                    } else if (isRefutation) {
+                        if (mp->lastStage == STAGE_KILLER_1 || mp->lastStage == STAGE_KILLER_2) {
+                            TRACE_INC(pos, cutoff_killer);
+                        } else if (mp->lastStage == STAGE_COUNTER_MOVE) {
+                            TRACE_INC(pos, cutoff_counter);
+                        } else if (mp->lastStage == STAGE_FOLLOWUP_MOVE) {
+                            TRACE_INC(pos, cutoff_followup);
+                        }
+                    } else if (quietMove) {
+                        TRACE_INC(pos, cutoff_quiet);
+                    } else {
+                        TRACE_INC(pos, cutoff_noisy);
+                    }
+                    break;
+                }
             }
         }
     }
@@ -1596,6 +1741,11 @@ static void startWorkerSearch(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S
     POOL_WORKER *w = &threadPool[threadNum];
     mtx_lock(&w->mutex);
     setupWorkerData(threadNum, pos, info, table);
+#ifdef TRACE
+    if (w->originalPos && w->originalPos->search) {
+        memset(&w->originalPos->search->trace, 0, sizeof(SearchTrace));
+    }
+#endif
     w->searching = 1;
     cnd_signal(&w->cv_start);
     mtx_unlock(&w->mutex);
@@ -1658,6 +1808,10 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     //ensure persistent thread pool has enough workers
     EnsureThreadPool(info->threadNum);
 
+#ifdef TRACE
+    trace_start_search();
+#endif
+
     //start workers
     for (int i = 0; i < info->threadNum; ++i) {
         startWorkerSearch(i, pos, info, table);
@@ -1667,4 +1821,13 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     for (int i = 0; i < info->threadNum; ++i) {
         waitWorkerSearch(i);
     }
+
+#ifdef TRACE
+    for (int i = 0; i < info->threadNum; ++i) {
+        if (threadPool[i].originalPos && threadPool[i].originalPos->search) {
+            trace_aggregate_thread(&threadPool[i].originalPos->search->trace);
+        }
+    }
+    trace_finish_search();
+#endif
 }

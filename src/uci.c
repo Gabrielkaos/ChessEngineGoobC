@@ -19,6 +19,7 @@
 #include "syzygy.h"
 #include "correction.h"
 #include "cpu.h"
+#include "trace.h"
 
 #define INPUTBUFFER 65536
 #define Euler 2.8
@@ -658,6 +659,12 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
         else if (strStartsWith(str, "go")) {
             parseGo(str,info,pos, pvTable);
+            fflush(stdout);
+        }
+
+        else if (strStartsWith(str, "trace")) {
+            if (searchThreadValid) joinSearchThread(info);
+            handle_trace_command(str, pos, info);
             fflush(stdout);
         }
 

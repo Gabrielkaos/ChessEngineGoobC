@@ -117,7 +117,13 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move == mp->counter) mp->counter = NOMOVE;
                 if(move == mp->followup) mp->followup = NOMOVE;
 
+                if(mp->type == NOISY_PICKER){
+                    TRACE_INC(pos, qs_see_attempted);
+                }
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
+                    if(mp->type == NOISY_PICKER){
+                        TRACE_INC(pos, qs_see_pruned);
+                    }
                     int from = FROMSQ(move);
                     int to = TOSQ(move);
                     int pt = pieceType[pos->pieces[from]];

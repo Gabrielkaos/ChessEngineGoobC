@@ -3,6 +3,7 @@
 
 
 #include "defs.h"
+#include "trace.h"
 #include "correction_types.h"
 #include <string.h>
 
@@ -47,6 +48,9 @@ typedef struct {
     S_MOVEPICKER singularMovePickers[MAXDEPTH];
     ALIGN64 NNUE_Accumulator nnue_accumulators[MAXDEPTH];
     DirtyPiece dirtyPieces[MAXDEPTH];
+#ifdef TRACE
+    SearchTrace trace;
+#endif
 } S_SEARCH_THREAD;
 
 static inline S_SEARCH_THREAD* alloc_search_thread(void) {
@@ -95,7 +99,7 @@ typedef struct StateInfo {
 } StateInfo;
 
 //Board structure
-typedef struct {
+typedef struct S_BOARD {
     //important board things
     int8_t pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array (values 0..15 fit)
     U64 byTypeBB[PIECE_TYPE_NB];  // bitboards by piece type: ALL_PIECES=0, PAWN=1..KING=6

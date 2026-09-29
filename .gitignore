@@ -8,6 +8,8 @@
 /src/*.d
 /src/*.epd
 /src/*.fen
+/src/*.json
+*.json
 
 /src/models/*
 tools/__pycache__/
@@ -19,6 +21,7 @@ tools/dataset*.epd
 tools/*.bin
 tools/*.so
 tools/*.d
+tools/*.json
 tools/nnue_project/data_json/*
 tools/nnue_project/data/*
 tools/nnue_project/data_new/*

@@ -13,6 +13,7 @@
 #include "syzygy.h"
 #include "nnue_loader.h"
 #include "cpu.h"
+#include "trace.h"
 
 int main(int argc, char *argv[])
 {
@@ -53,6 +54,19 @@ int main(int argc, char *argv[])
     setbuf(stdout, NULL);
 
     nnue_init(NULL);
+    trace_init();
+
+    if (argc > 1 && (strcmp(argv[1], "bench") == 0 || strcmp(argv[1], "trace-bench") == 0)) {
+        int depth = 8;
+        if (argc > 2) depth = atoi(argv[2]);
+        run_bench(pos, info, pvTable, depth);
+        if (pvTable->pTable) goob_aligned_free(pvTable->pTable);
+        FreeThreadPool();
+        if (pos->shared) goob_aligned_free(pos->shared);
+        if (pos->search) free_search_thread(pos->search);
+        TBFree();
+        return 0;
+    }
 
 #ifdef DEBUG
     printf("\nWARNING! DEBUG DEFINED MIGHT SLOW DOWN ENGINE\n");
@@ -83,6 +97,14 @@ int main(int argc, char *argv[])
             continue;
         }else if(!strncmp(line, "test",4)){
             runTTReplacementTests();
+            continue;
+        }else if(!strncmp(line, "trace", 5)){
+            handle_trace_command(line, pos, info);
+            continue;
+        }else if(!strncmp(line, "bench", 5)){
+            int depth = 8;
+            sscanf(line, "bench %d", &depth);
+            run_bench(pos, info, pvTable, depth);
             continue;
         }else if(!strncmp(line, "quit",4)){
 			break;
