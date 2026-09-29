@@ -1,0 +1,97 @@
+I'll pull the repo and read through the move-ordering code first.This is a serious engine (NNUE, correction history, syzygy, staged move picker). Let me read the move picker, history, and the relevant parts of search.Now the search — it's big, so I'll fetch it and look at how histories get updated, the quiet/noisy bookkeeping, and how the picker interacts with pruning.Let me check the headers for table sizes and types, plus the search constants.One more check — I want to confirm what `pkHash` actually hashes, since it keys the pawn history.I read `movepicker.c`, `history.c/h`, `search.c/h`, `board.h`, `defs.h` and `hashkeys.c`. Overall this is a well-built Ethereal/Stockfish-style staged picker with butterfly + 4-slot continuation + capture + pawn + low-ply histories. The structure is sound; the gains left are mostly in *what feeds the histories*, not the picker itself. Here's what I found, ordered by expected Elo.
+
+## 1. Biggest gap: you only learn from fail-highs
+
+`updateHistories` runs only when `bestScore >= beta` and `bestMove` is quiet. That throws away two strong signals every modern engine uses:
+
+**(a) Fail-low → bonus for the parent's quiet move.** If this node fails low, the move that led here was a good refutation. Stockfish gives the parent's move a continuation-history bonus (from the parent's perspective). This is the single most valuable ordering update you're missing because fail-low (all-)nodes are the most common node type.
+
+**(b) Quiet malus when a capture is best.** If a bad-noisy or late capture fails high, every quiet tried before it was wrong, but you never penalize them.
+
+Both fit your existing gravity formula. Add a helper that updates the continuation tables *as seen from ply-1*:
+
+```c
+// history.c
+static void updateContAt(S_BOARD *pos, int backFrom, int piece, int to, int delta){
+    // continuation entries for a move made at ply (pos->ply - backFrom)
+    for(int slot = 0; slot < CONT_HIST_SLOTS; ++slot){
+        int back = backFrom + ContinuationOffsets[slot];
+        if(pos->ply < back) continue;
+        int pmove = pos->search->moveStack[pos->ply - back];
+        if(pmove == NOMOVE || pmove == NULLMOVE) continue;
+        int16_t *e = &pos->shared->continuation[slot]
+                        [pos->search->pieceStack[pos->ply - back]][TOSQ(pmove)][piece][to];
+        *e += HistoryMultiplier * delta - *e * abs(delta) / HistoryDivisor;
+    }
+}
+
+void bonusPriorQuiet(S_BOARD *pos, int depth){
+    if(pos->ply < 1) return;
+    int prev = pos->search->moveStack[pos->ply - 1];
+    if(prev == NOMOVE || prev == NULLMOVE) return;
+    if(pos->st->capturedPiece != EMPTY || (prev & MVFLAGPROM)) return;
+    updateContAt(pos, 1, pos->search->pieceStack[pos->ply - 1], TOSQ(prev),
+                 MIN(depth * depth, HistoryMax));
+}
+
+void malusQuiets(S_BOARD *pos, int *moves, int length, int depth){
+    // same body as the quiet loop in updateHistories, delta = -bonus for all
+}
+```
+
+Then in `AlphaBeta` after the loop:
+
+```c
+if(bestScore >= beta){
+    if(!moveIsTactical(pos, bestMove)) updateHistories(pos, quietsTried, quietsPlayed, depth);
+    else                               malusQuiets(pos, quietsTried, quietsPlayed, depth);
+    updateCaptureHistory(pos, bestMove, capturesTried, capturesPlayed, depth);
+}
+else if(!inCheck)  // fail low: the move that brought us here refuted us
+    bonusPriorQuiet(pos, depth);
+```
+
+You have `pos->st->capturedPiece` already, so no new state is needed. Stockfish additionally scales the fail-low bonus by `depth` and by how far below alpha it landed; start with the flat version and tune.
+
+## 2. Pawn history is keyed on the wrong hash
+
+`getPawnHistory` indexes by `pos->st->pkHash`, and `GeneratePKHash` includes both kings. That's correct for correction history but wrong for pawn history: Stockfish's `pawnHistory` is keyed on pawn structure only. Every king step scatters the accumulated stats across a fresh bucket, so the `2 * getPawnHistory()` term in quiet scoring is mostly noise and you're paying full price for it in ordering and in the `(hist + pawnHist)/5000` LMR term.
+
+Fix: add a `pawnKey` to `StateInfo` updated incrementally in `makeMove` (only on pawn moves/captures/promotions), and key `pawnHist` and the pawn-hist update on that. Keep `pkHash` for the correction tables.
+
+## 3. Let capture history decide "good vs bad" capture
+
+`STAGE_GOOD_NOISY` uses a fixed SEE threshold (`0` in the main search). Stockfish loosens it by the capture's history: `see_ge(m, -m.value / 18)`, so a capture with a strong record can be a "good noisy" even if SEE is slightly negative, and one with a bad record gets demoted early. This moves captures across the split more accurately than SEE alone:
+
+```c
+int capHist = getCaptureHistory(pos, move, mp->threats)
+            - 64000 * (pieceType[PROMOTED(move)] == p_queen);   // strip the promo bonus
+int seeThresh = mp->threshold - MAX(-200, MIN(200, capHist / 64));
+if(!StaticExchangeEvaluation(pos, move, seeThresh)) { /* bad noisy */ }
+```
+
+Tune the divisor and clamp; only apply it for `NORMAL_PICKER` (qsearch's threshold is already alpha-relative).
+
+## 4. Depth-squared bonus starves low-depth learning
+
+`bonus = MIN(depth*depth, 400)` gives delta 1, 4, 9 at depths 1–3, against a divisor of 512. Most nodes are at those depths, and they barely move the tables. Stockfish uses a roughly linear `min(k*depth - c, cap)` bonus. Try something like `MIN(16 * depth - 12, HistoryMax)` (keeps ~400 cap around depth 26) and, separately, a smaller malus multiplier than the bonus (you currently apply the full `-bonus` to every quiet tried, which over-punishes in nodes with 30+ quiets). Both are SPRT-cheap to test.
+
+## 5. Smaller things
+
+**Bad-noisy rescoring is redundant.** In `STAGE_GOOD_NOISY` you already have the score in `mp->list->moves[best].score` before `mp_popMoveAt`; you then recompute `getCaptureHistory` + MVV to fill `badNoisies[].score`. Have `mp_popMoveAt` return the `S_MOVE` (or read the score before popping). Same pattern in the search loop: `hist` is recomputed via `getHistory` even though the picker computed it — you could stash the picker score and pass it back, though it needs the threat/check bonuses stripped for the pruning comparisons.
+
+**`GoodQuietThreshold = -3000`** is quite high for your score scale (butterfly ±16k, four cont slots ±16k, pawn ±16k, low-ply). Stockfish's equivalent sits around −7500 to −14000. Worth a sweep.
+
+**Counter/follow-up stages.** Both are already strongly represented in `continuation[0]` and `[1]`, so `STAGE_COUNTER_MOVE`/`STAGE_FOLLOWUP_MOVE` mostly re-order moves that would already come first. Several engines dropped these stages for neutral-to-positive results; you'd also lose two `moveIsPseudoLegal` calls per node. Test removing them.
+
+**Threat-by-lesser bonus scale.** `20 * SEEPieceValues` gives knight 9000 / rook 13500 / queen 26000. Plausible, but the queen term can outrank a strong history entirely; check it's not dominating. Stockfish uses ~14k/25k/52k but its history totals are larger.
+
+**`ttMoveHistory`** is a plain shared `int` written from every thread. Races are benign in practice but a `relaxed` atomic or per-thread copy is cleaner.
+
+**Very minor:** the `- pt` LVA term in capture scoring is within noise of the history term; harmless.
+
+## Suggested order to test
+
+1 → 2 → 3 → 4 in that order, each as its own SPRT. Item 1 is a pure addition with no tuning dependency and should be the clearest win; item 2 is a correctness fix that may look small alone but improves everything that consumes `pawnHist`. I'd expect the four together to be worth a noticeable jump in effective branching factor.
+
+If you'd like, I can draft the full `pawnKey` incremental update against your `makemove.c`, or write the complete `history.c` changes as a patch.
