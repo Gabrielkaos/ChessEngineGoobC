@@ -29,8 +29,6 @@ typedef struct {
     uint64_t beta_prune_attempted;
     uint64_t beta_prune_cutoffs;
 
-    uint64_t alpha_prune_attempted;
-    uint64_t alpha_prune_cutoffs;
 
     uint64_t nmp_attempted;
     uint64_t nmp_direct_cutoffs;

@@ -57,8 +57,6 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, beta_prune_attempted);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, beta_prune_cutoffs);
 
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, alpha_prune_attempted);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, alpha_prune_cutoffs);
 
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, nmp_attempted);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, nmp_direct_cutoffs);
@@ -162,8 +160,6 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, beta_prune_attempted);
     ADD_TRACE_FIELD(dst, src, beta_prune_cutoffs);
 
-    ADD_TRACE_FIELD(dst, src, alpha_prune_attempted);
-    ADD_TRACE_FIELD(dst, src, alpha_prune_cutoffs);
 
     ADD_TRACE_FIELD(dst, src, nmp_attempted);
     ADD_TRACE_FIELD(dst, src, nmp_direct_cutoffs);
@@ -275,10 +271,6 @@ void trace_print(int current_only) {
            "Beta Pruning (RFP)", t->beta_prune_attempted, t->beta_prune_cutoffs,
            rate(t->beta_prune_cutoffs, t->beta_prune_attempted),
            BetaPruningDepth, BetaMargin);
-    printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   AlphaPruningDepth(%d), AlphaMargin(%d)\n",
-           "Alpha Pruning", t->alpha_prune_attempted, t->alpha_prune_cutoffs,
-           rate(t->alpha_prune_cutoffs, t->alpha_prune_attempted),
-           AlphaPruningDepth, AlphaMargin);
     printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   defaultNullMoveDepth(%d)\n",
            "Null Move Attempted", t->nmp_attempted,
            t->nmp_direct_cutoffs + t->nmp_verification_passed,
@@ -439,8 +431,6 @@ void trace_print_json(int current_only) {
     printf("  \"heuristics\": {\n");
     printf("    \"beta_pruning\": {\"considered\": %" PRIu64 ", \"triggered\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->beta_prune_attempted, t->beta_prune_cutoffs, rate(t->beta_prune_cutoffs, t->beta_prune_attempted) / 100.0);
-    printf("    \"alpha_pruning\": {\"considered\": %" PRIu64 ", \"triggered\": %" PRIu64 ", \"rate\": %.4f},\n",
-           t->alpha_prune_attempted, t->alpha_prune_cutoffs, rate(t->alpha_prune_cutoffs, t->alpha_prune_attempted) / 100.0);
     printf("    \"nmp\": {\"attempted\": %" PRIu64 ", \"direct_cutoffs\": %" PRIu64 ", \"verification_started\": %" PRIu64 ", \"verification_passed\": %" PRIu64 ", \"verification_failed\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->nmp_attempted, t->nmp_direct_cutoffs, t->nmp_verification_started, t->nmp_verification_passed, t->nmp_verification_failed,
            rate(t->nmp_direct_cutoffs + t->nmp_verification_passed, t->nmp_attempted) / 100.0);

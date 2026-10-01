@@ -410,15 +410,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             }
         }
 
-        //alpha pruning (Ethereal): in non-PV nodes a shallow position whose
-        //eval is hopelessly far below alpha cannot be rescued by any move
-        if(depth <= AlphaPruningDepth) {
-            TRACE_INC(pos, alpha_prune_attempted);
-            if(eval + AlphaMargin <= alpha){
-                TRACE_INC(pos, alpha_prune_cutoffs);
-                return eval;
-            }
-        }
 
         //null move
         //taking a null 'pseudo' move to see if the position has improved

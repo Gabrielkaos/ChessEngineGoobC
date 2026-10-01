@@ -52,21 +52,7 @@ def c(color: str, text: str) -> str:
 # Heuristic Diagnostic Rules
 # (key, display_name, min_expected_rate, max_expected_rate, governing_constant, location, nnue_note)
 HEURISTIC_RULES = [
-    {
-        "key": "alpha_pruning",
-        "name": "Alpha Pruning",
-        "sub_key": "rate",
-        "min_pct": 0.5,
-        "max_pct": 8.0,
-        "constants": "AlphaMargin(3000), AlphaPruningDepth(5)",
-        "file": "src/search.h:23-24",
-        "advice_low": (
-            "AlphaMargin is 3000 cp (30 pawns!), copied from classical Ethereal. "
-            "In NNUE, evaluations rarely exceed ±1500 cp unless checkmating. "
-            "This heuristic is virtually DEAD. Try reducing AlphaMargin to 300-500 cp."
-        ),
-        "advice_high": "Alpha pruning is triggering very frequently; check if AlphaMargin is too small or missing mate protections."
-    },
+
     {
         "key": "beta_pruning",
         "name": "Beta Pruning (RFP)",
@@ -509,8 +495,6 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     bp = h.get("beta_pruning", {})
     print_row("Beta Pruning (RFP)", bp.get("considered", 0), bp.get("triggered", 0), bp.get("rate", 0)*100, 20, 45, "BetaMargin(85), Depth(8)")
 
-    ap = h.get("alpha_pruning", {})
-    print_row("Alpha Pruning", ap.get("considered", 0), ap.get("triggered", 0), ap.get("rate", 0)*100, 0.5, 8, "AlphaMargin(3000), Depth(5)")
 
     nmp = h.get("nmp", {})
     nmp_rate = nmp.get("rate", 0) * 100
@@ -726,7 +710,6 @@ def compare_traces(file1: str, file2: str):
 
     comparisons = [
         ("Beta Pruning (RFP)", "beta_pruning", "rate"),
-        ("Alpha Pruning", "alpha_pruning", "rate"),
         ("Null Move Pruning", "nmp", "rate"),
         ("Razoring", "razoring", "rate"),
         ("ProbCut", "probcut", "rate"),

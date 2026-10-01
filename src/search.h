@@ -20,8 +20,7 @@ static const int DeltaMarginQ    = 150;
 static const int QSSeeMargin     = 110;
 
 static const int TTResearchMargin   = 128;   // Ethereal
-static const int AlphaPruningDepth  = 5;     // Ethereal
-static const int AlphaMargin        = 3000;  // Ethereal
+
 
 static const int ScoreWindow = 10;
 
