@@ -49,7 +49,7 @@ static const int DepthOneGraceMs = 300;
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
 static const int BetaPruningDepth = 8;
-static const int BetaMargin = 85;
+static const int BetaMargin = 75;
 static const int WindowDepth = 5;
 
 #define RazoringDepth      2      
