@@ -15,7 +15,7 @@ static const int SEEQuietMargin  = -64;
 static const int SEENoisyMargin  = -19;
 
 
-static const int DeltaMarginQ    = 150;
+static const int DeltaMarginQ    = 110;
 
 static const int QSSeeMargin     = 110;
 
