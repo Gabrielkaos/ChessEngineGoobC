@@ -1,23 +1,22 @@
-![](https://github.com/Gabrielkaos/ChessEngineGoobC/blob/main/logo/GOOBLOGO2.bmp)
-
-# ChessEngineGoobC
+# GOOB CHESS ENGINE - OFFICIAL REPO
 UCI playing Chess Engine written in C
 
-## Update - Aug 18 2026 - Gabriel Montes
-I've made the engine far stronger than GOOB v1.8.9, I have implemented lots of technique off of Ethereal 12.75 and Stockfish latest they've been a great source.
-Also my NNUE in the latest release 2.1 is currently experimental, I think it works but I just need a trained network which i dont have hardware right now enough to train at least 500M-1B
-positions. You can check the latest release GOOB-2.1, thank you guys for your time.
+![](https://github.com/Gabrielkaos/ChessEngineGoobC/blob/main/logo/GOOBLOGO2.bmp)
+
+## Update - Oct 3 2026 - Gabriel Montes
+Finally NNUE is implemented and trained using open source lichess data positions. NNUE architecture is from Schoenemann(see below). The architecture was very easy to train even with only 300M
+positions, unlike stockfish architecture probably needing at least 1 billion rows of data. I am planning on releasing new version in 2027, stay tuned. Also, finally got a job :).
 
 ## How to Use
 Compile the code in the src directory using the makefile.
 
 ## About
-Check src/others/goob_commits.txt
+Check src/others/goob_commits.txt(outdated, file was made before discovering git)
+Check README on /src and /tools
 
 ## Future plans
-* Addind a **NNUE**(I'm still trying to understand how NNUE works, I might be able to understand it in maybe 6 years.)
-* Maybe rewriting the whole thing in a much faster and safer language might be a good idea.
-* Add more pruning techniques.
+* Buy hardware for future constant tuning, nnue training.
+* Fetch more nnue training data.
 
 ## Humble beginnings
 After watching Bluefever's tutorial on how to make a chess engine in C. I got curious to how other engines manage to get very strong and fast. I asked on reddit, stackoverflow about how to implement things that can make a chess engine fast. I got interested in the idea of bitboards, representing 64 squares using the 64 bit long integer data type, That's when I discovered BBC a chess engine that uses this kind of board representation.
@@ -46,4 +45,6 @@ GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation functi
 * [Ethereal Chess Engine by Andrew Grant](https://github.com/AndyGrant/Ethereal)
 * Vice
 * [BBC](https://github.com/maksimKorzh/bbc)
-* Engine made by Sebastian Lague
+* Engine made by Sebastian Lague in one of his video
+* [Stockfish](https://github.com/official-stockfish/stockfish)
+* [Berserk](https://github.com/jhonnold/berserk)
