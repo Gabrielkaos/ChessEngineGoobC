@@ -8,3 +8,5 @@
 * c4ke-main
 
 ## Any changes to /src and /tools the README.md in each dir should always reflect what is in tools and src
+
+## Do not overwrite anything related to nnue dataset and nnue weights, do not run any program that might overwrite them

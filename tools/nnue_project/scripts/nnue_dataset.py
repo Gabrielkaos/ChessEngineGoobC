@@ -92,7 +92,7 @@ def _as_records(batch) -> np.ndarray:
     return torch.stack(list(batch)).numpy()  # list of per-sample tensors
 
 
-def nnue_collate(batch):
+def nnue_collate(batch, wdl_lambda: float = 0.75):
     """Vectorized batch collate for 768 Schoenemann NNUE features.
 
     Accepts either a (B, 68) uint8 array (from __getitems__) or a list of
@@ -126,7 +126,21 @@ def nnue_collate(batch):
     stm = records[:, 64].astype(np.int64)
     cp_white = np.ascontiguousarray(records[:, 65:67]).view("<i2").reshape(B).astype(np.float32)
     cp_stm = np.where(stm == 0, cp_white, -cp_white)
-    target = 1.0 / (1.0 + np.exp(-cp_stm / np.float32(CP_SCALE)))
+    eval_target = 1.0 / (1.0 + np.exp(-cp_stm / np.float32(CP_SCALE)))
+
+    flags = records[:, 67].astype(np.int64)
+    res_code = (flags >> 1) & 0x03
+
+    if np.any(res_code > 0):
+        # res_code: 1 = White win, 2 = Draw, 3 = Black win
+        score_table = np.array([0.0, 1.0, 0.5, 0.0], dtype=np.float32)
+        white_result = score_table[res_code]
+        wdl_stm = np.where(stm == 0, white_result, 1.0 - white_result)
+        lmb = np.float32(wdl_lambda)
+        blended = lmb * eval_target + (np.float32(1.0) - lmb) * wdl_stm
+        target = np.where(res_code > 0, blended, eval_target)
+    else:
+        target = eval_target
 
     return (
         (

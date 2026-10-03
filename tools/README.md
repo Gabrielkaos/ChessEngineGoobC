@@ -40,6 +40,7 @@ The tooling is divided into three primary operational domains:
   * Automatically filters out non-quiet positions: checks (`is_check()`), captures (`is_capture()`), and pawn promotions (`promotion is not None`).
   * Filters out forced mate scores and extreme centipawn evaluations ($|\text{cp}| > 3000$).
   * Enforces per-game position caps to prevent long endgames from dominating training batches.
+  * Encodes final game outcomes (White win, Draw, Black win) into record flags to enable WDL target blending during NNUE training.
 * **Usage:**
   ```bash
   python3 tools/selfplay_nnue.py --n-train 100000 --n-val 5000 --depth 20 --workers 8 --out-dir tools/nnue_project/data
@@ -76,8 +77,10 @@ The tooling is divided into three primary operational domains:
 * **Purpose:** C unit test verifying that incremental accumulator updates match complete accumulator refreshes bit-for-bit across complex game sequences (castling, promotions, en-passant, captures) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position.
 * **Compilation & Execution:**
   ```bash
-  gcc -O3 -Isrc tools/test_incremental.c src/obj/native/*.o -lm -o tools/test_incremental
+  ln -sf src/weights weights
+  gcc -O3 -Isrc tools/test_incremental.c $(ls src/obj/native/*.o | grep -v main.o) -lm -o tools/test_incremental
   ./tools/test_incremental
+  rm -f weights tools/test_incremental
   ```
 
 ### 5. [`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)
@@ -108,8 +111,8 @@ tools/nnue_project/
 ├── data_json/            # Raw JSONL datasets (e.g. lichess_db_eval.jsonl.zst)
 └── scripts/
     ├── model.py          # PyTorch Schoenemann NNUE topology
-    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator
-    ├── train.py          # Training loop with Adam, LR scheduling, and clipping
+    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator with WDL target blending
+    ├── train.py          # Training loop with Adam, LR scheduling, weight clipping, and --wdl-lambda
     ├── export_weights.py # Quantizer exporting .pt to quantised.bin
     ├── fen_utils.py      # FEN to 68-byte record encoder/decoder
     ├── prepare_data.py   # Streams HuggingFace / PGN data to binary
@@ -254,7 +257,7 @@ Each training position in `train.bin` and `val.bin` is packed into exactly 68 by
 | `0..63` | Board Squares | `uint8[64]` | Piece codes: `0`=empty, `1..6`=white P..K, `7..12`=black p..k. |
 | `64` | Side to Move | `uint8` | `0` = White, `1` = Black. |
 | `65..66` | Evaluation | `int16` | Little-endian centipawn score from White's perspective. |
-| `67` | Flags | `uint8` | Bit 0: Mate score indicator flag. |
+| `67` | Flags | `uint8` | Bit 0: Mate score indicator flag. Bits 1..2: Game result (`00`=unknown/pure eval, `01`=White win, `10`=Draw, `11`=Black win). |
 
 ### Quantized Network File (`quantised.bin`)
 Total size: **1,607,744 bytes** (~1.53 MB):

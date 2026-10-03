@@ -16,6 +16,7 @@ Fine-tune an existing network on new data (weights only, fresh optimizer):
 """
 
 import argparse
+import functools
 import os
 import shutil
 import time
@@ -219,6 +220,12 @@ def main():
         help="Start from the weights of this checkpoint (optimizer, scheduler and epoch start fresh). "
              "Use this to fine-tune an existing network on new data. Ignored with --resume.",
     )
+    ap.add_argument(
+        "--wdl-lambda",
+        type=float,
+        default=0.75,
+        help="Weight on eval sigmoid vs WDL game result in [0, 1] (default: 0.75; 1.0 = pure eval)",
+    )
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -232,6 +239,8 @@ def main():
     if total_batches == 0:
         raise SystemExit("Training set is smaller than one batch.")
 
+    collate = functools.partial(nnue_collate, wdl_lambda=args.wdl_lambda)
+
     train_sampler = ResumableBatchSampler(
         len(train_ds), args.batch_size, args.shuffle, args.seed, args.shuffle_batches
     )
@@ -243,7 +252,7 @@ def main():
         batch_sampler=train_sampler,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
-        collate_fn=nnue_collate,
+        collate_fn=collate,
         persistent_workers=(args.workers > 0),
     )
     val_loader = DataLoader(
@@ -252,7 +261,7 @@ def main():
         shuffle=False,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
-        collate_fn=nnue_collate,
+        collate_fn=collate,
         persistent_workers=(args.workers > 0),
     )
 

@@ -102,7 +102,7 @@ except ImportError:
                 file += 1
         return board, stm
 
-    def pack_record(fen: str, cp, mate) -> bytes:
+    def pack_record(fen: str, cp, mate, result: float = None) -> bytes:
         board, stm = fen_to_board_and_stm(fen)
         if mate is not None:
             is_mate = 1
@@ -114,11 +114,30 @@ except ImportError:
                 eval_cp = 3000
             elif eval_cp < -3000:
                 eval_cp = -3000
-        return _pack(bytes(board), stm, eval_cp, is_mate)
+        flags = is_mate & 1
+        if result is not None:
+            if result >= 0.75:
+                flags |= (1 << 1)
+            elif result <= 0.25:
+                flags |= (3 << 1)
+            else:
+                flags |= (2 << 1)
+        return _pack(bytes(board), stm, eval_cp, flags)
 
-    def unpack_record(record: bytes):
-        board, stm, eval_cp, is_mate = _unpack(record)
-        return board, stm, eval_cp, bool(is_mate)
+    def unpack_record(record: bytes, with_result: bool = False):
+        board, stm, eval_cp, flags = _unpack(record)
+        is_mate = bool(flags & 1)
+        if not with_result:
+            return board, stm, eval_cp, is_mate
+        res_code = (flags >> 1) & 0x03
+        result = None
+        if res_code == 1:
+            result = 1.0
+        elif res_code == 2:
+            result = 0.5
+        elif res_code == 3:
+            result = 0.0
+        return board, stm, eval_cp, is_mate, result
 
 
 FLUSH_BYTES = 4 * 1024 * 1024  # Flush buffer every 4MB
@@ -594,13 +613,30 @@ def play_game(
         stats.add_game(0, 0)
         return
 
+    # Determine final game outcome from White's perspective:
+    # 1.0 = White win, 0.5 = Draw, 0.0 = Black win
+    game_result = None
+    if board.is_checkmate():
+        game_result = 0.0 if board.turn == chess.WHITE else 1.0
+    elif (
+        board.is_stalemate()
+        or board.is_insufficient_material()
+        or board.is_repetition(3)
+        or board.halfmove_clock >= 100
+    ):
+        game_result = 0.5
+    elif abs(win_chain) >= args.adjudicate_chain:
+        game_result = 1.0 if win_chain > 0 else 0.0
+    elif draw_chain >= args.draw_chain:
+        game_result = 0.5
+
     # Pack records and route to train or val split
     packed_train = bytearray()
     packed_val = bytearray()
     epd_lines = []
 
     for fen, c_w, m_w in candidate_records:
-        rec = pack_record(fen, c_w, m_w)
+        rec = pack_record(fen, c_w, m_w, result=game_result)
         # Random draw matching prepare_data.py logic
         r = random.random()
         with buf_lock:

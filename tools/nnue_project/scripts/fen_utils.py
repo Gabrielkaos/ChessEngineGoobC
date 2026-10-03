@@ -84,7 +84,7 @@ def fen_to_board_bytes(fen: str) -> bytes:
     return bytes(board)
 
 
-def pack_record(fen: str, cp, mate) -> bytes:
+def pack_record(fen: str, cp, mate, result: float = None) -> bytes:
     board, stm = fen_to_board_and_stm(fen)
 
     if mate is not None:
@@ -99,9 +99,31 @@ def pack_record(fen: str, cp, mate) -> bytes:
         elif eval_cp < -3000:
             eval_cp = -3000
 
-    return _pack(bytes(board), stm, eval_cp, is_mate)
+    flags = is_mate & 1
+    if result is not None:
+        # result is from White's POV: 1.0 = White win, 0.5 = Draw, 0.0 = Black win
+        if result >= 0.75:
+            flags |= (1 << 1)  # 1 = White win
+        elif result <= 0.25:
+            flags |= (3 << 1)  # 3 = Black win
+        else:
+            flags |= (2 << 1)  # 2 = Draw
+
+    return _pack(bytes(board), stm, eval_cp, flags)
 
 
-def unpack_record(record: bytes):
-    board, stm, eval_cp, is_mate = _unpack(record)
-    return board, stm, eval_cp, bool(is_mate)
+def unpack_record(record: bytes, with_result: bool = False):
+    board, stm, eval_cp, flags = _unpack(record)
+    is_mate = bool(flags & 1)
+    if not with_result:
+        return board, stm, eval_cp, is_mate
+
+    res_code = (flags >> 1) & 0x03
+    result = None
+    if res_code == 1:
+        result = 1.0
+    elif res_code == 2:
+        result = 0.5
+    elif res_code == 3:
+        result = 0.0
+    return board, stm, eval_cp, is_mate, result

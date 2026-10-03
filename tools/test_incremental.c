@@ -77,7 +77,6 @@ int main(void) {
 
     S_BOARD pos[1];
     pos->search = alloc_search_thread();
-    pos->useNNUE = TRUE;
 
     if (!nnue_init("src/weights/quantised.bin")) {
         printf("FAIL: Could not load weights\n");
