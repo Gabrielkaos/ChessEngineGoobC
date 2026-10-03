@@ -4,13 +4,18 @@ info depth 20 seldepth 31 score cp 18 time 2228 nodes 3338259 hashfull 258 pv e2
 bestmove e2e4
 
 ## Output of current code GOOB at depth 20 - startpos
-info depth 20 seldepth 31 multipv 1 score cp 21 time 1481 nodes 2530326 hashfull 134 tbhits 0 pv g1f3 e7e6 c2c4 g8f6 d2d4 f8e7 b1c3 d7d5 c1g5 e8g8 e2e3 b8d7 c4d5 f6d5 g5e7 d8e7 d1b3 f8d8 f1d3 c7c5 e1g1 d5c3
-bestmove g1f3
+info depth 20 seldepth 33 multipv 1 score cp 32 time 1063 nodes 2008038 hashfull 116 tbhits 0 pv e2e4 c7c5 g1f3 b8c6 f1b5 e7e6 b5c6 b7c6 d2d3 d7d5 b1c3 g8e7 h2h4 h7h5 c1d2 d8c7 e1g1 e7g6 d1e2 f8e7
+bestmove e2e4
 
 ## Output of current code GOOB at depth 20 - r2q1rk1/1bp1bpp1/p1n2n1p/1p2p3/4N3/1B1P1N2/PPPB1PPP/R2Q1RK1 w - - 1 12
-info depth 20 seldepth 36 multipv 1 score cp 30 time 3921 nodes 6409010 hashfull 337 tbhits 0 pv f1e1 a6a5 a2a4 b5b4 d1e2 d8d7 h2h3 a8d8 b3c4 c6d4 e4f6 e7f6 f3d4 e5d4 b2b3 b7d5 c4d5 d7d5 e2e4 d5c5 a1c1 d8d5 e1e2 c5c6 c1e1 d5c5 e4c6
+info depth 20 seldepth 35 multipv 1 score cp 1 time 3370 nodes 6059312 hashfull 321 tbhits 0 pv f1e1 c6d4 f3d4 e5d4 e4f6 e7f6 d2b4 f8e8 d1h5 d8d7 e1e8 a8e8 a1e1 e8e1 b4e1 f6g5 e1b4 b7d5 b3d5 d7d5 h2h4 c7c5 b4a3 g7g6 h5g4 b5b4 g4c8 g8h7 h4g5 b4a3 b2a3
 bestmove f1e1
 
 ## perfttest
 33 / 33 positions passed
-Total nodes: 1225549258, total time: 35675ms, avg 35015693 nps
+Total nodes: 1225549258, total time: 35320ms, avg 35015693 nps
+
+## bench depth 10
+========================================================================================
+Benchmark Summary: 30 positions | Total Nodes: 921772 | Total Time: 493 ms | NPS: 1869720
+========================================================================================
