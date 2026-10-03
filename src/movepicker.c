@@ -5,8 +5,13 @@
 #include "history.h"
 #include "movegen.h"
 
-static const int MVVAugment[] = {1200, 2400, 2400, 4800, 9600, 19200};
+static const int MVVAugment[] = { 10000, 30000, 30000, 50000, 90000, 90000 };
 static const int GoodQuietThreshold = -3000;
+
+static inline int piece_mvv_lva_val(int pt) {
+    static const int vals[6] = { 100, 450, 450, 675, 1300, 1500 };
+    return (pt >= 0 && pt <= 5) ? vals[pt] : 0;
+}
 
 static int mp_getBestIndex(S_MOVE *moves, int lo, int count){
     int best = lo;
@@ -94,10 +99,15 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 int captured = pieceType[pos->pieces[to]];
                 if(move & MVFLAGEP)   captured = p_pawn;
                 else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
-                
-                int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - pt;
+
+                int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - piece_mvv_lva_val(pt);
                 if(move & MVFLAGPROM){
-                    score += MVVAugment[pieceType[PROMOTED(move)]] - 1200;
+                    int prom = pieceType[PROMOTED(move)];
+                    if(prom == p_knight){
+                        score += 15000;
+                    } else if(prom == p_rook || prom == p_bishop){
+                        score -= 50000;
+                    }
                 }
                 mp->list->moves[i].score = score;
             }
@@ -130,14 +140,24 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     int captured = pieceType[pos->pieces[to]];
                     if(move & MVFLAGEP)   captured = p_pawn;
                     else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
-                    
-                    int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - pt;
+
+                    int chist = getCaptureHistory(pos, move, mp->threats);
+                    int badScore;
                     if(move & MVFLAGPROM){
-                        score += MVVAugment[pieceType[PROMOTED(move)]] - 1200;
+                        if(pieceType[PROMOTED(move)] == p_queen){
+                            badScore = 10000 + (chist - 64000) / 16;
+                        } else if(pieceType[PROMOTED(move)] == p_knight){
+                            badScore = (piece_mvv_lva_val(captured) - piece_mvv_lva_val(pt)) * 16 + chist / 16;
+                        } else {
+                            badScore = -100000;
+                        }
+                    } else {
+                        // Order least-losing captures first (e.g. RxN > BxP > RxP > QxR > QxP)
+                        badScore = (piece_mvv_lva_val(captured) - piece_mvv_lva_val(pt)) * 16 + chist / 16;
                     }
 
                     mp->badNoisies[mp->badNoisyCount].move  = move;
-                    mp->badNoisies[mp->badNoisyCount].score = score;
+                    mp->badNoisies[mp->badNoisyCount].score = badScore;
                     mp->badNoisyCount++;
                     continue;
                 }
@@ -164,7 +184,11 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
 
         case STAGE_KILLER_2:
             mp->stage = STAGE_COUNTER_MOVE;
-            if(!skipQuiets && mp->killer2 != mp->tableMove && !moveIsTactical(pos, mp->killer2) && moveIsPseudoLegal(pos, mp->killer2)){
+            if(!skipQuiets
+                && mp->killer2 != mp->tableMove
+                && mp->killer2 != mp->killer1
+                && !moveIsTactical(pos, mp->killer2)
+                && moveIsPseudoLegal(pos, mp->killer2)){
                 mp->lastStage = STAGE_KILLER_2;
                 return mp->killer2;
             }
@@ -257,8 +281,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     int to = TOSQ(move);
                     int pType = pieceType[pos->pieces[from]];
                     
-                    //quiet score: butterfly + continuation histories plus the
-                    //shared pawn-structure history (Stockfish: 2 * pawn_entry)
+                    // quiet score: butterfly + continuation histories plus the
+                    // shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
                                              + 2 * getPawnHistory(pos, move);
 

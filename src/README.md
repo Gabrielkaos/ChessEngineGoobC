@@ -55,13 +55,16 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Move Ordering & History Heuristics
 * **[`movepicker.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.h) / [`movepicker.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.c):** Staged move selection:
   1. Hash move from Transposition Table.
-  2. Winning & equal noisy moves (MVV-LVA + capture history, gated by SEE $\ge$ threshold).
-  3. Killer moves 1 & 2.
+  2. Winning & equal noisy moves:
+     * Scaled victim values (`MVVAugment`: Pawn 10k, Minor 30k, Rook 50k, Queen 90k) combined with actual attacker LVA piece-value subtraction (100–1300 cp) and capture history.
+     * Queen promotions prioritized (+64,000 boost), Knight promotions boosted (+15,000), and Bishop/Rook underpromotions penalized (-50,000) so they do not clog good noisies before quiets.
+     * Gated by Static Exchange Evaluation (SEE $\ge$ threshold).
+  3. Killer moves 1 & 2 (with duplicate elimination ensuring `killer2 != killer1`).
   4. Counter move (keyed by opponent's previous move).
   5. Followup move (keyed by own move 2 plies ago).
-  6. Quiet moves (scored by butterfly + continuation + pawn history + root low-ply history + threat bonuses + check bonuses).
-  7. Bad noisy moves (losing captures sorted descending by value).
-  8. Bad quiet moves.
+  6. Quiet moves (scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses).
+  7. Bad noisy moves (losing captures sorted by least material loss first: `(victimVal - attackerVal) * 16 + chist / 16` to maximize cutoff probability).
+  8. Bad quiet moves (moves below `GoodQuietThreshold`).
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
   * Butterfly history with threat context (`[side][threat_from][threat_to][piece][to]`).
   * Capture history (`[piece][threat_from][threat_to][to][captured]`).

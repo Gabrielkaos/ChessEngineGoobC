@@ -10,3 +10,5 @@
 ## Any changes to /src and /tools the README.md in each dir should always reflect what is in tools and src
 
 ## Do not overwrite anything related to nnue dataset and nnue weights, do not run any program that might overwrite them
+
+## New implementations must be tested against previous version (base before changes) in cutechess-cli(see ~/Desktop/engines) 500 games minimum
