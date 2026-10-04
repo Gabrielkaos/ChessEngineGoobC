@@ -5,7 +5,7 @@
 #include "history.h"
 #include "movegen.h"
 
-static const int MVVAugment[] = { 10000, 30000, 30000, 50000, 90000, 90000 };
+static const int MVVAugment[] = { 700, 3150, 3150, 4725, 9100, 9100 };
 static const int GoodQuietThreshold = -3000;
 
 static inline int piece_mvv_lva_val(int pt) {
@@ -100,7 +100,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move & MVFLAGEP)   captured = p_pawn;
                 else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
 
-                int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured] - piece_mvv_lva_val(pt);
+                int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured];
                 if(move & MVFLAGPROM){
                     int prom = pieceType[PROMOTED(move)];
                     if(prom == p_knight){

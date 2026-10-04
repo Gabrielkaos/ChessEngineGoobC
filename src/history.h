@@ -1,12 +1,15 @@
-
 #ifndef HISTORY_H
 #define HISTORY_H
 
 #include "board.h"
+#include "some_maths.h"
 
-static const int HistoryMax = 400;
-static const int HistoryMultiplier = 32;
-static const int HistoryDivisor = 512;
+static const int HistoryMax = 16384;
+static const int HistoryDivisor = 16384;
+
+INLINE int stat_bonus(int depth) {
+    return MIN(1708, 4 * depth * depth + 191 * depth - 118);
+}
 
 extern int getCaptureHistory(S_BOARD *pos,int move, U64 threats);
 extern void updateKillers(S_BOARD *pos,int move);

@@ -1,4 +1,3 @@
-
 #include "history.h"
 #include "attacks.h"
 #include "some_maths.h"
@@ -43,11 +42,11 @@ int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
 }
 
 void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth){
-    const int bonus = MIN(depth*depth,HistoryMax);
+    const int bonus = stat_bonus(depth);
     // Compute threats once per update
     U64 threats = allAttackedSquares(pos, pos->side ^ 1);
 
-    int i,move,from,to,delta,piece,captured,entry;
+    int i,move,from,to,delta,piece,captured;
 
     for(i = 0;i<length;++i){
         move = moves[i];
@@ -69,12 +68,8 @@ void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth)
         int threat_from = (threats & (1ULL << from)) ? 1 : 0;
         int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
-        entry = pos->shared->chist[piece][threat_from][threat_to][to][captured];
-        entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-        pos->shared->chist[piece][threat_from][threat_to][to][captured] = entry;
-
+        histGravityUpdate(&pos->shared->chist[piece][threat_from][threat_to][to][captured], delta, HistoryDivisor);
     }
-
 }
 
 void updateKillers(S_BOARD *pos,int move){
@@ -151,9 +146,9 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     if(!(length==1 && depth <= 3)){
 
         U64 threats = allAttackedSquares(pos, pos->side ^ 1);
-        int index,bonus,entry,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
+        int index,bonus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
 
-        bonus = MIN(depth*depth,HistoryMax);
+        bonus = stat_bonus(depth);
 
         for(index=0;index<length;++index){
             move = moves[index];
@@ -167,18 +162,12 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
             int threat_from = (threats & (1ULL << from)) ? 1 : 0;
             int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
-            entry = pos->shared->histtable[pos->side][threat_from][threat_to][piece][to];
-            entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-            pos->shared->histtable[pos->side][threat_from][threat_to][piece][to] = entry;
+            histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][piece][to], delta, HistoryDivisor);
 
-            //low-ply history: only maintained near the root
-            //(Stockfish: lowPlyHistory[ply][move] << bonus * 712 / 1024)
             if(pos->ply < LOWPLY_HIST_SLOTS)
                 histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
                                   delta * 712 / 1024, LOWPLY_HIST_MAX);
 
-            //pawn history: keyed by pawn structure, so it transfers across
-            //the whole game (Stockfish: << bonus * (bonus > -4 ? 1104 : 459) / 1024)
             {
                 const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
                 const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
@@ -196,12 +185,8 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
                 ppiece = pos->search->pieceStack[pos->ply - back];
                 pto    = TOSQ(pmove);
 
-                entry = pos->shared->continuation[slot][ppiece][pto][piece][to];
-                entry += HistoryMultiplier * delta - entry * abs(delta) / HistoryDivisor;
-                pos->shared->continuation[slot][ppiece][pto][piece][to] = entry;
+                histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][piece][to], delta, HistoryDivisor);
             }
         }
-
     }
-
 }
