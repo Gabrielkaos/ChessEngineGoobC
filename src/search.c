@@ -566,12 +566,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //Quiet late Move pruning
         if (!rootNode && !info->bruteForceMode && quietMove && bestScore > -ISMATE){
 
+            int lmrDepth = MAX(0, depth - LMRTable[MIN(depth, 63)][MIN(Legal, 63)]);
+
             //Futility pruning
             //checking if this position is likely to improve
             //if not then we skip it
-            if (depth <= FutilityPruningDepth) {
+            if (lmrDepth <= FutilityPruningDepth) {
                 TRACE_INC(pos, futility_skip_attempted);
-                if ((eval + FutilityMargin * depth + FutilityMarginNoHistory) <= alpha){
+                if ((eval + FutilityMargin * lmrDepth + FutilityMarginNoHistory) <= alpha){
                     skipQuiets = 1;
                     TRACE_INC(pos, futility_skip_pruned);
                 }
@@ -579,9 +581,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             if (   !skipQuiets
                 && !isSpecial
-                && depth <= FutilityPruningDepth) {
+                && lmrDepth <= FutilityPruningDepth) {
                 TRACE_INC(pos, futility_move_attempted);
-                if ((eval + FutilityMargin * depth) <= alpha
+                if ((eval + FutilityMargin * lmrDepth) <= alpha
                     && hist < FutilityPruningHistoryLimit[improving]){
                     TRACE_INC(pos, futility_move_pruned);
                     continue;

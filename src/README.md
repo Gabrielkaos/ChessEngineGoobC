@@ -218,3 +218,5 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
    * *Sibling Surprise:* If an earlier reduced quiet move scores $> \alpha$, move ordering is volatile; reductions on subsequent siblings are decreased ($R -= 1$).
    * *Deficit Adjustment:* If static evaluation is severely behind $\alpha$ ($> 120\text{ cp}$ deficit), late quiet moves are reduced more aggressively ($R += 1$).
    * *Surplus Adjustment:* If static evaluation significantly exceeds $\alpha$, reductions on promising quiet moves are softened.
+5. **LMR-Scaled Futility Pruning:**
+   Instead of checking futility pruning conditions against the raw root `depth`, GOOB checks against the predicted `lmrDepth` (the depth after Late Move Reductions). This safely applies aggressive futility margins to moves deep in the move list which are already heavily reduced, generating significant node savings in wide branches.
