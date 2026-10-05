@@ -5,7 +5,7 @@
 #
 #   name         label for the log file            (default: basename of new-binary)
 #   tc           time control                      (default: 6+0.06)
-#   concurrency  games played at the same time     (default: 6)
+#   concurrency  games played at the same time     (default: 10)
 #
 # Environment overrides: ELO0, ELO1 (SPRT hypotheses, default 0 / 5),
 #                        ROUNDS (default 1500 rounds = 3000 games max),
@@ -24,7 +24,7 @@ NEW=$(realpath "$NEW"); BASE=$(realpath "$BASE")
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 NAME=${3:-$(basename "$NEW")}
 TC=${4:-6+0.06}
-CONC=${5:-6}
+CONC=${5:-10}
 ELO0=${ELO0:-0}
 ELO1=${ELO1:-5}
 ROUNDS=${ROUNDS:-1500}
