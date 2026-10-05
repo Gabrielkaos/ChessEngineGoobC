@@ -70,7 +70,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Capture history (`[piece][threat_from][threat_to][to][captured]`).
   * Continuation history across 4 slots (1, 2, 4, 6 plies back).
   * Low-ply butterfly history (first 5 plies near the root).
-  * Pawn history indexed by pawn structure Zobrist key.
+  * Pawn history indexed strictly by pawn structure Zobrist key (king zobrist keys stripped from `pkHash` via `pawnHistIndex()`).
   * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`.
 
 ### Evaluation & NNUE
@@ -93,12 +93,14 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Beta Pruning / RFP ($D \le 8$).
     * Null Move Pruning with verification search ($D \ge 16$).
     * Internal Iterative Reduction (IIR) with all-node bias.
-    * ProbCut ($D \ge 5$).
+    * ProbCut ($D \ge 5$) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`) and verified cutoff storage in TT.
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
+    * Tactical pruning: Capture Futility Pruning ($D \le 6$, `CaptureFutilityBase + CaptureFutilityPerDepth * depth`) and history-adjusted SEE margin.
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
     * Singular Extensions ($D \ge 7$, TT move), double extensions, and multicut.
     * Check extensions and history extensions.
-    * Late Move Reduction (LMR) table with adjustments for check, PV, improving, and history.
+    * Late Move Reduction (LMR) table with adjustments for check, PV, improving, tactical TT moves (`ttCapture`), and history.
+    * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
   * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1102): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability, root effort), and single legal move cutoff.
