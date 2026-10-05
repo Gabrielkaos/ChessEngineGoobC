@@ -620,9 +620,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             }
         }
 
+        if (!rootNode && !info->bruteForceMode && !quietMove && bestScore > -ISMATE && !inCheck
+            && mp->lastStage != STAGE_TABLE && depth <= CaptureFutilityDepth){
+            //Capture futility (Stockfish): even winning this piece outright,
+            //plus a generous depth margin, leaves us below alpha
+            int captured = pos->pieces[TOSQ(moveInLoop)];
+            if(moveInLoop & MVFLAGEP) captured = pos->side == WHITE ? wP : bP;
+            int futilityValue = eval + CaptureFutilityBase + CaptureFutilityPerDepth * depth
+                              + SEEPieceValues[captured] + hist / 16;
+            if(futilityValue <= alpha) continue;
+        }
+
         //SEE
         //checks wether a capture move is valuable
         //if it actually gained material
+        //captures with a strong history record get a looser margin
         if (    !rootNode
             &&  !info->bruteForceMode
             &&  bestScore > -ISMATE
@@ -636,7 +648,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 }
             } else {
                 TRACE_INC(pos, see_noisy_attempted);
-                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])) {
+                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove] - hist / 64)) {
                     TRACE_INC(pos, see_noisy_pruned);
                     continue;
                 }
