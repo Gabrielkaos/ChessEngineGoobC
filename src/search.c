@@ -488,14 +488,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //dont prune moves if in a checkmate scenario to not miss a tactical sequence
     //only prune when the static eval is >= beta meaning we are winning so we can prune safely -
     //or static eval + move bestcase >= beta + margin
+    //skip it when the TT already tells us this node can't reach rBeta
+    int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
     if (!info->bruteForceMode &&
         !pvNode &&
         depth >=probCutDepth &&
         abs(beta) < ISMATE &&
+        !(ttHit && ttDepth >= depth - 3 && ttValue < rBeta) &&
         (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
 
             TRACE_INC(pos, probcut_attempted);
-            int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
             int move_in_prob;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
@@ -519,6 +521,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if(info->stopped==TRUE)return 0;
                 if(value>=rBeta) {
                     TRACE_INC(pos, probcut_cutoffs);
+                    //the verified capture is a lower bound at the reduced depth
+                    StoreHashEntry(pos, table, move_in_prob, value, HFBETA, depth-3, rawEval);
                     return value;
                 }
 
