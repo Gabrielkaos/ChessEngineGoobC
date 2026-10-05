@@ -27,6 +27,7 @@ The tooling is divided into three primary operational domains:
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
 2. **Self-Play & Dataset Generation:** Scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that run the engine in parallel under UCI to harvest evaluated positions.
 3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and optimizing evaluation parameters ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
+4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 
 ---
 
@@ -95,6 +96,21 @@ The tooling is divided into three primary operational domains:
 * **Compilation:**
   ```bash
   gcc -O3 -fopenmp -Isrc tools/tuner.c -lm -o tools/tuner
+  ```
+
+### 7. SPRT Testing Suite ([`tools/sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt))
+* **Purpose:** Automated engine strength and regression testing harness comparing modified engine builds against a baseline version.
+* **Key Components:**
+  * [`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh): Cutechess-cli runner executing SPRT matches with standard parameters (default 6+0.06s time control, 6 parallel threads, 32MB hash, UHO/EPD openings).
+  * [`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py): Fast 12-position fixed-depth sanity benchmark verifying node counts, move stability, and lack of crashes.
+  * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md): Detailed testing guide, SPRT hypothesis bounds, and branch merge guidelines.
+* **Usage:**
+  ```bash
+  # Sanity check:
+  python3 tools/sprt/bench.py tools/sprt/bin/GOOB-candidate 12
+
+  # Run cutechess SPRT match:
+  tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-candidate tools/sprt/bin/GOOB-base
   ```
 
 ---
