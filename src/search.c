@@ -533,6 +533,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
     initMovePicker(mp, pos, ttMove);
 
+    //a tactical TT move makes the quiet alternatives less promising
+    int ttCapture = ttMove != NOMOVE && moveIsTactical(pos, ttMove);
+
     Score = -AB_BOUND;
     int skipQuiets = 0;
 #if USE_SURPRISE_SRD
@@ -724,6 +727,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += cutNode;
 
+            R += ttCapture;
+
             R -= MAX(-2, MIN(2, (hist + pawnHist) / 5000));
 
 #if USE_SURPRISE_SRD
@@ -763,6 +768,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             TRACE_INC(pos, lmr_noisy_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
+            R += ttCapture;
             R -= MAX(-2, MIN(2, hist / 5000));
             R = MIN(depth - 1, MAX(R, 1));
             if (R > 1) {
