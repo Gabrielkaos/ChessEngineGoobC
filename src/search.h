@@ -68,6 +68,16 @@ static const int WindowDepth = 5;
 
 #define DoubleExtMargin 15 * 8
 
+//post-LMR re-search depth adjustment (Stockfish doDeeper/doShallowerSearch)
+#define LMRDeeperMargin     40
+#define LMRShallowerMargin   6
+
+//capture futility pruning (Stockfish): eval + base + perDepth*depth +
+//captured value + capture history/16 <= alpha  -> skip the capture
+#define CaptureFutilityDepth     6
+#define CaptureFutilityBase      110
+#define CaptureFutilityPerDepth  120
+
 #define TTMoveHistoryMax 8192   // tunable
 #define TTMoveHistoryScale 40   // tunable
 

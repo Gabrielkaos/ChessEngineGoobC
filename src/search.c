@@ -142,6 +142,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     int value,moveInLoop;
     int best;
+    int bestMove = NOMOVE;
+    int oldAlpha = alpha;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -175,11 +177,21 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
     int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
     int eval = adjustEvalOnFmr(pos, staticEval);
+
+    //a TT score with a usable bound is a better estimate than the static
+    //eval, so stand on it instead (Stockfish / Ethereal 14)
+    if(ttHit && (   ttBound==HFEXACT
+                || (ttBound==HFBETA  && ttValue > eval)
+                || (ttBound==HFALPHA && ttValue < eval)))
+        eval = ttValue;
     best = eval;
     TRACE_INC(pos, qs_stand_pat_evals);
     alpha = MAX(alpha, eval);
     if(alpha >= beta) {
         TRACE_INC(pos, qs_stand_pat_cutoffs);
+        //remember the stand-pat cutoff (and the static eval) for next time
+        if(!ttHit)
+            StoreHashEntry(pos, table, NOMOVE, best, HFBETA, 0, rawEval);
         return eval;
     }
 
@@ -213,6 +225,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(value>best){
             best = value;
+            bestMove = moveInLoop;
             if(value>alpha){
                 alpha=value;
             }
@@ -220,9 +233,15 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(alpha>=beta){
             TRACE_INC(pos, qs_beta_cutoffs);
-            return best;
+            break;
         }
     }
+
+    //store the qsearch result at depth 0 so later visits (and the main
+    //search's TT probe at the leaves) can reuse the bound and the move
+    ttBound = best >= beta    ? HFBETA
+            : best > oldAlpha ? HFEXACT : HFALPHA;
+    StoreHashEntry(pos, table, bestMove, best, ttBound, 0, rawEval);
 
     return best;
 }
@@ -361,6 +380,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //draw approaches (Berserk). improving/hindsight keep the raw staticEval.
     int eval = inCheck ? staticEval : adjustEvalOnFmr(pos, staticEval);
 
+    //a TT score whose bound points the right way is a better estimate of
+    //this node than the static eval; use it for the pruning decisions below
+    //(improving / hindsight / correction keep the real static eval)
+    if(ttHit && !inCheck && (   ttBound==HFEXACT
+                            || (ttBound==HFBETA  && ttValue > eval)
+                            || (ttBound==HFALPHA && ttValue < eval)))
+        eval = ttValue;
+
 
     //hindsight depth adjustment based on how much the parent reduced
     //to reach this node, and whether the position has kept getting
@@ -488,14 +515,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //dont prune moves if in a checkmate scenario to not miss a tactical sequence
     //only prune when the static eval is >= beta meaning we are winning so we can prune safely -
     //or static eval + move bestcase >= beta + margin
+    //skip it when the TT already tells us this node can't reach rBeta
+    int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
     if (!info->bruteForceMode &&
         !pvNode &&
         depth >=probCutDepth &&
         abs(beta) < ISMATE &&
+        !(ttHit && ttDepth >= depth - 3 && ttValue < rBeta) &&
         (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
 
             TRACE_INC(pos, probcut_attempted);
-            int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
             int move_in_prob;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
@@ -519,6 +548,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if(info->stopped==TRUE)return 0;
                 if(value>=rBeta) {
                     TRACE_INC(pos, probcut_cutoffs);
+                    //the verified capture is a lower bound at the reduced depth
+                    StoreHashEntry(pos, table, move_in_prob, value, HFBETA, depth-3, rawEval);
                     return value;
                 }
 
@@ -528,6 +559,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //generate the moves
     S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
     initMovePicker(mp, pos, ttMove);
+
+    //a tactical TT move makes the quiet alternatives less promising
+    int ttCapture = ttMove != NOMOVE && moveIsTactical(pos, ttMove);
 
     Score = -AB_BOUND;
     int skipQuiets = 0;
@@ -620,9 +654,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             }
         }
 
+        if (!rootNode && !info->bruteForceMode && !quietMove && bestScore > -ISMATE && !inCheck
+            && mp->lastStage != STAGE_TABLE && depth <= CaptureFutilityDepth){
+            //Capture futility (Stockfish): even winning this piece outright,
+            //plus a generous depth margin, leaves us below alpha
+            int captured = pos->pieces[TOSQ(moveInLoop)];
+            if(moveInLoop & MVFLAGEP) captured = pos->side == WHITE ? wP : bP;
+            int futilityValue = eval + CaptureFutilityBase + CaptureFutilityPerDepth * depth
+                              + SEEPieceValues[captured] + hist / 16;
+            if(futilityValue <= alpha) continue;
+        }
+
         //SEE
         //checks wether a capture move is valuable
         //if it actually gained material
+        //captures with a strong history record get a looser margin
         if (    !rootNode
             &&  !info->bruteForceMode
             &&  bestScore > -ISMATE
@@ -636,7 +682,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 }
             } else {
                 TRACE_INC(pos, see_noisy_attempted);
-                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove])) {
+                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove] - hist / 64)) {
                     TRACE_INC(pos, see_noisy_pruned);
                     continue;
                 }
@@ -720,6 +766,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += cutNode;
 
+            R += ttCapture;
+
             R -= MAX(-2, MIN(2, (hist + pawnHist) / 5000));
 
 #if USE_SURPRISE_SRD
@@ -759,6 +807,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             TRACE_INC(pos, lmr_noisy_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
+            R += ttCapture;
             R -= MAX(-2, MIN(2, hist / 5000));
             R = MIN(depth - 1, MAX(R, 1));
             if (R > 1) {
@@ -775,6 +824,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             pos->search->reduction_stack[pos->ply] = R;
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, &lpv);
             pos->search->reduction_stack[pos->ply] = 0;
+
+            //the reduced search beat alpha, so a full re-search follows:
+            //go a ply deeper when it beat the best move by a clear margin,
+            //a ply shallower when it only barely scraped past (Stockfish)
+            if(Score > alpha && !info->bruteForceMode){
+                newDepth += (Score > bestScore + LMRDeeperMargin)
+                          - (Score < bestScore + LMRShallowerMargin);
+                newDepth  = MIN(MAXDEPTH - 2, MAX(1, newDepth));
+            }
         }
 
         //PVS
@@ -857,12 +915,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
-    //update history counters on a fail high for a quiet move
-    if(bestScore>=beta && !moveIsTactical(pos,bestMove))
-        updateHistories(pos,quietsTried,quietsPlayed,depth);
+    if(bestScore>=beta){
+        //fail high: reward the cutoff move and punish the quiets tried
+        //before it. When a capture cut, every quiet we tried was wasted.
+        if(!moveIsTactical(pos,bestMove))
+            updateHistories(pos,quietsTried,quietsPlayed,depth);
+        else
+            penalizeQuiets(pos,quietsTried,quietsPlayed,depth);
 
-    if(bestScore>=beta)
         updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
+    }
+    //fail low: nothing here worked, so the opponent's quiet move that led
+    //to this node was a good refutation. Reward it (Stockfish).
+    else if(bestScore <= oldAlpha && !rootNode){
+        bonusPriorQuiet(pos,depth);
+    }
 
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
