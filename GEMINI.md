@@ -63,15 +63,19 @@ The baseline is the engine state immediately before the changes are made.
 
 Use:
 
-    cutechess-cli
+    tools/sprt/run_sprt.sh (cutechess-cli)
 
-from:
+Refer to:
 
-    ~/Desktop/engines
+    tools/sprt/README.md
+
+Sanity check before long matches:
+
+    python3 tools/sprt/bench.py <binary> 12
 
 Minimum match size:
 
-    500 games
+    500 games (or until SPRT reaches a conclusive decision)
 
 Do not claim that an implementation is stronger without completing the
 required engine-vs-baseline test.
@@ -104,8 +108,8 @@ When working on search:
 5. Compare relevant techniques with the local reference engines.
 6. Implement one logical improvement at a time where practical.
 7. Compile and run functional tests.
-8. Test tactical correctness before strength testing.
-9. Run the required 500-game cutechess-cli match against the baseline.
+8. Test tactical correctness and run a sanity bench (tools/sprt/bench.py) before strength testing.
+9. Run the required SPRT / 500-game cutechess-cli match against the baseline using tools/sprt/run_sprt.sh.
 10. Analyze the result before deciding whether to keep the change.
 
 Do not make large collections of unrelated search changes and then attribute
