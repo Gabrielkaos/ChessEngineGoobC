@@ -68,6 +68,10 @@ static const int WindowDepth = 5;
 
 #define DoubleExtMargin 15 * 8
 
+//post-LMR re-search depth adjustment (Stockfish doDeeper/doShallowerSearch)
+#define LMRDeeperMargin     40
+#define LMRShallowerMargin   6
+
 #define TTMoveHistoryMax 8192   // tunable
 #define TTMoveHistoryScale 40   // tunable
 
