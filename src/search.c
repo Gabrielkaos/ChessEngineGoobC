@@ -142,6 +142,8 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     int value,moveInLoop;
     int best;
+    int bestMove = NOMOVE;
+    int oldAlpha = alpha;
 
     //check up for limits
     if((info->nodes & 2047)==0)checkUp(info);
@@ -180,6 +182,9 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     alpha = MAX(alpha, eval);
     if(alpha >= beta) {
         TRACE_INC(pos, qs_stand_pat_cutoffs);
+        //remember the stand-pat cutoff (and the static eval) for next time
+        if(!ttHit)
+            StoreHashEntry(pos, table, NOMOVE, best, HFBETA, 0, rawEval);
         return eval;
     }
 
@@ -213,6 +218,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(value>best){
             best = value;
+            bestMove = moveInLoop;
             if(value>alpha){
                 alpha=value;
             }
@@ -220,9 +226,15 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
         if(alpha>=beta){
             TRACE_INC(pos, qs_beta_cutoffs);
-            return best;
+            break;
         }
     }
+
+    //store the qsearch result at depth 0 so later visits (and the main
+    //search's TT probe at the leaves) can reuse the bound and the move
+    ttBound = best >= beta    ? HFBETA
+            : best > oldAlpha ? HFEXACT : HFALPHA;
+    StoreHashEntry(pos, table, bestMove, best, ttBound, 0, rawEval);
 
     return best;
 }
