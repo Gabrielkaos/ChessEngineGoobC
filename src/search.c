@@ -797,6 +797,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             pos->search->reduction_stack[pos->ply] = R;
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, &lpv);
             pos->search->reduction_stack[pos->ply] = 0;
+
+            //the reduced search beat alpha, so a full re-search follows:
+            //go a ply deeper when it beat the best move by a clear margin,
+            //a ply shallower when it only barely scraped past (Stockfish)
+            if(Score > alpha && !info->bruteForceMode){
+                newDepth += (Score > bestScore + LMRDeeperMargin)
+                          - (Score < bestScore + LMRShallowerMargin);
+                newDepth  = MIN(MAXDEPTH - 2, MAX(1, newDepth));
+            }
         }
 
         //PVS
