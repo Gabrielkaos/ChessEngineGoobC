@@ -175,6 +175,13 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
     int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
     int eval = adjustEvalOnFmr(pos, staticEval);
+
+    //a TT score with a usable bound is a better estimate than the static
+    //eval, so stand on it instead (Stockfish / Ethereal 14)
+    if(ttHit && (   ttBound==HFEXACT
+                || (ttBound==HFBETA  && ttValue > eval)
+                || (ttBound==HFALPHA && ttValue < eval)))
+        eval = ttValue;
     best = eval;
     TRACE_INC(pos, qs_stand_pat_evals);
     alpha = MAX(alpha, eval);
@@ -360,6 +367,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //FMR-deflated eval used for pruning: more pessimistic as the fifty-move
     //draw approaches (Berserk). improving/hindsight keep the raw staticEval.
     int eval = inCheck ? staticEval : adjustEvalOnFmr(pos, staticEval);
+
+    //a TT score whose bound points the right way is a better estimate of
+    //this node than the static eval; use it for the pruning decisions below
+    //(improving / hindsight / correction keep the real static eval)
+    if(ttHit && !inCheck && (   ttBound==HFEXACT
+                            || (ttBound==HFBETA  && ttValue > eval)
+                            || (ttBound==HFALPHA && ttValue < eval)))
+        eval = ttValue;
 
 
     //hindsight depth adjustment based on how much the parent reduced
