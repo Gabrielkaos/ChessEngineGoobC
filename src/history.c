@@ -122,6 +122,95 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
     return total;
 }
 
+//apply one gravity delta to every quiet-history table a move lives in:
+//butterfly (threat-aware), low-ply, pawn-structure and the continuation slots
+static void applyQuietHistoryDelta(S_BOARD *pos,int move,int delta,U64 threats){
+    const int piece = pieceType[pos->pieces[FROMSQ(move)]];
+    const int from  = FROMSQ(move);
+    const int to    = TOSQ(move);
+    int slot,back,pmove,ppiece,pto;
+
+    const int threat_from = (threats & (1ULL << from)) ? 1 : 0;
+    const int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
+
+    histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][piece][to], delta, HistoryDivisor);
+
+    if(pos->ply < LOWPLY_HIST_SLOTS)
+        histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
+                          delta * 712 / 1024, LOWPLY_HIST_MAX);
+
+    {
+        const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
+        const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
+        histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
+                          pBonus, PAWN_HIST_MAX);
+    }
+
+    for(slot=0;slot<CONT_HIST_SLOTS;++slot){
+        back  = ContinuationOffsets[slot];
+        if(pos->ply < back)continue;
+
+        pmove = pos->search->moveStack[pos->ply - back];
+        if(pmove==NOMOVE || pmove==NULLMOVE)continue;
+
+        ppiece = pos->search->pieceStack[pos->ply - back];
+        pto    = TOSQ(pmove);
+
+        histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][piece][to], delta, HistoryDivisor);
+    }
+}
+
+//a capture or promotion was best at this node: every quiet we tried before
+//it was a waste, so push all of them down (Stockfish's quiet malus)
+void penalizeQuiets(S_BOARD *pos,int *moves,int length,int depth){
+    if(length==0)return;
+    if(length==1 && depth <= 3)return;
+
+    U64 threats = allAttackedSquares(pos, pos->side ^ 1);
+    const int bonus = stat_bonus(depth);
+    int index;
+
+    for(index=0;index<length;++index)
+        applyQuietHistoryDelta(pos,moves[index],-bonus,threats);
+}
+
+//this node failed low: the opponent's quiet move that led here refuted us,
+//so reward it in the continuation tables (seen from the plies before it)
+//and in the pawn-structure history (Stockfish's prior countermove bonus)
+void bonusPriorQuiet(S_BOARD *pos,int depth){
+    if(pos->ply < 1)return;
+
+    const int m1 = pos->search->moveStack[pos->ply - 1];
+    if(m1==NOMOVE || m1==NULLMOVE)return;
+    if(pos->st->capturedPiece != EMPTY || PROMOTED(m1) != 0)return;
+
+    const int pc1   = pos->search->pieceStack[pos->ply - 1];
+    const int sq1   = TOSQ(m1);
+    const int bonus = stat_bonus(depth);
+    int slot,back,pmove,ppiece,pto;
+
+    for(slot=0;slot<CONT_HIST_SLOTS;++slot){
+        back = 1 + ContinuationOffsets[slot];
+        if(pos->ply < back)continue;
+
+        pmove = pos->search->moveStack[pos->ply - back];
+        if(pmove==NOMOVE || pmove==NULLMOVE)continue;
+
+        ppiece = pos->search->pieceStack[pos->ply - back];
+        pto    = TOSQ(pmove);
+
+        histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][pc1][sq1], bonus, HistoryDivisor);
+    }
+
+    //a quiet non-pawn move leaves the pawn structure untouched, but pkHash
+    //also hashes the kings, so key by the parent position's hash
+    if(pc1 != p_pawn && pos->st->previous != NULL){
+        const int pIdx = pos->st->previous->pkHash & (PAWN_HIST_SIZE - 1);
+        histGravityUpdate(&pos->shared->pawnHist[pIdx][pc1][sq1],
+                          bonus * 1104 / 1024, PAWN_HIST_MAX);
+    }
+}
+
 void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
 
     int bestMove = moves[length - 1];
@@ -146,47 +235,11 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     if(!(length==1 && depth <= 3)){
 
         U64 threats = allAttackedSquares(pos, pos->side ^ 1);
-        int index,bonus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
+        const int bonus = stat_bonus(depth);
+        int index;
 
-        bonus = stat_bonus(depth);
-
-        for(index=0;index<length;++index){
-            move = moves[index];
-
-            delta = move==bestMove ? bonus:-bonus;
-
-            piece = pieceType[pos->pieces[FROMSQ(move)]];
-            from  = FROMSQ(move);
-            to    = TOSQ(move);
-
-            int threat_from = (threats & (1ULL << from)) ? 1 : 0;
-            int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
-
-            histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][piece][to], delta, HistoryDivisor);
-
-            if(pos->ply < LOWPLY_HIST_SLOTS)
-                histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
-                                  delta * 712 / 1024, LOWPLY_HIST_MAX);
-
-            {
-                const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
-                const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
-                histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
-                                  pBonus, PAWN_HIST_MAX);
-            }
-
-            for(slot=0;slot<CONT_HIST_SLOTS;++slot){
-                back  = ContinuationOffsets[slot];
-                if(pos->ply < back)continue;
-
-                pmove = pos->search->moveStack[pos->ply - back];
-                if(pmove==NOMOVE || pmove==NULLMOVE)continue;
-
-                ppiece = pos->search->pieceStack[pos->ply - back];
-                pto    = TOSQ(pmove);
-
-                histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][piece][to], delta, HistoryDivisor);
-            }
-        }
+        for(index=0;index<length;++index)
+            applyQuietHistoryDelta(pos,moves[index],
+                                   moves[index]==bestMove ? bonus : -bonus,threats);
     }
 }

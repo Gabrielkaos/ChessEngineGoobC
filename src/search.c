@@ -857,12 +857,21 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
-    //update history counters on a fail high for a quiet move
-    if(bestScore>=beta && !moveIsTactical(pos,bestMove))
-        updateHistories(pos,quietsTried,quietsPlayed,depth);
+    if(bestScore>=beta){
+        //fail high: reward the cutoff move and punish the quiets tried
+        //before it. When a capture cut, every quiet we tried was wasted.
+        if(!moveIsTactical(pos,bestMove))
+            updateHistories(pos,quietsTried,quietsPlayed,depth);
+        else
+            penalizeQuiets(pos,quietsTried,quietsPlayed,depth);
 
-    if(bestScore>=beta)
         updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
+    }
+    //fail low: nothing here worked, so the opponent's quiet move that led
+    //to this node was a good refutation. Reward it (Stockfish).
+    else if(bestScore <= oldAlpha && !rootNode){
+        bonusPriorQuiet(pos,depth);
+    }
 
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
