@@ -1,6 +1,18 @@
 #include "history.h"
 #include "attacks.h"
 #include "some_maths.h"
+#include "init.h"
+#include "bitboards.h"
+
+//pkHash also hashes both kings; the pawn history wants the pawn structure
+//alone (Stockfish keys it on pawn_key), otherwise every king step scatters
+//what was learned into a fresh bucket. Strip the two king keys back out.
+INLINE int pawnHistIndex(const S_BOARD *pos){
+    U64 key = pos->st->pkHash
+            ^ pieceKeys[wK][LSBINDEX(pieces_cp(pos, WHITE, KING))]
+            ^ pieceKeys[bK][LSBINDEX(pieces_cp(pos, BLACK, KING))];
+    return (int)(key & (PAWN_HIST_SIZE - 1));
+}
 
 //Stockfish's StatsEntry operator<<: clamp bonus to [-D, D], then apply the
 //gravity formula entry += bonus - entry*|bonus|/D
@@ -12,7 +24,7 @@ INLINE void histGravityUpdate(int16_t *entry,int bonus,int D){
 int getPawnHistory(S_BOARD *pos,int move){
     const int to    = TOSQ(move);
     const int piece = pieceType[pos->pieces[FROMSQ(move)]];
-    const int idx   = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
+    const int idx   = pawnHistIndex(pos);
 
     return pos->shared->pawnHist[idx][piece][to];
 }
@@ -169,7 +181,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
                                   delta * 712 / 1024, LOWPLY_HIST_MAX);
 
             {
-                const int pIdx = pos->st->pkHash & (PAWN_HIST_SIZE - 1);
+                const int pIdx = pawnHistIndex(pos);
                 const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
                 histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
                                   pBonus, PAWN_HIST_MAX);
