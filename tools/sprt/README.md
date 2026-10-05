@@ -89,7 +89,7 @@ expect 1000 to 3000 games for a 5 Elo change.
 3. Patches that only add pruning (`capture-pruning`, `ttcapture-lmr`, `lmr-deeper`) are the
    most likely to need their constants tuned. The constants are all at the top of `search.h`.
 
-Partial result already in hand for the first five ideas combined (`history-updates`,
+Partial result already in hand (measured against the previous main, b33ac56, before the history-formula and tuning commits) for the first five ideas combined (`history-updates`,
 `qsearch-tt-store`, `tt-value-as-eval`, `probcut-tt`, `lmr-deeper`) at 6+0.06:
 294 games, 78-80-136, -6 ± 30 Elo, LLR -0.19. Inconclusive.
 
