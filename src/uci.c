@@ -157,7 +157,7 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
         }
 
     printf("time %d nodes %"PRIu64" hashfull %d tbhits %"PRIu64" ",
-           elapsed, info->nodes, hashfullTT(table), info->tbhits);
+           elapsed, NodesSearchedThreadPool(info), hashfullTT(table), TbHitsThreadPool(info));
 
     //pv printing
     printf("pv");
