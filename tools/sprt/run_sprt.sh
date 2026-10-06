@@ -5,11 +5,12 @@
 #
 #   name         label for the log file            (default: basename of new-binary)
 #   tc           time control                      (default: 6+0.06)
-#   concurrency  games played at the same time     (default: 10, or the CPU count if lower)
+#   concurrency  games played at the same time     (default: 10, or CPUs / THREADS if lower)
 #
 # Environment overrides: ELO0, ELO1 (SPRT hypotheses, default 0 / 5),
 #                        ROUNDS (default 1500 rounds = 3000 games max),
 #                        BOOK (default tools/book.epd), HASH (MB, default 32)
+#                        THREADS (search threads per engine, default 1; use 2+ for SMP changes)
 #
 # The log goes to tools/sprt/logs/<name>.log. Watch it with:
 #   grep -E "Score of|Elo diff|SPRT" tools/sprt/logs/<name>.log | tail -3
@@ -24,10 +25,14 @@ NEW=$(realpath "$NEW"); BASE=$(realpath "$BASE")
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 NAME=${3:-$(basename "$NEW")}
 TC=${4:-6+0.06}
-# more games than CPUs makes the engines share cores, which adds timing noise
+THREADS=${THREADS:-1}
+# more busy search threads than CPUs makes the engines share cores, which adds timing noise
 NCPU=$(nproc 2>/dev/null || echo 10)
-CONC=${5:-$(( NCPU < 10 ? NCPU : 10 ))}
-if [ "$CONC" -gt "$NCPU" ]; then echo "warning: concurrency $CONC is more than the $NCPU CPUs here"; fi
+FIT=$(( NCPU / THREADS > 0 ? NCPU / THREADS : 1 ))
+CONC=${5:-$(( FIT < 10 ? FIT : 10 ))}
+if [ $(( CONC * THREADS )) -gt "$NCPU" ]; then
+    echo "warning: $CONC games x $THREADS threads is more than the $NCPU CPUs here"
+fi
 ELO0=${ELO0:-0}
 ELO1=${ELO1:-5}
 ROUNDS=${ROUNDS:-1500}
@@ -43,14 +48,14 @@ LOG="$ROOT/tools/sprt/logs/$NAME.log"
 
 echo "NEW : $NEW"
 echo "BASE: $BASE"
-echo "tc=$TC concurrency=$CONC sprt=[$ELO0,$ELO1] hash=${HASH}MB book=$(basename "$BOOK")"
+echo "tc=$TC concurrency=$CONC threads=$THREADS sprt=[$ELO0,$ELO1] hash=${HASH}MB book=$(basename "$BOOK")"
 echo "log : $LOG"
 echo
 
 exec "$CUTECHESS" \
   -engine cmd="$NEW"  name=NEW \
   -engine cmd="$BASE" name=BASE \
-  -each proto=uci tc="$TC" option.Hash="$HASH" \
+  -each proto=uci tc="$TC" option.Hash="$HASH" option.Threads="$THREADS" \
   -openings file="$BOOK" format=epd order=random -repeat \
   -rounds "$ROUNDS" -games 2 -concurrency "$CONC" \
   -sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 \

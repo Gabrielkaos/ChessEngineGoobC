@@ -38,8 +38,9 @@ the same compiler flags. Never compare a `native` build against a `universal` on
 tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-history-updates tools/sprt/bin/GOOB-base
 ```
 
-Defaults: 6+0.06 time control, 10 games in parallel (capped at the machine's CPU count; the
-script warns if you ask for more), SPRT bounds [0, 5] Elo, 32 MB hash,
+Defaults: 6+0.06 time control, 10 games in parallel (capped at the machine's CPU count divided
+by `THREADS`; the script warns if you ask for more), 1 search thread per engine, SPRT bounds
+[0, 5] Elo, 32 MB hash,
 `tools/book.epd` openings with colors swapped every pair. Change them positionally or
 through environment variables:
 
@@ -49,6 +50,9 @@ tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-lmr-deeper tools/sprt/bin/GOOB-base l
 
 # non-regression test (is the change at least not worse?)
 ELO0=-5 ELO1=0 tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-pawn-history-key tools/sprt/bin/GOOB-base
+
+# Lazy SMP change: both engines search with 2 threads (concurrency defaults to CPUs / 2)
+THREADS=2 tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-smp-node-counters tools/sprt/bin/GOOB-base
 ```
 
 The log is written to `tools/sprt/logs/<name>.log`. The match stops on its own when the SPRT
