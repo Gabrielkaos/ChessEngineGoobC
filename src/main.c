@@ -27,8 +27,12 @@ int main(int argc, char *argv[])
     AllInit();
 
     S_BOARD pos[1];
-    pos->search = alloc_search_thread();
     S_SEARCHINFO info[1];
+    //start from zero: fields no command sets explicitly used to be read as
+    //stack garbage (e.g. the command line bench ran with random options)
+    memset(pos, 0, sizeof(S_BOARD));
+    memset(info, 0, sizeof(S_SEARCHINFO));
+    pos->search = alloc_search_thread();
     info->quit=FALSE;
     info->threadNum = 1;
 
@@ -49,6 +53,7 @@ int main(int argc, char *argv[])
     //init some stacks and minor tables
 	initStacks(pos);
 	resetContinuationTable(pos);
+	InitUciDefaults(pos, info);
 
     setbuf(stdin, NULL);
     setbuf(stdout, NULL);

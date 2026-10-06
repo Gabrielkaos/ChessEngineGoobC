@@ -285,6 +285,26 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     return 0;
 }
 
+//A game longer than stateTable (MAXGAMESMOVES states) used to write past its
+//end. Repetition detection never looks further back than the fifty-move
+//counter (nor does the Syzygy root probe), so keep the newest half of the
+//history, move it to the front and relink it. gamePlyOffset keeps
+//hisPly + gamePlyOffset equal to the real game ply.
+void compactStateHistory(S_BOARD *pos){
+    int keep  = MAXGAMESMOVES / 2;
+    int first = pos->hisPly - keep + 1;   // oldest state kept
+    if(first <= 0) return;
+
+    memmove(&pos->stateTable[0], &pos->stateTable[first], keep * sizeof(StateInfo));
+    pos->stateTable[0].previous = NULL;
+    for(int i = 1; i < keep; ++i){
+        pos->stateTable[i].previous = &pos->stateTable[i-1];
+    }
+    pos->hisPly        -= first;
+    pos->gamePlyOffset += first;
+    pos->st             = &pos->stateTable[pos->hisPly];
+}
+
 void ResetBoard(S_BOARD *pos){
     pos->st = &pos->stateTable[0];
     memset(pos->st, 0, sizeof(StateInfo));
@@ -313,6 +333,7 @@ void ResetBoard(S_BOARD *pos){
     pos->st->castleRights=0;
     pos->ply=0;
     pos->hisPly=0;
+    pos->gamePlyOffset=0;
 
     pos->st->posKey=0ULL;
     pos->st->pkHash=0ULL;

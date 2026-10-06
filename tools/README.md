@@ -101,7 +101,7 @@ The tooling is divided into three primary operational domains:
 ### 7. SPRT Testing Suite ([`tools/sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt))
 * **Purpose:** Automated engine strength and regression testing harness comparing modified engine builds against a baseline version.
 * **Key Components:**
-  * [`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh): Cutechess-cli runner executing SPRT matches with standard parameters (default 6+0.06s time control, 6 parallel threads, 32MB hash, UHO/EPD openings).
+  * [`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh): Cutechess-cli runner executing SPRT matches with standard parameters (default 6+0.06s time control, 10 concurrent games capped at the CPU count, 32MB hash, `tools/book.epd` openings).
   * [`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py): Fast 12-position fixed-depth sanity benchmark verifying node counts, move stability, and lack of crashes.
   * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md): Detailed testing guide, SPRT hypothesis bounds, and branch merge guidelines.
 * **Usage:**

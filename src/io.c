@@ -93,7 +93,7 @@ void printFen(const S_BOARD *pos,char *fen){
     }
 
 
-    sprintf(fen," %d %d",pos->st->fiftyMove,1+(pos->hisPly-(pos->side==BLACK))/2);
+    sprintf(fen," %d %d",pos->st->fiftyMove,1+(pos->hisPly+pos->gamePlyOffset-(pos->side==BLACK))/2);
 }
 
 int ParseMove(char *ptrChar, S_BOARD *pos){

@@ -667,6 +667,12 @@ void BenchTest(int depth,S_BOARD *pos){
     S_MOVELIST list[1];
     GenerateAllMovess(pos,list);
 
+    //makeMoves/takeMoves use hisPly only as the index of their undo stack
+    //(search->history[MAXGAMESMOVES]); start it at 0 so a long game can't
+    //push it past the end
+    int savedHisPly = pos->hisPly;
+    pos->hisPly = 0;
+
     int moveNum;
     for(moveNum=0;moveNum<list->count;++moveNum){
         if(!makeMoves(pos,list->moves[moveNum].move)){
@@ -675,6 +681,7 @@ void BenchTest(int depth,S_BOARD *pos){
         Bench(depth-1,pos);
         takeMoves(pos);
     }
+    pos->hisPly = savedHisPly;
     printf("Nodes: %"PRIu64"\n",leafNodes);
 
 

@@ -133,7 +133,7 @@ void UciReport(const S_SEARCHINFO *info, S_PVTABLE *table,S_BOARD *pos,int alpha
                 static const double as[4] = {0.01538655, -1.33196512, 7.43032607, 152.07701643};
                 static const double bs[4] = {-2.66442843, 18.35463702, -38.91760538, 56.27652511};
 
-                int ply = pos->hisPly;
+                int ply = pos->hisPly + pos->gamePlyOffset;
                 if (ply < 0) ply = 0;
                 if (ply > 240) ply = 240;
                 double m = (double)ply / 64.0;
@@ -448,7 +448,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
             if (timeLeft < 1) timeLeft = 1;
             
             double optScale, maxScale;
-            int ply = pos->hisPly;
+            int ply = pos->hisPly + pos->gamePlyOffset;
             
             if (movestogo == 0) {
                 double timeForLog = time > 1 ? (double)time : 1.0;
@@ -560,6 +560,7 @@ void parsePosition(char* lineIn,S_BOARD *pos){
             if(!*ptrChar) break;
             move = ParseMove(ptrChar, pos);
             if(move == NOMOVE) break;
+            if(pos->hisPly + 1 >= MAXGAMESMOVES) compactStateHistory(pos);
             makeMove(pos, move, &pos->stateTable[pos->hisPly + 1]);
             pos->ply = 0;
             while(*ptrChar && *ptrChar != ' ') ptrChar++;
@@ -595,12 +596,15 @@ void uciPrint(){
 }
 
 
-void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
+//option defaults, shared by the UCI loop and the command line bench (which
+//never enters the UCI loop and used to search with whatever was on the stack)
+void InitUciDefaults(S_BOARD *pos,S_SEARCHINFO *info){
     pos->useFiftyMoveRule        =TRUE;
     EngineOptions->analysisMode  =FALSE;
 	EngineOptions->uciElo        =defaultElo;
 	info->setOptionPonder        =FALSE;
 	info->nodeSet                =FALSE;
+	info->EloNodeSet             =FALSE;
 	info->bruteForceMode         =FALSE;
 	info->multiPV                =1;
 	info->originalTimeAdjust     =-1.0;
@@ -611,6 +615,10 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
     info->showWDL                =FALSE;
+}
+
+void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
+    InitUciDefaults(pos, info);
 
     ParseFEN(START_FEN, pos);
 

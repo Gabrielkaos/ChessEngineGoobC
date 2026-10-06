@@ -135,9 +135,7 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
 }
 
 void trace_finish_search(void) {
-    trace_aggregate_thread(&g_current_trace); // Add current to cumulative
-    // Wait: ADD_TRACE_FIELD in trace_aggregate_thread added to g_current_trace.
-    // To add g_current_trace to g_cumulative_trace:
+    // Add the finished search (already summed over threads) to the cumulative totals
     SearchTrace *dst = &g_cumulative_trace;
     const SearchTrace *src = &g_current_trace;
 
@@ -574,6 +572,10 @@ void run_bench(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table, int depth) {
         info->ponder = FALSE;
         info->stopped = FALSE;
         info->depthOneComplete = FALSE;
+        //the rest of what parseGo sets for "go depth N"
+        info->analyzeMode = EngineOptions->analysisMode;
+        info->mateLimit = -1;
+        info->EloNodelimit = info->EloNodeSet==TRUE ? nodesLimitForUci(EngineOptions->uciElo) : 0;
 
         int t0 = getTimeMs();
 
