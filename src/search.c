@@ -1146,7 +1146,9 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     bestRootPv.count = 0;
 
     int prevBestMove        = NOMOVE;
+    int lastBestMoveDepth   = 0;     //depth at which the best move last changed
     double bestMoveChanges  = 0.0;
+    double timeReduction    = 1.0;   //best move stability term of the time manager
 
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
@@ -1313,6 +1315,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 if(prevBestMove != NOMOVE && workerthread->bestMove != prevBestMove){
                     bestMoveChanges += 1.0;
                 }
+                //before prevBestMove is overwritten: comparing afterwards (as
+                //the time check below used to) can never see a change
+                if(workerthread->bestMove != prevBestMove)
+                    lastBestMoveDepth = currentDepth;
                 prevBestMove = workerthread->bestMove;
             }
         }
@@ -1353,10 +1359,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             if(info->depthSet && currentDepth>=info->depth)break;
 
             if(threadNum==0 && info->softTimeSet && currentDepth > 4 && !info->stopOnPonderhit){
-                
-                if(prevBestMove == NOMOVE || workerthread->bestMove != prevBestMove)
-                    info->lastBestMoveDepth = currentDepth;
-                
+
                 int iterIdx = currentDepth & 3;
                 
                 //falling eval: is the score dropping compared to the previous move's
@@ -1369,7 +1372,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 
                 //reduction: time saved if the best move has been stable a while,
                 //with hysteresis carried from the previous move via previousTimeReduction
-                double timeReduction = (info->lastBestMoveDepth + 8 < currentDepth) ? 1.4857 : 0.7046;
+                timeReduction = (lastBestMoveDepth + 8 < currentDepth) ? 1.4857 : 0.7046;
                 double reduction = (1.4540 + info->previousTimeReduction) / (2.1593 * timeReduction);
                 
                 //instability: widen the budget if the root best move keeps flipping
@@ -1403,8 +1406,6 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                         break;
                     }
                 }
-                
-                info->previousTimeReduction = timeReduction;
             }
 
             //mate limits
@@ -1436,6 +1437,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
     }
     if (threadNum == 0) {
+        //the stability hysteresis is per move, so it is only stored once the
+        //search is over (storing it every iteration fed each depth's value into
+        //the next depth instead of into the next move, unlike Stockfish)
+        info->previousTimeReduction = timeReduction;
         if (!info->ponder) {
             info->bestPreviousScore = pvScore[0];
             //running average: smooth the fallingEval TM signal across moves
