@@ -54,6 +54,9 @@ int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
 }
 
 void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth){
+    //no bonus from depth 0 nodes, see updateHistories
+    if(depth <= 0) return;
+
     const int bonus = stat_bonus(depth);
     // Compute threats once per update
     U64 threats = allAttackedSquares(pos, pos->side ^ 1);
@@ -155,7 +158,11 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
         pos->shared->followupTable[pos->side][fmPiece][fmTo] = bestMove;
     }
 
-    if(!(length==1 && depth <= 3)){
+    //depth 0 only happens at in-check nodes past the horizon, where
+    //stat_bonus() turns negative (-118) and would reward the moves that
+    //failed and punish the cutoff move. Those nodes update no histories
+    //(Stockfish searches them in qsearch, which updates none either).
+    if(depth > 0 && !(length==1 && depth <= 3)){
 
         U64 threats = allAttackedSquares(pos, pos->side ^ 1);
         int index,bonus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
