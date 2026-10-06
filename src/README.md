@@ -72,7 +72,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Continuation history across 4 slots (1, 2, 4, 6 plies back).
   * Low-ply butterfly history (first 5 plies near the root).
   * Pawn history indexed strictly by pawn structure Zobrist key (king zobrist keys stripped from `pkHash` via `pawnHistIndex()`).
-  * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`.
+  * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`. History updates are gated at depth $> 0$ to prevent inverted bonuses/maluses on horizon check evasions.
 
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c#L21) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
@@ -104,8 +104,8 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
-  * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability, root effort), and single legal move cutoff.
-  * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1705) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1787).
+  * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability via local `lastBestMoveDepth`, root effort), and single legal move cutoff.
+  * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1705) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1787). Thread-local node and tablebase hit counters written atomically and aggregated via `NodesSearchedThreadPool()` and `TbHitsThreadPool()` to prevent SMP cache-line contention.
 * **[`pvtable.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h) / [`pvtable.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.c):** Transposition Table with 4-entry buckets (64 bytes per bucket). Uses lockless SMP key packing:
   $$\text{key}_{32} = \text{posKey} \oplus (\text{posKey} \gg 32) \oplus \text{smp\_data} \oplus (\text{smp\_data} \gg 32)$$
   Includes hardware prefetching [`prefetchTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L23) triggered directly after move execution.

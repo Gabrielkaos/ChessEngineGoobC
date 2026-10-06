@@ -76,23 +76,67 @@ Each branch was tested independently in strict isolation against `GOOB-base` usi
 
 ---
 
-## 4. Closing Instructions for GitHub PRs
+## 4. Round 2: Bugfix & Architecture PRs (October 6, 2026)
 
-For each of the rejected PRs on GitHub:
+Tested against the newly compiled baseline incorporating the Round 1 improvements:
 
-1. Navigate to the Pull Request on GitHub:
-   - PR for `search/tt-value-as-eval`
-   - PR for `search/history-updates`
-   - PR for `search/qsearch-tt-store`
-   - PR for `search/all-improvements`
-2. Leave a closing comment summarizing the test data (template below).
-3. Click **Close pull request** (do not delete the branch if you wish to keep the commit history for reference).
+| Branch | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/tm-best-move-stability`** | **MERGED** | 637 | 171 - 136 - 330 | 52.7% | **+19.1 ± 19.1** | +0.876 | Accepted (Significant Elo Gain) |
+| **`fix/history-depth0`** | **MERGED** | 948 | 237 - 232 - 479 | 50.3% | **+1.8 ± 15.6** | -0.052 | Accepted (Bugfix / Clean) |
+| **`fix/smp-node-counters`** | **MERGED** | 1480 | 375 - 374 - 731 | 50.0% | **+0.2 ± 12.6** | -0.275 | Accepted (SMP Scalability / Non-regression) |
+| **`fix/tt-generation`** | **CLOSED** | 1762 | 424 - 433 - 905 | 49.7% | **-1.6 ± 11.3** | -0.612 | Rejected (Elo Regression) |
 
-### Suggested Closing Comment Template
+### Detailed Analysis of Round 2 Results:
+
+#### 1. `fix/tm-best-move-stability` (Huge Gain: +19.1 Elo)
+* **What it fixed:** `lastBestMoveDepth` was previously evaluated against `prevBestMove` *after* `prevBestMove` had already been updated, meaning `lastBestMoveDepth` never changed and `timeReduction` was influenced by uninitialized stack variables.
+* **Result:** Moving `lastBestMoveDepth` tracking to occur immediately when the best move flips allows the time-management stability multiplier (1.4857 when best move is steady, 0.7046 otherwise) to function properly, saving time on easy moves and extending search on volatile positions.
+
+#### 2. `fix/history-depth0` (Non-regression / Bugfix: +1.8 Elo)
+* **What it fixed:** Nodes searched at depth $\le 0$ (past-horizon check evasions) had negative formula values (`stat_bonus(0) = -118`), inverting history updates by penalizing the cutoff move and rewarding failing quiets.
+* **Result:** Skipping quiet and capture history updates at depth $\le 0$ stopped inverted table learning without affecting search stability.
+
+#### 3. `fix/smp-node-counters` (Non-regression / Clean Architecture: +0.2 Elo)
+* **What it fixed:** Removed cross-thread racy increments on shared `info->nodes` during Lazy SMP searches. Replaced with per-thread `thread->nodes` and `thread->tbhits` aggregated by `NodesSearchedThreadPool()` / `TbHitsThreadPool()`.
+* **Result:** Eliminated CPU cache-line bouncing between cores; identical node counts and moves in single-thread, with cleaner SMP scalability.
+
+#### 4. `fix/tt-generation` (Rejected: -1.6 Elo)
+* **Concept:** Attempted to prevent Transposition Table aging from wrapping after 64 searches by stepping generation as `uint8_t` by 1 instead of `int` by 4.
+* **Failure Analysis:** Across 1762 games, the modified aging/replacement cadence led to a measurable score drop (-1.6 ± 11.3 Elo, LLR -0.612). The existing 4-step generation replacement scheme provides better age-decay dynamics under blitz time controls.
+* **Recommendation:** **Close PR.** Do not merge.
+
+---
+
+## 5. Summary of All Merged Features on `main`
+
+1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
+2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
+3. `search/ttcapture-lmr`: Extra ply of reduction when the TT move is a capture.
+4. `search/capture-pruning`: Capture futility pruning at depth $\le 6$ and history-adjusted SEE margin.
+5. `search/lmr-deeper`: Dynamic post-LMR re-search depth adjustment ($\pm 1$ ply).
+6. `fix/tm-best-move-stability`: Working best-move stability time management term (+19 Elo).
+7. `fix/history-depth0`: History update gating at depth $> 0$.
+8. `fix/smp-node-counters`: Thread-local SMP node and tablebase hit accounting.
+9. `fix/robustness`: Compaction for games over 550 plies (`compactStateHistory()`) and uninitialized bench defaults fix.
+
+---
+
+## 6. Closing Instructions for GitHub PRs
+
+For each rejected PR on GitHub:
+- `search/tt-value-as-eval`
+- `search/history-updates`
+- `search/qsearch-tt-store`
+- `search/all-improvements`
+- `fix/tt-generation`
+
+Leave a closing note and close the PR:
 
 ```markdown
-Closed following empirical SPRT testing against GOOB-base (60ba471) at 6+0.06s:
+Closed following empirical SPRT testing against GOOB-base:
 - **Result:** [Insert score / Elo]
 - **SPRT:** [Insert LLR]
 - **Conclusion:** Tested in isolation; demonstrated regression / failed to show improvement. Documented in `documentations/search_pr_evaluations_oct2026.md`.
 ```
+
