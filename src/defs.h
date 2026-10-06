@@ -163,7 +163,7 @@ typedef struct{
 typedef struct{
     S_PVBUCKET *pTable;
     int numEntries;
-    int generation;
+    uint8_t generation; //same width as S_PVENTRY::generation so both wrap together
 } S_PVTABLE;
 
 //Move list
