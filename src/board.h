@@ -109,6 +109,7 @@ typedef struct S_BOARD {
     StateInfo stateTable[MAXGAMESMOVES];
     S_SEARCH_THREAD *search;
     int hisPly; //total number of moves played on the board
+    int gamePlyOffset; //plies dropped from stateTable by compactStateHistory(); game ply = hisPly + gamePlyOffset
     int useFiftyMoveRule; //flag
 
 
@@ -156,5 +157,6 @@ extern void updateListMaterial(S_BOARD *pos);
 extern void MirrorBoard(S_BOARD *pos);
 extern void update_slider_blockers(S_BOARD *pos, int c);
 extern void set_check_info(S_BOARD *pos);
+extern void compactStateHistory(S_BOARD *pos);
 
 #endif

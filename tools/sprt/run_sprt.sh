@@ -5,7 +5,7 @@
 #
 #   name         label for the log file            (default: basename of new-binary)
 #   tc           time control                      (default: 6+0.06)
-#   concurrency  games played at the same time     (default: 10)
+#   concurrency  games played at the same time     (default: 10, or the CPU count if lower)
 #
 # Environment overrides: ELO0, ELO1 (SPRT hypotheses, default 0 / 5),
 #                        ROUNDS (default 1500 rounds = 3000 games max),
@@ -24,7 +24,10 @@ NEW=$(realpath "$NEW"); BASE=$(realpath "$BASE")
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 NAME=${3:-$(basename "$NEW")}
 TC=${4:-6+0.06}
-CONC=${5:-10}
+# more games than CPUs makes the engines share cores, which adds timing noise
+NCPU=$(nproc 2>/dev/null || echo 10)
+CONC=${5:-$(( NCPU < 10 ? NCPU : 10 ))}
+if [ "$CONC" -gt "$NCPU" ]; then echo "warning: concurrency $CONC is more than the $NCPU CPUs here"; fi
 ELO0=${ELO0:-0}
 ELO1=${ELO1:-5}
 ROUNDS=${ROUNDS:-1500}

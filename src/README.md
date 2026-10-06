@@ -18,6 +18,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 * **Board Representation:** Little-Endian Rank-File (A1 = 0, H8 = 63) bitboards (`byTypeBB` for piece types 1..6, `byColorBB` for white/black occupancy) paired with an 8-bit mailbox array (`pieces[64]`).
 * **State Management:** Linked [`StateInfo`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L83-L99) nodes (`pos->st->previous`). Rolling back moves via [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480) restores the pointer without recomputing Zobrist keys, 50-move counters, castling permissions, or en-passant squares.
+  The game history lives in `stateTable[MAXGAMESMOVES]` (550 states). When a `position ... moves` list outgrows it, [`compactStateHistory()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c) keeps the newest 275 states (repetition detection never looks further back than the fifty-move counter) and `gamePlyOffset` keeps `hisPly + gamePlyOffset` equal to the real game ply for time management, WDL output and FENs.
 * **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L151-L224) using pin and king-ray masks without making/unmaking moves.
 * **Evaluation:** Schoenemann-0.5.0 style NNUE architecture:
   * Topology: `(768 -> 1024)x2 -> 1x8 buckets` with Squared Clipped ReLU (SCReLU) activation.
@@ -204,6 +205,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 * `perfttest`: Runs the built-in perft test suite across multiple positions.
 * `trace <bench|print|json|reset>`: Controls the search telemetry tracking system.
 * `compiler`: Prints compiler flags and detected host ISA capabilities.
+* `bench [depth]`: As a command line argument (`GOOB-2.2-BETA-native bench 8`) or typed before `uci`: runs the 30-position fixed-depth benchmark (default depth 8) with the default UCI options. Its node count matches `trace bench` inside UCI mode.
 
 ---
 

@@ -38,7 +38,8 @@ the same compiler flags. Never compare a `native` build against a `universal` on
 tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-history-updates tools/sprt/bin/GOOB-base
 ```
 
-Defaults: 6+0.06 time control, 6 games in parallel, SPRT bounds [0, 5] Elo, 32 MB hash,
+Defaults: 6+0.06 time control, 10 games in parallel (capped at the machine's CPU count; the
+script warns if you ask for more), SPRT bounds [0, 5] Elo, 32 MB hash,
 `tools/book.epd` openings with colors swapped every pair. Change them positionally or
 through environment variables:
 

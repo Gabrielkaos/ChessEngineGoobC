@@ -8,6 +8,7 @@ extern U64 nodesLimitForUci(int elo);
 extern int getInput(char *str);
 extern int strEquals(char *str1, char *str2);
 extern int strStartsWith(char *str, char *key);
+extern void InitUciDefaults(S_BOARD *pos,S_SEARCHINFO *info);
 extern void UCILoop(S_BOARD *pos,S_SEARCHINFO *info);
 extern void parsePosition(char* lineIn, S_BOARD *pos);
 extern void UciReportCurrentMove(int depth,int move,int currmovenumber);
