@@ -31,7 +31,7 @@ What it cannot fix
   Regenerating with the fixed prepare_data.py is the only complete fix.
 
 Usage (inputs are never modified):
-    python clean_cache.py --train ../data/train1.bin --val ../data/val1.bin \\
+    python clear_cache.py --train ../data/train1.bin --val ../data/val1.bin \\
         --out-dir ../data/clean [--shuffle]
 Writes <out-dir>/train.bin and <out-dir>/val.bin. It streams the train file
 in chunks: memory use is about 1 GB plus the val set, and it needs disk space

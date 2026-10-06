@@ -50,15 +50,15 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * [`GenerateAllMoves()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L31): Full pseudo-legal generator.
   * [`GenerateAllNoisy()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L428): Captures and promotions only.
   * [`GenerateAllQuiet()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L807): Non-tactical moves only.
-  * [`moveIsPseudoLegal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L876): Rapid pseudo-legality validator for killer and counter moves.
+  * [`moveIsPseudoLegal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L691): Rapid pseudo-legality validator for TT, killer, counter and follow-up moves.
 
 ### Move Ordering & History Heuristics
 * **[`movepicker.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.h) / [`movepicker.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.c):** Staged move selection:
   1. Hash move from Transposition Table.
   2. Winning & equal noisy moves:
-     * Scaled victim values (`MVVAugment`: Pawn 10k, Minor 30k, Rook 50k, Queen 90k) combined with actual attacker LVA piece-value subtraction (100–1300 cp) and capture history.
-     * Queen promotions prioritized (+64,000 boost), Knight promotions boosted (+15,000), and Bishop/Rook underpromotions penalized (-50,000) so they do not clog good noisies before quiets.
-     * Gated by Static Exchange Evaluation (SEE $\ge$ threshold).
+     * Score = capture history + a victim bonus (`MVVAugment`: Pawn 700, Knight/Bishop 3150, Rook 4725, Queen 9100; quiet promotions count as a pawn victim). There is no attacker (LVA) term here.
+     * `getCaptureHistory()` adds +64,000 to queen promotions; knight promotions get +15,000 and Bishop/Rook underpromotions -50,000 so they do not clog good noisies before quiets.
+     * Gated by Static Exchange Evaluation (SEE $\ge$ threshold, 0 in the main search); failures are deferred to the bad noisy stage.
   3. Killer moves 1 & 2 (with duplicate elimination ensuring `killer2 != killer1`).
   4. Counter move (keyed by opponent's previous move).
   5. Followup move (keyed by own move 2 plies ago).
@@ -78,7 +78,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
   * Schoenemann 0.5.0 NNUE architecture inference engine.
   * AVX-512, AVX2, and scalar forward passes with exact and fast int16 dot-product kernels.
-  * Lazy accumulator updates through [`nnue_update_perspective_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h#L557) with fallbacks to full refresh when beyond `NNUE_REFRESH_THRESHOLD` (8 plies).
+  * Lazy accumulator updates through [`nnue_update_perspective_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h#L557) with fallbacks to full refresh when beyond `NNUE_REFRESH_THRESHOLD` (32 plies) or when no ancestor accumulator is computed.
   * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option).
 * **[`correction_types.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction_types.h), [`correction.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.h) / [`correction.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.c):** Four-table correction history blending pawn structure, minor pieces, non-pawn material per color, and 2-ply / 4-ply continuation corrections into static evaluations.
 
@@ -103,8 +103,8 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
-  * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1102): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability, root effort), and single legal move cutoff.
-  * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1672) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1754).
+  * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability, root effort), and single legal move cutoff.
+  * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1705) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1787).
 * **[`pvtable.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h) / [`pvtable.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.c):** Transposition Table with 4-entry buckets (64 bytes per bucket). Uses lockless SMP key packing:
   $$\text{key}_{32} = \text{posKey} \oplus (\text{posKey} \gg 32) \oplus \text{smp\_data} \oplus (\text{smp\_data} \gg 32)$$
   Includes hardware prefetching [`prefetchTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L23) triggered directly after move execution.
@@ -119,22 +119,22 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`perft.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.h) / [`perft.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.c):** Standard and bulk move generation testing (`perft`, `uperft`, and `perfttest` test suites).
 * **[`cpu.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.h) / [`cpu.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.c):** Runtime CPU instruction set detection (POPCNT, BMI2, AVX2, AVX-512) for dynamic dispatch.
 * **[`thread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/thread.h), [`tinycthread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.h) / [`tinycthread.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c):** Cross-platform C11 threads emulation on POSIX `pthread` and Windows Win32 thread APIs.
-* **[`recog.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h):** Specialized endgame draw recognition (KQK, KBK, KNK, opposite-colored bishops, etc.).
+* **[`recog.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h):** Draw recognition used by the search ([`recog_draw()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L72)): fifty-move rule (when `useFiftyMoveRule` is on), Stockfish-style repetition (a 2-fold inside the search tree or any 3-fold), insufficient material (bare kings, a lone minor, two knights) and the wrong-coloured-bishop / rook-pawn fortress once the defending king reaches the promotion corner.
 * **[`io.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.h) / [`io.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.c):** Formatting and parsing for moves, squares, and FEN strings.
-* **[`misc.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.h) / [`misc.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c):** System timing (`getTimeMs()`), input listener threads.
+* **[`misc.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.h) / [`misc.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c):** Wall-clock timing (`getTimeMs()`).
 * **[`some_maths.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/some_maths.h):** Utility math functions (`MIN`, `MAX`, `floorPowerOf2`).
 * **[`validate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/validate.h) / [`validate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/validate.c):** Debug assertions for squares, moves, sides, and pieces.
-* **[`main.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/main.c):** Entry point. Initializes subsystems via [`AllInit()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/init.c#L18), handles CLI arguments, and hands execution over to [`Uci_Loop()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c#L599).
+* **[`main.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/main.c):** Entry point. Initializes subsystems via [`AllInit()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/init.c#L49), handles CLI arguments, and hands execution over to [`UCILoop()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c#L598).
 
 ---
 
 ## Subdirectories & Assets
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
-* **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE binary weights:
-  * `quantised.bin`: Default production network embedded directly into the binary.
-  * `quantised_ft.bin`: Fine-tuned network checkpoint.
-  * `quantised-200m.bin`, `quantised-300m.bin`: Historical evaluation network checkpoints.
+* **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
+  * `quantised.bin`: Production network, embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
+  * `pknet.bin`: Left over from the earlier PKNet evaluation; no current code reads it.
+* **`models/`:** An older release binary kept for comparison (untracked).
 * **[`others/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/others/):** Commit history logs and development test outputs.
 
 ---
@@ -202,6 +202,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 * `perft <depth>`: Runs move generation perft to the specified depth.
 * `uperft <depth>`: Fast bulk perft test.
 * `perfttest`: Runs the built-in perft test suite across multiple positions.
+* `test` (typed before `uci`): Runs the transposition table bucket replacement unit tests.
 * `trace <bench|print|json|reset>`: Controls the search telemetry tracking system.
 * `compiler`: Prints compiler flags and detected host ISA capabilities.
 
