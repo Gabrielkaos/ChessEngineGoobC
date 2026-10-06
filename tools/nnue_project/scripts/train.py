@@ -5,7 +5,7 @@ Example:
     python train.py --train ../data/train1.bin --val ../data/val1.bin \
         --epochs 20 --batch-size 8192 --lr 1e-3 --resume
 
-A file larger than RAM: pre-shuffle it once (clean_cache.py --shuffle), then
+A file larger than RAM: pre-shuffle it once (clear_cache.py --shuffle), then
     python train.py --train ../data/clean/train.bin --val ../data/clean/val.bin \
         --shuffle-batches --resume
 
@@ -67,7 +67,7 @@ class ResumableBatchSampler(Sampler):
     Modes:
       shuffle          a fresh permutation of all positions every epoch
       shuffle_batches  fixed contiguous batches, visited in a fresh order every
-                       epoch; for a file pre-shuffled on disk (clean_cache.py
+                       epoch; for a file pre-shuffled on disk (clear_cache.py
                        --shuffle) that does not fit in RAM, since every batch
                        is then a single sequential read
       neither          file order
@@ -188,7 +188,7 @@ def main():
         "--shuffle-batches",
         action="store_true",
         help="Shuffle the order of fixed, contiguous batches instead of single positions "
-             "(overrides --shuffle). Use with a file pre-shuffled by clean_cache.py --shuffle "
+             "(overrides --shuffle). Use with a file pre-shuffled by clear_cache.py --shuffle "
              "that is larger than RAM: each batch becomes one sequential read.",
     )
     ap.add_argument("--seed", type=int, default=0, help="Seed for the per-epoch shuffle")

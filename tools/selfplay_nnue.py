@@ -3,14 +3,18 @@
 Self-play dataset generation for GOOB NNUE training.
 
 Plays self-play games starting from an opening book (e.g. UHO unbalanced human openings),
-evaluates positions using the engine, and filters positions strictly matching the
-filtering logic and defaults in tools/nnue_project/scripts/prepare_data.py.
+evaluates positions using the engine, and filters positions with the same kind of
+filters as tools/nnue_project/scripts/prepare_data.py.
 
 Data is formatted directly into 68-byte packed binary records (train/val .bin files)
 ready for training with tools/nnue_project/scripts/train.py.
 
-Key Filtering (copied from prepare_data.py defaults):
-  - Minimum search depth: 20 (rejects depth < 20)
+Search: by default every move is played with `go nodes 5000` (--play-nodes) and that
+search's score labels the position; --play-nodes 0 searches each move to --depth (16),
+and --rescore re-searches the kept positions to --depth at the end of each game.
+
+Key Filtering (defaults):
+  - Minimum search depth: --min-depth, 0 by default (prepare_data.py uses 20)
   - No mate scores (forced mate scores are excluded unless --keep-mate is passed)
   - Max centipawn eval: 3000 (positions with |cp| > 3000 are rejected as lopsided)
   - Quiet positions only:

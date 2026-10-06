@@ -59,15 +59,15 @@ HEURISTIC_RULES = [
         "sub_key": "rate",
         "min_pct": 20.0,
         "max_pct": 45.0,
-        "constants": "BetaMargin(85), BetaPruningDepth(8)",
-        "file": "src/search.h:52-53",
+        "constants": "BetaMargin(75), BetaPruningDepth(8)",
+        "file": "src/search.h:51-52",
         "advice_low": (
             "RFP trigger rate is low. NNUE score scaling might be tighter than HCE. "
-            "Consider lowering BetaMargin (e.g., from 85 down to 60-75) or testing dynamic margins."
+            "Consider lowering BetaMargin (currently 75) or testing dynamic margins."
         ),
         "advice_high": (
             "RFP trigger rate is unusually high (>45%). It may be cutting too aggressively. "
-            "Consider increasing BetaMargin (e.g., 90-110) to avoid tactical blindness."
+            "Consider increasing BetaMargin (currently 75) to avoid tactical blindness."
         )
     },
     {
@@ -77,7 +77,7 @@ HEURISTIC_RULES = [
         "min_pct": 45.0,
         "max_pct": 75.0,
         "constants": "defaultNullMoveDepth(2), NMPVerifyDepth(16)",
-        "file": "src/search.h:41,68",
+        "file": "src/search.h:40,67",
         "advice_low": "NMP cutoff rate is low. Check verification conditions or static eval scaling.",
         "advice_high": "NMP cutoff rate is very high (>75%). Ensure zugzwang and tactical safety checks are intact."
     },
@@ -87,12 +87,11 @@ HEURISTIC_RULES = [
         "sub_key": "rate",
         "min_pct": 1.5,
         "max_pct": 10.0,
-        "constants": "RazoringDepth(2), RazorMarginBase(316), RazorMarginCoeff(259)",
-        "file": "src/search.h:56-58",
+        "constants": "RazoringDepth(2), RazorMarginBase(240), RazorMarginCoeff(160)",
+        "file": "src/search.h:55-57",
         "advice_low": (
-            "Razoring trigger rate is <1.5%. At depth 1 margin is 575 cp; at depth 2 it is 834 cp. "
-            "These huge classical margins rarely match NNUE's calibrated evaluation range. "
-            "Try tuning RazorMarginBase down to ~180-240 and RazorMarginCoeff to ~120-180."
+            "Razoring trigger rate is <1.5%. The margin is RazorMarginBase + RazorMarginCoeff * depth^2: "
+            "400 cp at depth 1 and 880 cp at depth 2. Smaller values razor more often."
         ),
         "advice_high": "Razoring rate is very high. Ensure it is not razoring tactical positions."
     },
@@ -103,7 +102,7 @@ HEURISTIC_RULES = [
         "min_pct": 15.0,
         "max_pct": 45.0,
         "constants": "probCutDepth(5), probCutMargin(80)",
-        "file": "src/search.h:28,30",
+        "file": "src/search.h:27,29",
         "advice_low": (
             "ProbCut cutoff rate is low or 0. If search depth < 5, ProbCut never activates. "
             "If searching depth >= 8 and rate is low, probCutMargin(80) may need adjustment for NNUE scale."
@@ -116,12 +115,11 @@ HEURISTIC_RULES = [
         "sub_key": "rate",
         "min_pct": 3.0,
         "max_pct": 20.0,
-        "constants": "FutilityMargin(65), FutilityMarginNoHistory(210), Depth(8)",
-        "file": "src/search.h:33-35",
+        "constants": "FutilityMargin(65), FutilityMarginNoHistory(110), Depth(8)",
+        "file": "src/search.h:32-34",
         "advice_low": (
-            "Futility skipQuiets trigger rate is very low (~1-2%). FutilityMarginNoHistory is 210 cp, "
-            "which creates a very wide buffer (eval + 65*d + 210 <= alpha). "
-            "With NNUE, consider reducing FutilityMarginNoHistory to ~100-140 cp."
+            "Futility skipQuiets trigger rate is very low. It fires when eval + 65 * lmrDepth + 110 <= alpha "
+            "(FutilityMargin, FutilityMarginNoHistory); smaller margins skip quiets more often."
         ),
         "advice_high": "Futility skipQuiets is skipping too often (>20%). Watch for tactical blunders."
     },
@@ -132,7 +130,7 @@ HEURISTIC_RULES = [
         "min_pct": 45.0,
         "max_pct": 75.0,
         "constants": "FutilityMargin(65), FutilityPruningHistoryLimit",
-        "file": "src/search.h:33,36",
+        "file": "src/search.h:32,35",
         "advice_low": "Per-move futility pruning is low; check FutilityPruningHistoryLimit bounds.",
         "advice_high": "Per-move futility pruning is very high (>75%). It may be discarding subtle quiet winning moves."
     },
@@ -143,7 +141,7 @@ HEURISTIC_RULES = [
         "min_pct": 8.0,
         "max_pct": 30.0,
         "constants": "LateMovePruningDepth(8), LateMovePruningCounts table",
-        "file": "src/search.h:42-46",
+        "file": "src/search.h:41-45",
         "advice_low": "LMP rate is low. Check if counts in LateMovePruningCounts table are too generous.",
         "advice_high": "LMP rate is >30%. Too many quiet moves are pruned early; verify count table."
     },
@@ -154,7 +152,7 @@ HEURISTIC_RULES = [
         "min_pct": 2.0,
         "max_pct": 15.0,
         "constants": "CounterMovePruningDepth[3,2], CounterMoveHistoryLimit[0, -1000]",
-        "file": "src/search.h:37-38",
+        "file": "src/search.h:36-37",
         "advice_low": "CounterMove pruning rate is very low. Adjust CounterMoveHistoryLimit.",
         "advice_high": "CounterMove pruning rate is high (>15%)."
     },
@@ -164,11 +162,11 @@ HEURISTIC_RULES = [
         "sub_key": "rate",
         "min_pct": 1.0,
         "max_pct": 10.0,
-        "constants": "FollowUpMovePruningDepth[3,2], FollowUpMoveHistoryLimit[-2000, -4000]",
-        "file": "src/search.h:39-40",
+        "constants": "FollowUpMovePruningDepth[3,2], FollowUpMoveHistoryLimit[-500, -1500]",
+        "file": "src/search.h:38-39",
         "advice_low": (
-            "FollowUpMove pruning is virtually DEAD (<0.1%). The thresholds -2000 and -4000 "
-            "are almost never reached in your history table. Try testing -500 and -1500."
+            "FollowUpMove pruning rarely triggers. It prunes when the follow-up history is below "
+            "FollowUpMoveHistoryLimit (-500 / -1500); limits closer to 0 prune more."
         ),
         "advice_high": "FollowUpMove pruning is high (>10%)."
     },
@@ -204,7 +202,7 @@ HEURISTIC_RULES = [
         "min_pct": 65.0,
         "max_pct": 90.0,
         "constants": "LMRTable, AllNodeScale(276), AllNodeBase(268)",
-        "file": "src/search.h:63-64",
+        "file": "src/search.h:62-63",
         "advice_low": "Quiet LMR rate is low (<65%). Search will be slow and branchy.",
         "advice_high": "Quiet LMR rate is >90%. Very aggressive reductions; watch for search instability."
     },
@@ -215,7 +213,7 @@ HEURISTIC_RULES = [
         "min_pct": 1.5,
         "max_pct": 6.0,
         "constants": "LMRTable reductions",
-        "file": "src/search.c:718-800",
+        "file": "src/search.c:727-827",
         "advice_low": "LMR re-search rate is <1.5%. LMR might be slightly too timid (could reduce more).",
         "advice_high": "LMR re-search rate is >6%. Reductions are too severe, causing costly re-searches."
     },
@@ -225,11 +223,10 @@ HEURISTIC_RULES = [
         "sub_key": "delta_rate",
         "min_pct": 1.5,
         "max_pct": 15.0,
-        "constants": "DeltaMarginQ(150)",
+        "constants": "DeltaMarginQ(110)",
         "file": "src/search.h:18",
         "advice_low": (
-            "QS Delta pruning rate is <1.5%. DeltaMarginQ = 150 might be too wide for NNUE's scale. "
-            "Consider testing 100-120."
+            "QS Delta pruning rate is <1.5%. DeltaMarginQ is 110; a smaller margin prunes more."
         ),
         "advice_high": "QS Delta pruning rate is high (>15%). Ensure queen promotions and sacrifices aren't pruned."
     },
@@ -493,7 +490,7 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     # 1. Interior Pruning
     print(c(Colors.BLUE + Colors.BOLD, "\n  [INTERIOR-NODE PRUNING & REDUCTIONS]"))
     bp = h.get("beta_pruning", {})
-    print_row("Beta Pruning (RFP)", bp.get("considered", 0), bp.get("triggered", 0), bp.get("rate", 0)*100, 20, 45, "BetaMargin(85), Depth(8)")
+    print_row("Beta Pruning (RFP)", bp.get("considered", 0), bp.get("triggered", 0), bp.get("rate", 0)*100, 20, 45, "BetaMargin(75), Depth(8)")
 
 
     nmp = h.get("nmp", {})
@@ -502,7 +499,7 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     print_row("Null Move Pruning", nmp.get("attempted", 0), nmp_trig, nmp_rate, 45, 75, "defaultNullMoveDepth(2)")
 
     rz = h.get("razoring", {})
-    print_row("Razoring", rz.get("attempted", 0), rz.get("cutoffs", 0), rz.get("rate", 0)*100, 1.5, 10, "Base(316), Coeff(259)")
+    print_row("Razoring", rz.get("attempted", 0), rz.get("cutoffs", 0), rz.get("rate", 0)*100, 1.5, 10, "Base(240), Coeff(160)")
 
     pc = h.get("probcut", {})
     print_row("ProbCut", pc.get("attempted", 0), pc.get("cutoffs", 0), pc.get("rate", 0)*100, 15, 45, "Margin(80), Depth(5)")
@@ -513,7 +510,7 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     # 2. Move Loop Pruning
     print(c(Colors.BLUE + Colors.BOLD, "\n  [MOVE LOOP PRUNING]"))
     f_skip = h.get("futility_skip", {})
-    print_row("Futility (skipQuiets)", f_skip.get("considered", 0), f_skip.get("triggered", 0), f_skip.get("rate", 0)*100, 3, 20, "Margin(65), NoHist(210)")
+    print_row("Futility (skipQuiets)", f_skip.get("considered", 0), f_skip.get("triggered", 0), f_skip.get("rate", 0)*100, 3, 20, "Margin(65), NoHist(110)")
 
     f_move = h.get("futility_move", {})
     print_row("Futility (per-move)", f_move.get("considered", 0), f_move.get("triggered", 0), f_move.get("rate", 0)*100, 45, 75, "Margin(65), HistLimits")
@@ -525,7 +522,7 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     print_row("CounterMove Pruning", cmp.get("considered", 0), cmp.get("triggered", 0), cmp.get("rate", 0)*100, 2, 15, "Depth[3,2], Limit[0,-1000]")
 
     fup = h.get("followup_prune", {})
-    print_row("FollowUpMove Pruning", fup.get("considered", 0), fup.get("triggered", 0), fup.get("rate", 0)*100, 1, 10, "Depth[3,2], Limit[-2000,-4000]")
+    print_row("FollowUpMove Pruning", fup.get("considered", 0), fup.get("triggered", 0), fup.get("rate", 0)*100, 1, 10, "Depth[3,2], Limit[-500,-1500]")
 
     see_q = h.get("see_quiet", {})
     print_row("SEE Quiet Pruning", see_q.get("considered", 0), see_q.get("triggered", 0), see_q.get("rate", 0)*100, 5, 30, "SEEQuietMargin(-64)")
@@ -561,7 +558,7 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     delta_att = qs.get("delta_attempted", 0)
     delta_prun = qs.get("delta_pruned", 0)
     delta_rate = (delta_prun * 100.0 / delta_att) if delta_att else 0.0
-    print_row("QS Delta Pruning", delta_att, delta_prun, delta_rate, 1.5, 15, "DeltaMarginQ(150)")
+    print_row("QS Delta Pruning", delta_att, delta_prun, delta_rate, 1.5, 15, "DeltaMarginQ(110)")
 
     qs_see_att = qs.get("see_attempted", 0)
     qs_see_prun = qs.get("see_pruned", 0)

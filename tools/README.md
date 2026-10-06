@@ -13,9 +13,9 @@ This directory contains the complete offline training, data generation, tuning, 
    * [Workflow B: Stream & Prepare Lichess Evaluated Positions](#workflow-b-stream--prepare-lichess-evaluated-positions)
    * [Workflow C: Train an NNUE Network from Scratch or Fine-Tune](#workflow-c-train-an-nnue-network-from-scratch-or-fine-tune)
    * [Workflow D: Quantize & Export Weights for the Engine](#workflow-d-quantize--export-weights-for-the-engine)
-   * [Workflow E: Verify NNUE Accumulator Correctness](#workflow-e-verify-nnue-accumulator-correctness)
+   * [Workflow E: Verify NNUE Correctness](#workflow-e-verify-nnue-correctness)
    * [Workflow F: Trace & Benchmark Search Heuristics](#workflow-f-trace--benchmark-search-heuristics)
-   * [Workflow G: Classical Evaluation Tuning (Texel Tuner)](#workflow-g-classical-evaluation-tuning-texel-tuner)
+   * [Workflow G: Classical Evaluation Tuning (Texel Tuner, legacy)](#workflow-g-classical-evaluation-tuning-texel-tuner-legacy)
 5. [Data Formats & Specifications](#data-formats--specifications)
 
 ---
@@ -26,7 +26,7 @@ The tooling is divided into three primary operational domains:
 
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
 2. **Self-Play & Dataset Generation:** Scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that run the engine in parallel under UCI to harvest evaluated positions.
-3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and optimizing evaluation parameters ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
+3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), plus the legacy hand-crafted-evaluation tuner ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 
 ---
@@ -48,7 +48,7 @@ The tooling is divided into three primary operational domains:
   ```
 
 ### 2. [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)
-* **Purpose:** Generates self-play games outputting EPD lines formatted as `FEN;result` (with results from White's perspective) used by the classical evaluation tuner [`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c).
+* **Purpose:** Generates self-play games outputting EPD lines formatted as `FEN;result` (with results from White's perspective) used by the legacy hand-crafted-evaluation tuner [`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c). It still runs against the current engine.
 * **Usage:**
   ```bash
   python3 tools/datagen.py <nodes_per_move> <total_games> <threads> <output_file> <opening_book>
@@ -78,22 +78,22 @@ The tooling is divided into three primary operational domains:
 * **Purpose:** C unit test verifying that incremental accumulator updates match complete accumulator refreshes bit-for-bit across complex game sequences (castling, promotions, en-passant, captures) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position.
 * **Compilation & Execution:**
   ```bash
-  ln -sf src/weights weights
-  gcc -O3 -Isrc tools/test_incremental.c $(ls src/obj/native/*.o | grep -v main.o) -lm -o tools/test_incremental
-  ./tools/test_incremental
-  rm -f weights tools/test_incremental
+  # from the repository root; builds into /tmp so the committed tools/test_incremental is left alone
+  gcc -O2 -march=native -pthread -DUSE_PEXT -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
+      tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o /tmp/test_incremental
+  /tmp/test_incremental
   ```
 
 ### 5. [`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)
-* **Purpose:** Cross-validates C integer inference directly against PyTorch floating-point and integer reference implementations across complex tactical, endgame, and quiet positions.
-* **Usage:**
+* **Purpose:** Compares the engine's `eval` output with a Python re-implementation of the quantized integer forward pass and with a PyTorch float model built from the same weights, on positions covering every output bucket. If a Schoenemann binary exists at `Schoenemann-0.5.0/src/null` its raw eval is compared too; otherwise that column is skipped.
+* **Usage** (from the repository root, after `make -C src native`; needs numpy and torch):
   ```bash
   python3 tools/test_nnue_comprehensive.py
   ```
 
 ### 6. [`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)
-* **Purpose:** Standalone, high-speed Texel tuner implemented in C using OpenMP and the Adam optimizer to optimize classical Hand-Crafted Evaluation (HCE) parameters (PSTs, passed pawns, king safety tables, mobility).
-* **Compilation:**
+* **Status: legacy.** Texel tuner (C, OpenMP, Adam) for the hand-crafted evaluation GOOB used before NNUE (PSTs, passed pawns, king safety tables, mobility). That evaluation (`PiecesVal`, `initPQSTMAT()`, ...) is no longer in `src/`, so this file does not build against the current sources; it is kept for reference.
+* **Compilation** (against a pre-NNUE checkout of `src/`):
   ```bash
   gcc -O3 -fopenmp -Isrc tools/tuner.c -lm -o tools/tuner
   ```
@@ -122,8 +122,9 @@ The [`tools/nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/
 ### Directory Structure
 ```
 tools/nnue_project/
-├── checkpoints/          # PyTorch (.pt) and exported binary (.bin) weights
-├── data/                 # Binary training datasets (train.bin, val.bin)
+├── data_selfplay/        # Self-play records (train1.bin, val1.bin), tracked in git
+├── checkpoints/          # Created by training: PyTorch (.pt) and exported binary (.bin) weights
+├── data/                 # Created by data prep: binary training datasets (train.bin, val.bin)
 ├── data_json/            # Raw JSONL datasets (e.g. lichess_db_eval.jsonl.zst)
 └── scripts/
     ├── model.py          # PyTorch Schoenemann NNUE topology
@@ -131,13 +132,15 @@ tools/nnue_project/
     ├── train.py          # Training loop with Adam, LR scheduling, weight clipping, and --wdl-lambda
     ├── export_weights.py # Quantizer exporting .pt to quantised.bin
     ├── fen_utils.py      # FEN to 68-byte record encoder/decoder
-    ├── prepare_data.py   # Streams HuggingFace / PGN data to binary
-    ├── prepare_data_jsonl.py # Streams Lichess JSONL.zst to binary
-    ├── append_data.py    # Merges multiple .bin datasets
-    ├── clear_cache.py    # Cache validation and cleanup
-    ├── check_net.py      # Inspects weight ranges and accumulator bounds
-    ├── test_net.py       # Validation tester for saved models
-    └── scale_test.py     # Evaluates output score distribution scaling
+    ├── prepare_data.py   # Streams the Hugging Face Lichess evaluations to binary
+    ├── prepare_data_jsonl.py # Streams a local Lichess JSONL(.zst) to binary, quiet positions only
+    ├── append_data.py    # Appends new, de-duplicated Hugging Face positions to an existing train/val set
+    ├── clear_cache.py    # Repairs caches from the original prepare_data.py (one label per position, no val leakage, optional shuffle)
+    ├── check_net.py      # Checks an exported net: size, int16 limits, bit-exact reference evals
+    ├── test_net.py       # Evaluates FENs with a saved PyTorch checkpoint
+    ├── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
+    ├── nnue_loader.c/.h  # Old standalone loader for an earlier king-bucketed design; unused
+    └── claude-suggest.txt # Notes from an earlier review of this pipeline
 ```
 
 ### Script Reference
@@ -234,9 +237,10 @@ make -C ../../../src clean
 make -C ../../../src native
 ```
 
-### Workflow E: Verify NNUE Accumulator Correctness
-Ensure that incremental updates and unmaking moves match full recalculation:
+### Workflow E: Verify NNUE Correctness
+Incremental accumulator updates and unmaking moves must match full recalculation (`test_incremental.c`, build command in section 4), and the engine's eval must match the reference forward pass:
 ```bash
+/tmp/test_incremental
 python3 tools/test_nnue_comprehensive.py
 ```
 
@@ -250,7 +254,8 @@ make -C src trace
 python3 tools/trace_search.py --bench 8
 ```
 
-### Workflow G: Classical Evaluation Tuning (Texel Tuner)
+### Workflow G: Classical Evaluation Tuning (Texel Tuner, legacy)
+Only applies to a pre-NNUE checkout of `src/`: `tuner.c` does not build against the current sources (see section 6).
 1. Generate an EPD dataset:
    ```bash
    python3 tools/datagen.py 5000 50000 8 tools/dataset.epd path/to/book.epd

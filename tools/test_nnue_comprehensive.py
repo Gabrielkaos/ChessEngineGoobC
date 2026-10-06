@@ -1,3 +1,4 @@
+import os
 import subprocess
 import numpy as np
 import torch
@@ -129,9 +130,14 @@ def goob_eval(fen):
             return int(line.split(":")[1].strip())
     raise RuntimeError(f"Could not parse eval from GOOB output: {out}")
 
+# optional cross-check against the Schoenemann binary the inference code was
+# adapted from; skipped when it is not built at this path
+SCHOENEMANN = "./Schoenemann-0.5.0/src/null"
+HAVE_SCHOENEMANN = os.access(SCHOENEMANN, os.X_OK)
+
 def schoenemann_raw_eval(fen):
     proc = subprocess.Popen(
-        ["./Schoenemann-0.5.0/src/null"],
+        [SCHOENEMANN],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -189,13 +195,15 @@ test_fens = [
     ("Castling Open", "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"),
 ]
 
+if not HAVE_SCHOENEMANN:
+    print(f"(no {SCHOENEMANN}: Schoenemann column skipped)")
 print(f"{'Position Description':<40} | {'GOOB C':>8} | {'Schoen C':>8} | {'Py Int':>8} | {'Py Float':>8} | {'Diff':>5}")
 print("-" * 88)
 
 all_passed = True
 for name, fen in test_fens:
     g_val = goob_eval(fen)
-    s_val = schoenemann_raw_eval(fen)
+    s_val = schoenemann_raw_eval(fen) if HAVE_SCHOENEMANN else g_val
     p_int = py_eval_integer(fen)
     p_flt = py_eval_float(fen)
     
@@ -204,9 +212,11 @@ for name, fen in test_fens:
     status = "OK" if match else "FAIL"
     if not match:
         all_passed = False
-    print(f"{name:<40} | {g_val:>8} | {s_val:>8} | {p_int:>8} | {p_flt:>8.2f} | {status:>5}")
+    s_col = s_val if HAVE_SCHOENEMANN else "-"
+    print(f"{name:<40} | {g_val:>8} | {s_col:>8} | {p_int:>8} | {p_flt:>8.2f} | {status:>5}")
 
 if all_passed:
-    print("\nALL POSITION TESTS PASSED BIT-FOR-BIT ACROSS GOOB C, SCHOENEMANN C, AND PYTHON!")
+    print("\nALL POSITION TESTS PASSED BIT-FOR-BIT ACROSS GOOB C, "
+          + ("SCHOENEMANN C, " if HAVE_SCHOENEMANN else "") + "AND PYTHON!")
 else:
     print("\nSOME TESTS FAILED!")
