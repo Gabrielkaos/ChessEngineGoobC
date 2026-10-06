@@ -41,13 +41,24 @@ void initLMRTable(){
 
 int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
 
+//Node and tbhit counters live in each thread's S_SEARCH_THREAD: only the
+//owner writes them, other threads only read them (relaxed atomics compile to
+//plain movs on x86, but keep the cross-thread reads well defined). A single
+//counter that every thread bumped on every node kept the cache line holding
+//stopped/bruteForceMode bouncing between cores (Stockfish counts per thread too).
+INLINE void addThreadCounter(U64 *counter){
+    __atomic_store_n(counter, *counter + 1, __ATOMIC_RELAXED);
+}
+
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
-        int hitLimit = (!info->analyzeMode && info->EloNodeSet==TRUE && info->nodes>=info->EloNodelimit) ||
+        int eloLimit = !info->analyzeMode && info->EloNodeSet==TRUE;
+        U64 nodes    = (eloLimit || info->nodeSet==TRUE) ? NodesSearchedThreadPool(info) : 0;
+        int hitLimit = (eloLimit && nodes>=info->EloNodelimit)                     ||
                        info->stopOnPonderhit                                       ||
                        (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
-                       (info->nodeSet==TRUE && info->nodes>=info->nodeLimit);
+                       (info->nodeSet==TRUE && nodes>=info->nodeLimit);
         if(!hitLimit)return;
         //normally we wait until one depth has finished so a move always exists,
         //but never let that guard keep us running past the hard stop time
@@ -82,8 +93,8 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
     info->stopped=0;
     info->stopOnPonderhit=0;
-    info->nodes=0ULL;
-    info->tbhits=0ULL;
+    pos->search->nodes  = 0;   //copied into every worker by setupWorkerData
+    pos->search->tbhits = 0;
     pos->search->rootEffortCount = 0;
 
     info->depthOneComplete=FALSE; 
@@ -144,16 +155,16 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     int best;
 
     //check up for limits
-    if((info->nodes & 2047)==0)checkUp(info);
+    if((pos->search->nodes & 2047)==0)checkUp(info);
 
     //update for uci
-    info->nodes++;
+    addThreadCounter(&pos->search->nodes);
     TRACE_INC(pos, qs_nodes);
     pos->seldepth=MAX(pos->seldepth,pos->ply);
 
     //if draw
     if(pos->ply){
-        if(recog_draw(pos))return 1-(info->nodes & 2);
+        if(recog_draw(pos))return 1-(pos->search->nodes & 2);
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
     }
 
@@ -271,18 +282,18 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     depth = MAX(0, depth);
 
     //see if we should abort the search
-    if((info->nodes & 2047)==0)checkUp(info);
+    if((pos->search->nodes & 2047)==0)checkUp(info);
 
     //for uci updates
     pos->seldepth=rootNode ? 0 : MAX(pos->seldepth,pos->ply);
-    info->nodes++;
+    addThreadCounter(&pos->search->nodes);
     TRACE_INC(pos, ab_nodes);
 
 
     //if not rootNode check some things
     if(!rootNode){
         //see if board is drawn
-        if(recog_draw(pos))return 1-(info->nodes & 2);
+        if(recog_draw(pos))return 1-(pos->search->nodes & 2);
         //to deep
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
         //mate pruning
@@ -325,7 +336,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         TRACE_INC(pos, syzygy_probes);
         int tbScore, tbBound;
         if(TBProbeWDLSearch(pos, pos->ply, &tbScore, &tbBound)){
-            info->tbhits++;
+            addThreadCounter(&pos->search->tbhits);
             TRACE_INC(pos, syzygy_hits);
             
             if (tbBound == HFEXACT
@@ -662,7 +673,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             }
         }
 
-        U64 nodesBeforeMove = info->nodes;
+        U64 nodesBeforeMove = pos->search->nodes;
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
         StateInfo st;
@@ -829,7 +840,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         takeMove(pos);
         if(rootNode && threadNum==0){
-            U64 spent = info->nodes - nodesBeforeMove;
+            U64 spent = pos->search->nodes - nodesBeforeMove;
             int fi;
             for(fi=0; fi<pos->search->rootEffortCount; ++fi)
                 if(pos->search->rootEffortMove[fi]==moveInLoop) break;
@@ -1390,8 +1401,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 int fi, bestFi = -1;
                 for(fi=0; fi<pos->search->rootEffortCount; ++fi)
                     if(pos->search->rootEffortMove[fi]==workerthread->bestMove){ bestFi=fi; break; }
-                int nodesEffort = (bestFi>=0 && info->nodes>0)
-                                 ? (int)((pos->search->rootEffortNodes[bestFi]*100000ULL)/info->nodes) : 0;
+                int nodesEffort = (bestFi>=0 && pos->search->nodes>0)
+                                 ? (int)((pos->search->rootEffortNodes[bestFi]*100000ULL)/pos->search->nodes) : 0;
                 
                 int maxElapsed = info->timeSet ? (info->stoptime - info->starttime) : (int)totalTime;
                 int shouldStop = (currentDepth>=10 && nodesEffort>=97000 && elapsed>totalTime*0.6539) ||
@@ -1471,6 +1482,21 @@ static POOL_WORKER threadPool[MAXTHREADS];
 static int poolSize = 0;
 
 static void waitWorkerSearch(int threadNum);
+
+//totals over the threads that run the current (or ran the last) search
+U64 NodesSearchedThreadPool(const S_SEARCHINFO *info){
+    U64 total = 0;
+    for (int i = 0; i < MIN(info->threadNum, poolSize); ++i)
+        total += __atomic_load_n(&threadPool[i].originalPos->search->nodes, __ATOMIC_RELAXED);
+    return total;
+}
+
+U64 TbHitsThreadPool(const S_SEARCHINFO *info){
+    U64 total = 0;
+    for (int i = 0; i < MIN(info->threadNum, poolSize); ++i)
+        total += __atomic_load_n(&threadPool[i].originalPos->search->tbhits, __ATOMIC_RELAXED);
+    return total;
+}
 
 #define IS_DECISIVE_WIN(s)  ((s) >= (TB_WIN_VALUE - MAXDEPTH))
 #define IS_DECISIVE_LOSS(s) ((s) <= -(TB_WIN_VALUE - MAXDEPTH))
@@ -1840,6 +1866,13 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
 #ifdef TRACE
     trace_start_search();
 #endif
+
+    //worker 0 already sums every worker's counters (node limits) while the
+    //others are still being set up, so clear them all before starting any
+    for (int i = 0; i < MIN(info->threadNum, poolSize); ++i) {
+        threadPool[i].originalPos->search->nodes  = 0;
+        threadPool[i].originalPos->search->tbhits = 0;
+    }
 
     //start workers
     for (int i = 0; i < info->threadNum; ++i) {

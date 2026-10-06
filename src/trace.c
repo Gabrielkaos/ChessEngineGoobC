@@ -582,7 +582,7 @@ void run_bench(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table, int depth) {
         SearchPosition(pos, info, table);
 
         int t_elapsed = getTimeMs() - t0;
-        U64 pos_nodes = info->nodes;
+        U64 pos_nodes = NodesSearchedThreadPool(info);
         total_nodes += pos_nodes;
 
         printf("Position [%2d/%d]: nodes %10" PRIu64 "  time %6d ms\n",

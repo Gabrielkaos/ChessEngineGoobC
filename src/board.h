@@ -31,6 +31,10 @@ typedef struct {
 } NNUE_Accumulator;
 
 typedef struct {
+    //per-thread counters, written only by the owning thread and summed by
+    //NodesSearchedThreadPool()/TbHitsThreadPool() for reports and limits
+    U64 nodes;
+    U64 tbhits;
     S_UNDO history[MAXGAMESMOVES]; //stores state of the board
     int eval_stack[MAXDEPTH];
     int reduction_stack[MAXDEPTH];

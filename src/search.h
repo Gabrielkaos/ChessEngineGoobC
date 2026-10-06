@@ -98,4 +98,7 @@ extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
 extern int SearchPositionThread(void *data);
 extern void EnsureThreadPool(int numThreads);
 extern void FreeThreadPool(void);
+//totals over the threads of the current/last search
+extern U64 NodesSearchedThreadPool(const S_SEARCHINFO *info);
+extern U64 TbHitsThreadPool(const S_SEARCHINFO *info);
 #endif // SEARCH_H
