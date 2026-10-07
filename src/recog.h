@@ -71,10 +71,11 @@ INLINE int drawKBPRP(const S_BOARD *pos) {
 
 INLINE int recog_draw(const S_BOARD *pos) {
     ASSERT(checkBoard(pos));
-    return drawFiftyMoveRule(pos) ||
-           is_repetition(pos) ||
-           drawByMaterial(pos) ||
-           drawKBPRP(pos);
+    if (drawFiftyMoveRule(pos) || is_repetition(pos)) return TRUE;
+    if (__builtin_expect(!(pos->byTypeBB[QUEEN] | pos->byTypeBB[ROOK]), 0)) {
+        return drawByMaterial(pos) || drawKBPRP(pos);
+    }
+    return FALSE;
 }
 
 #endif // RECOG_H

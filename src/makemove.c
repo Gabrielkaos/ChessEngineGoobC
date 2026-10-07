@@ -29,47 +29,7 @@ const int castlePerm[64]={
      7,15,15,15, 3,15,15,11
 };
 
-int moveIsTactical(S_BOARD *pos,int move){
-    return (pos->pieces[TOSQ(move)] != EMPTY && (move & MVFLAGCA)==0) ||
-            (move & MVFLAGEP || PROMOTED(move) != 0);
-}
 
-int MoveBestCaseValue(S_BOARD *pos){
-    ASSERT(checkBoard(pos));
-
-    U64 enemy = pos->byColorBB[!pos->side];
-    int value = SEEPieceValues[wP];
-
-    if (pos->byTypeBB[QUEEN] & enemy){
-        value = SEEPieceValues[wQ];
-    } else if (pos->byTypeBB[ROOK] & enemy){
-        value = SEEPieceValues[wR];
-    } else if ((pos->byTypeBB[BISHOP] | pos->byTypeBB[KNIGHT]) & enemy){
-        value = SEEPieceValues[wB];
-    }
-
-    U64 pawns = pos->byTypeBB[PAWN] & pos->byColorBB[pos->side];
-    if(pawns & (pos->side==WHITE ? RankBBMask[RANK_7]:RankBBMask[RANK_2])){
-        value += SEEPieceValues[wQ] - SEEPieceValues[wP];
-    }
-
-    return value;
-}
-
-int moveEstimatedValue(S_BOARD *pos, int move) {
-    ASSERT(moveValid(move));
-
-    int value = SEEPieceValues[pos->pieces[TOSQ(move)]];
-
-    if (PROMOTED(move))
-        value += SEEPieceValues[PROMOTED(move)] - SEEPieceValues[wP];
-    else if (move & MVFLAGEP)
-        value = SEEPieceValues[wP];
-    else if (move & MVFLAGCA)
-        value = 0;
-
-    return value;
-}
 
 INLINE void putPiece(S_BOARD *pos, int pce, int sq) {
     ASSERT(SqOnBoard(sq));
@@ -126,6 +86,12 @@ void update_slider_blockers(S_BOARD *pos, int c) {
                    (bishop_pseudo_attacks[ksq] & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN])))
                   & themPieces;
 
+    if (!snipers) {
+        pos->st->blockersForKing[c] = 0ULL;
+        pos->st->pinners[them] = 0ULL;
+        return;
+    }
+
     //accumulate in locals: pos->st may alias the board, so in-place |= would
     //reload and store on every sniper
     U64 occ = pos->byTypeBB[ALL_PIECES];
@@ -154,79 +120,7 @@ void set_check_info(S_BOARD *pos) {
     update_slider_blockers(pos, BLACK);
 }
 
-// Tests whether a pseudo-legal move is legal
-int legal(const S_BOARD *pos, int move) {
-    int us = pos->side;
-    int them = us ^ 1;
-    int from = FROMSQ(move);
-    int to = TOSQ(move);
-    U64 kbb = pos->byColorBB[us] & pos->byTypeBB[KING];
-    ASSERT(kbb);
-    int ksq = LSBINDEX(kbb);
 
-    // En passant capture
-    if (move & MVFLAGEP) {
-        int capsq = (us == WHITE) ? (to - 8) : (to + 8);
-        if (pos->st->checkersBB) {
-            if (pos->st->checkersBB != (1ULL << capsq)) return FALSE;
-        }
-        U64 occ = (pos->byTypeBB[ALL_PIECES] ^ (1ULL << from) ^ (1ULL << capsq)) | (1ULL << to);
-        U64 enemySliders = pos->byColorBB[them];
-        if (get_rook_attacks(ksq, occ) & enemySliders & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
-            return FALSE;
-        if (get_bishop_attacks(ksq, occ) & enemySliders & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
-            return FALSE;
-        return TRUE;
-    }
-
-    // Castling moves
-    if (move & MVFLAGCA) {
-        if (pos->st->checkersBB) return FALSE;
-        if (us == WHITE) {
-            if (to == G1) {
-                if (is_square_attacked_BB(F1, BLACK, pos) || is_square_attacked_BB(G1, BLACK, pos))
-                    return FALSE;
-            } else if (to == C1) {
-                if (is_square_attacked_BB(D1, BLACK, pos) || is_square_attacked_BB(C1, BLACK, pos))
-                    return FALSE;
-            }
-        } else {
-            if (to == G8) {
-                if (is_square_attacked_BB(F8, WHITE, pos) || is_square_attacked_BB(G8, WHITE, pos))
-                    return FALSE;
-            } else if (to == C8) {
-                if (is_square_attacked_BB(D8, WHITE, pos) || is_square_attacked_BB(C8, WHITE, pos))
-                    return FALSE;
-            }
-        }
-        return TRUE;
-    }
-
-    // King moves (only our king stands on ksq, no need to read the mailbox)
-    if (from == ksq) {
-        U64 occ = pos->byTypeBB[ALL_PIECES] ^ (1ULL << from);
-        return !is_square_attacked_occ(to, them, pos, occ);
-    }
-
-    // In check: non-king moves
-    if (pos->st->checkersBB) {
-        if (pos->st->checkersBB & (pos->st->checkersBB - 1))
-            return FALSE;
-
-        int checkerSq = LSBINDEX(pos->st->checkersBB);
-        U64 targetMask = (1ULL << checkerSq) | BetweenBB[ksq][checkerSq];
-        if (!((1ULL << to) & targetMask))
-            return FALSE;
-
-        if (pos->st->blockersForKing[us] & (1ULL << from)) {
-            return (LineBB[from][to] & (1ULL << ksq)) != 0;
-        }
-        return TRUE;
-    }
-
-    // Not in check: non-king moves
-    return !(pos->st->blockersForKing[us] & (1ULL << from)) || ((LineBB[from][to] & (1ULL << ksq)) != 0);
-}
 
 int MoveExists(S_BOARD *pos, const int move){
     S_MOVELIST list[1];

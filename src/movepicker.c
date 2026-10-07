@@ -275,6 +275,13 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 int startCount = mp->list->count; // == mp->split
                 GenerateAllQuiet(pos, mp->list);   // appends
                 mp->quietSize = mp->list->count - startCount;
+
+                int pawnIdx = pawnHistIndex(pos);
+                const int16_t (*pawnTable)[64] = pos->shared->pawnHist[pawnIdx];
+                const int16_t (*lowPlyTable)[64] = (pos->ply < LOWPLY_HIST_SLOTS) ? pos->search->lowPlyHistory[pos->ply] : NULL;
+                const int lowPlyDiv = 1 + pos->ply;
+                const int basePiece = (pos->side == WHITE) ? wP : bP;
+
                 for(int i = mp->split; i < mp->list->count; ++i){
                     move = mp->list->moves[i].move;
                     int from = FROMSQ(move);
@@ -284,21 +291,18 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     // quiet score: butterfly + continuation histories plus the
                     // shared pawn-structure history (Stockfish: 2 * pawn_entry)
                     mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
-                                             + 2 * getPawnHistory(pos, move);
+                                             + 2 * pawnTable[pType][to];
 
                     //low-ply history boost near the root, fading out with ply
                     //(Stockfish: += 8 * lowPlyHistory[ply][move] / (1 + ply))
-                    if(pos->ply < LOWPLY_HIST_SLOTS)
-                        mp->list->moves[i].score +=
-                            8 * pos->search->lowPlyHistory[pos->ply][pType][to]
-                              / (1 + pos->ply);
+                    if(lowPlyTable)
+                        mp->list->moves[i].score += 8 * lowPlyTable[pType][to] / lowPlyDiv;
                               
                     // penalty for moving to a square threatened by a lesser piece
                     // or bonus for escaping an attack by a lesser piece.
                     int v = 20 * ((threatByLesser[pType] & (1ULL << from) ? 1 : 0) - 
                                   (threatByLesser[pType] & (1ULL << to) ? 1 : 0));
-                    int piece_value_lookup = (pos->side == WHITE) ? (wP + pType) : (bP + pType);
-                    mp->list->moves[i].score += SEEPieceValues[piece_value_lookup] * v;
+                    mp->list->moves[i].score += SEEPieceValues[basePiece + pType] * v;
 
                     // Direct check bonus: if the move gives direct check and doesn't blunder material
                     if((checkSquares[pType] & (1ULL << to)) && StaticExchangeEvaluation(pos, move, 0)){

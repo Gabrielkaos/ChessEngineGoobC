@@ -43,11 +43,12 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L26) for NNUE, updates Zobrist hashes incrementally, and checks repetitions.
   * [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L443): Reverses piece positions and restores `pos->st = pos->st->previous`.
   * [`makeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L487) / [`takeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L524): Null-move transitions for Null Move Pruning.
-  * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158): Fast on-the-fly pseudo-legal move validator.
-  * `update_slider_blockers()`: Recomputes the side to move's king blockers and the enemy pinners after every move, scanning snipers on the empty-board rays (`rook_pseudo_attacks` / `bishop_pseudo_attacks`) rather than through the magic/PEXT tables.
+  * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h): Fast inlined on-the-fly pseudo-legal move validator featuring an ultra-fast non-pinned fast path (3 bitwise tests for ordinary non-king moves when not in check).
+  * [`moveIsTactical()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h), [`moveEstimatedValue()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h), and [`MoveBestCaseValue()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h): Inlined tactical classification and move value estimators.
+  * `update_slider_blockers()`: Recomputes the side to move's king blockers and the enemy pinners after every move, scanning snipers on the empty-board rays (`rook_pseudo_attacks` / `bishop_pseudo_attacks`) with an early exit when no enemy snipers exist.
 
 ### Attacks & Move Generation
-* **[`attacks.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.h) / [`attacks.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.c):** Slider and leaper attack generation. Uses `_pext_u64` under BMI2 (`PEXT_ATTACKS`) with fallback to magic bitboards. Computes king attacks, knight attacks, pawn attacks, empty-board slider rays (`bishop_pseudo_attacks` / `rook_pseudo_attacks`), `LineBB` / `BetweenBB`, and the attacker/threat maps used by SEE and move ordering.
+* **[`attacks.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.h) / [`attacks.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.c):** Slider and leaper attack generation. Uses `_pext_u64` under BMI2 (`PEXT_ATTACKS`) with fallback to magic bitboards. Inlines `allAttackersToSquare()` and features ray pre-filtering in `attackersToKingSq()` using `bishop_pseudo_attacks` and `rook_pseudo_attacks` to bypass magic/PEXT table lookups when rays are empty.
 * **[`movegen.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.h) / [`movegen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c):** Move generation routines. All three generators share one inline core, `generate()`, that is specialized at compile time for the side to move and the move type (all / noisy / quiet); moves are written through a local list cursor. The emission order is fixed (pawns, knights, bishops, rooks, queens, castling, king; within a piece captures before quiets) because the move picker breaks score ties by list position:
   * [`GenerateAllMoves()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L204): Full pseudo-legal generator.
   * [`GenerateAllNoisy()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L212): Captures and promotions only.
@@ -64,7 +65,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   3. Killer moves 1 & 2 (with duplicate elimination ensuring `killer2 != killer1`).
   4. Counter move (keyed by opponent's previous move).
   5. Followup move (keyed by own move 2 plies ago).
-  6. Quiet moves (scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses).
+  6. Quiet moves: scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses; loop invariants (`pawnHistIndex(pos)`, `pawnTable`, `lowPlyTable`, and `basePiece`) are hoisted out of the candidate loop.
   7. Bad noisy moves (losing captures sorted by least material loss first: `(victimVal - attackerVal) * 16 + chist / 16` to maximize cutoff probability).
   8. Bad quiet moves (moves below `GoodQuietThreshold`).
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
@@ -76,12 +77,12 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`. History updates are gated at depth $> 0$ to prevent inverted bonuses/maluses on horizon check evasions.
 
 ### Evaluation & NNUE
-* **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c#L21) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
+* **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
   * Schoenemann 0.5.0 NNUE architecture inference engine (768 input features, 1024 hidden, 8 material buckets).
   * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
   * Synchronized dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) with fallbacks to bitboard-driven full refresh when beyond `NNUE_REFRESH_THRESHOLD` (32 plies) or when no ancestor accumulator is computed.
-  * Specialized SIMD update kernels for quiet moves (`1add_1sub`) and captures (`1add_2sub`).
+  * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`).
   * Precomputed 64-byte `s_piece_offset` table and bit-shift feature row addressing (`<< 10`).
   * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option).
 * **[`correction_types.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction_types.h), [`correction.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.h) / [`correction.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.c):** Four-table correction history blending pawn structure, minor pieces, non-pawn material per color, and 2-ply / 4-ply continuation corrections into static evaluations.

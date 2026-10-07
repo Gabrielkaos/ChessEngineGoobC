@@ -393,11 +393,42 @@ static inline void nnue_acc_apply_avx2(int16_t *dst, const int16_t *src,
 NNUE_AVX2_FN
 static inline void nnue_acc_1add_1sub_avx2(int16_t *curr, const int16_t *prev,
                                            const int16_t *row_add, const int16_t *row_sub) {
-    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 16) {
-        __m256i vp = _mm256_load_si256((const __m256i *)(prev + i));
-        __m256i va = _mm256_load_si256((const __m256i *)(row_add + i));
-        __m256i vs = _mm256_load_si256((const __m256i *)(row_sub + i));
-        _mm256_store_si256((__m256i *)(curr + i), _mm256_sub_epi16(_mm256_add_epi16(vp, va), vs));
+    for (int base = 0; base < NNUE_HIDDEN_SIZE; base += 128) {
+        __m256i r0 = _mm256_load_si256((const __m256i *)(prev + base + 0));
+        __m256i r1 = _mm256_load_si256((const __m256i *)(prev + base + 16));
+        __m256i r2 = _mm256_load_si256((const __m256i *)(prev + base + 32));
+        __m256i r3 = _mm256_load_si256((const __m256i *)(prev + base + 48));
+        __m256i r4 = _mm256_load_si256((const __m256i *)(prev + base + 64));
+        __m256i r5 = _mm256_load_si256((const __m256i *)(prev + base + 80));
+        __m256i r6 = _mm256_load_si256((const __m256i *)(prev + base + 96));
+        __m256i r7 = _mm256_load_si256((const __m256i *)(prev + base + 112));
+
+        r0 = _mm256_add_epi16(r0, _mm256_load_si256((const __m256i *)(row_add + base + 0)));
+        r1 = _mm256_add_epi16(r1, _mm256_load_si256((const __m256i *)(row_add + base + 16)));
+        r2 = _mm256_add_epi16(r2, _mm256_load_si256((const __m256i *)(row_add + base + 32)));
+        r3 = _mm256_add_epi16(r3, _mm256_load_si256((const __m256i *)(row_add + base + 48)));
+        r4 = _mm256_add_epi16(r4, _mm256_load_si256((const __m256i *)(row_add + base + 64)));
+        r5 = _mm256_add_epi16(r5, _mm256_load_si256((const __m256i *)(row_add + base + 80)));
+        r6 = _mm256_add_epi16(r6, _mm256_load_si256((const __m256i *)(row_add + base + 96)));
+        r7 = _mm256_add_epi16(r7, _mm256_load_si256((const __m256i *)(row_add + base + 112)));
+
+        r0 = _mm256_sub_epi16(r0, _mm256_load_si256((const __m256i *)(row_sub + base + 0)));
+        r1 = _mm256_sub_epi16(r1, _mm256_load_si256((const __m256i *)(row_sub + base + 16)));
+        r2 = _mm256_sub_epi16(r2, _mm256_load_si256((const __m256i *)(row_sub + base + 32)));
+        r3 = _mm256_sub_epi16(r3, _mm256_load_si256((const __m256i *)(row_sub + base + 48)));
+        r4 = _mm256_sub_epi16(r4, _mm256_load_si256((const __m256i *)(row_sub + base + 64)));
+        r5 = _mm256_sub_epi16(r5, _mm256_load_si256((const __m256i *)(row_sub + base + 80)));
+        r6 = _mm256_sub_epi16(r6, _mm256_load_si256((const __m256i *)(row_sub + base + 96)));
+        r7 = _mm256_sub_epi16(r7, _mm256_load_si256((const __m256i *)(row_sub + base + 112)));
+
+        _mm256_store_si256((__m256i *)(curr + base + 0), r0);
+        _mm256_store_si256((__m256i *)(curr + base + 16), r1);
+        _mm256_store_si256((__m256i *)(curr + base + 32), r2);
+        _mm256_store_si256((__m256i *)(curr + base + 48), r3);
+        _mm256_store_si256((__m256i *)(curr + base + 64), r4);
+        _mm256_store_si256((__m256i *)(curr + base + 80), r5);
+        _mm256_store_si256((__m256i *)(curr + base + 96), r6);
+        _mm256_store_si256((__m256i *)(curr + base + 112), r7);
     }
 }
 

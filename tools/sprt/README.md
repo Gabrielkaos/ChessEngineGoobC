@@ -110,6 +110,16 @@ It prints best move, score, nodes and time per position and a total at the end. 
 change should keep the best moves mostly stable and usually lowers total nodes. A crash or a
 missing `bestmove` shows up as the script exiting with "engine died".
 
+### Measuring pure NPS performance changes (A/B testing)
+
+When making optimizations aimed at speed/NPS without altering search trees (node-identical changes), use `compare_nps.py` for interleaved multi-round statistical comparison:
+
+```bash
+python3 tools/sprt/compare_nps.py <base_binary> <new_binary> [depth=12] [rounds=10]
+```
+
+This interleaves engine executions across multiple rounds, computing mean NPS, standard deviations, and percentage delta.
+
 ## Notes
 
 - `GOOB` quits as soon as its stdin closes, so `echo "go depth 10" | ./GOOB` prints nothing.

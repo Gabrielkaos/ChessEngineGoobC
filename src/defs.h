@@ -109,6 +109,11 @@ enum {
     bP = PAWN + 8, bN = KNIGHT + 8, bB = BISHOP + 8, bR = ROOK + 8, bQ = QUEEN + 8, bK = KING + 8,
     PIECE_NB = 16
 };
+
+static const int SEEPieceValues[16] = {
+     0, 100, 450, 450, 675, 1300, 0, 0,
+     0, 100, 450, 450, 675, 1300, 0, 0
+};
 enum {FILE_A,FILE_B,FILE_C,FILE_D,FILE_E,FILE_F,FILE_G,FILE_H,FILE_NONE};
 enum {RANK_1,RANK_2,RANK_3,RANK_4,RANK_5,RANK_6,RANK_7,RANK_8,RANK_NONE};
 enum {WHITE = 0, BLACK = 1, BOTH = 2, COLOR_NB = 2};

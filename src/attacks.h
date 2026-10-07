@@ -137,14 +137,33 @@ INLINE U64 attackersToKingSq(const S_BOARD *pos, int side) {
     int them = side ^ 1;
     U64 enemyBB = pos->byColorBB[them];
 
-    return (pawn_attacks[side][ksq] & enemyBB & pos->byTypeBB[PAWN])
-         | (knight_attacks[ksq]      & enemyBB & pos->byTypeBB[KNIGHT])
-         | (get_bishop_attacks(ksq, occ) & enemyBB & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
-         | (get_rook_attacks(ksq, occ)   & enemyBB & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
-         | (king_attacks[ksq]         & enemyBB & pos->byTypeBB[KING]);
+    U64 attacks = (pawn_attacks[side][ksq] & enemyBB & pos->byTypeBB[PAWN])
+                | (knight_attacks[ksq]      & enemyBB & pos->byTypeBB[KNIGHT])
+                | (king_attacks[ksq]        & enemyBB & pos->byTypeBB[KING]);
+
+    U64 enemyDiagSliders = enemyBB & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]);
+    if (enemyDiagSliders && (bishop_pseudo_attacks[ksq] & enemyDiagSliders)) {
+        attacks |= get_bishop_attacks(ksq, occ) & enemyDiagSliders;
+    }
+
+    U64 enemyOrthoSliders = enemyBB & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]);
+    if (enemyOrthoSliders && (rook_pseudo_attacks[ksq] & enemyOrthoSliders)) {
+        attacks |= get_rook_attacks(ksq, occ) & enemyOrthoSliders;
+    }
+
+    return attacks;
 }
 
-extern U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq);
+INLINE U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
+    ASSERT(SqOnBoard(sq));
+
+    return (pawn_attacks[WHITE][sq] & pos->byColorBB[BLACK] & pos->byTypeBB[PAWN])
+         | (pawn_attacks[BLACK][sq] & pos->byColorBB[WHITE] & pos->byTypeBB[PAWN])
+         | (knight_attacks[sq] & pos->byTypeBB[KNIGHT])
+         | (get_bishop_attacks(sq, occupied) & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
+         | (get_rook_attacks(sq, occupied) & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
+         | (king_attacks[sq] & pos->byTypeBB[KING]);
+}
 extern U64 allAttackedSquares(const S_BOARD *pos, int side);
 extern void InitAttacks();
 

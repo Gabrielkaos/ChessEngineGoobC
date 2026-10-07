@@ -506,17 +506,7 @@ void InitAttacks(){
     }
 }
 
-U64 allAttackersToSquare(const S_BOARD *pos, U64 occupied, int sq) {
 
-    ASSERT(SqOnBoard(sq));
-
-    return (pawn_attacks[WHITE][sq] & pos->byColorBB[BLACK] & pos->byTypeBB[PAWN])
-         | (pawn_attacks[BLACK][sq] & pos->byColorBB[WHITE] & pos->byTypeBB[PAWN])
-         | (knight_attacks[sq] & pos->byTypeBB[KNIGHT])
-         | (get_bishop_attacks(sq, occupied) & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN]))
-         | (get_rook_attacks(sq, occupied) & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN]))
-         | (king_attacks[sq] & pos->byTypeBB[KING]);
-}
 U64 allAttackedSquares(const S_BOARD *pos, int side) {
     U64 attacks = 0ULL;
     U64 occ = pos->byTypeBB[ALL_PIECES];

@@ -6,10 +6,6 @@
 /*
     Some variables shamelessly copied from Ethereal
 */
-static const int SEEPieceValues[16] = {
-     0, 100, 450, 450, 675, 1300, 0, 0,
-     0, 100, 450, 450, 675, 1300, 0, 0
-};
 static const int SEEPruningDepth = 9;
 static const int SEEQuietMargin  = -64;
 static const int SEENoisyMargin  = -19;

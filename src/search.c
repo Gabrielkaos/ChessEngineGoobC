@@ -562,6 +562,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     Score = -AB_BOUND;
     int skipQuiets = 0;
+    int pawnHist = 0;
 #if USE_SURPRISE_SRD
     int siblingSurprise = 0;
 #endif
@@ -590,9 +591,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //get history
         //get history of the move
         hist = !quietMove ? getCaptureHistory(pos,moveInLoop, mp->threats):getHistory(pos,moveInLoop,&fmhist,&cmhist, mp->threats);
-
-        //pawn history: orthogonal signal based on pawn structure
-        int pawnHist = quietMove ? getPawnHistory(pos, moveInLoop) : 0;
 
         //Quiet late Move pruning
         if (!rootNode && !info->bruteForceMode && quietMove && bestScore > -ISMATE){
@@ -689,6 +687,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         U64 nodesBeforeMove = pos->search->nodes;
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
+        pawnHist = (quietMove && depth >= 2 && Legal >= 1 + rootNode) ? getPawnHistory(pos, moveInLoop) : 0;
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);

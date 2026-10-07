@@ -18,6 +18,7 @@ extern int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats
 extern void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth);
 
 //pawn history: [pawn structure key][piece][to], shared across threads
+extern int pawnHistIndex(const S_BOARD *pos);
 extern int getPawnHistory(S_BOARD *pos,int move);
 
 //low-ply history helpers (per-thread, cleared to 102 every search like Stockfish)
