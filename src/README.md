@@ -78,9 +78,11 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c#L21) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
-  * Schoenemann 0.5.0 NNUE architecture inference engine.
-  * AVX-512, AVX2, and scalar forward passes with exact and fast int16 dot-product kernels.
-  * Lazy accumulator updates through [`nnue_update_perspective_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h#L557) with fallbacks to full refresh when beyond `NNUE_REFRESH_THRESHOLD` (32 plies) or when no ancestor accumulator is computed.
+  * Schoenemann 0.5.0 NNUE architecture inference engine (768 input features, 1024 hidden, 8 material buckets).
+  * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
+  * Synchronized dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) with fallbacks to bitboard-driven full refresh when beyond `NNUE_REFRESH_THRESHOLD` (32 plies) or when no ancestor accumulator is computed.
+  * Specialized SIMD update kernels for quiet moves (`1add_1sub`) and captures (`1add_2sub`).
+  * Precomputed 64-byte `s_piece_offset` table and bit-shift feature row addressing (`<< 10`).
   * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option).
 * **[`correction_types.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction_types.h), [`correction.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.h) / [`correction.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.c):** Four-table correction history blending pawn structure, minor pieces, non-pawn material per color, and 2-ply / 4-ply continuation corrections into static evaluations.
 
