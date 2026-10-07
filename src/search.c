@@ -168,16 +168,22 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
     }
 
-    int ttMove=NOMOVE, ttValue=0, ttDepth=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit;
-    if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound, &ttEval))){
+    int ttMove=NOMOVE, ttValue=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit=FALSE;
+    S_PVENTRY *tte = ProbeTTEntry(table, pos->st->posKey);
+    if(tte){
+        ttHit = TRUE;
         TRACE_INC(pos, qs_tt_hits);
-        ttValue = valueFromTT(ttValue,pos->ply);
+        uint64_t data = tte->smp_data;
+        ttBound = EXTRACT_FLAGS(data);
+        ttValue = valueFromTT(EXTRACT_SCORE(data), pos->ply);
         if(pos->st->fiftyMove < 96){
             if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
                 TRACE_INC(pos, qs_tt_cutoffs);
                 return ttValue;
             }
         }
+        ttEval  = tte->eval;
+        ttMove  = EXTRACT_MOVE(data);
     }
 
     //standing pat: save the corrected static eval for history, then deflate
@@ -306,10 +312,15 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     pos->search->searchKillers[1][pos->ply+1] = NOMOVE;
 
     //probing Transposition Table
-    if((ttHit=ProbeHashEntry(pos, table, &ttMove, &ttValue, &ttDepth, &ttBound,&ttEval))){
+    S_PVENTRY *tte = ProbeTTEntry(table, pos->st->posKey);
+    if(tte){
+        ttHit = TRUE;
         TRACE_INC(pos, tt_hits);
 
-        ttValue = valueFromTT(ttValue,pos->ply);
+        uint64_t data = tte->smp_data;
+        ttBound = EXTRACT_FLAGS(data);
+        ttValue = valueFromTT(EXTRACT_SCORE(data), pos->ply);
+        ttDepth = EXTRACT_DEPTH(data);
 
         if(ttDepth >= depth && (depth==0 || !pvNode) && pos->st->fiftyMove < 96){
             if(    ttBound==HFEXACT
@@ -329,6 +340,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             return alpha;
         }
 
+        ttEval  = tte->eval;
+        ttMove  = EXTRACT_MOVE(data);
     }
 
     //Syzygy interior-node probe

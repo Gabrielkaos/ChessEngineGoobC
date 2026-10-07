@@ -164,6 +164,7 @@ typedef struct{
     S_PVBUCKET *pTable;
     int numEntries;
     int generation;
+    uint32_t hashMask;
 } S_PVTABLE;
 
 //Move list
