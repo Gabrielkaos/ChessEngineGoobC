@@ -119,26 +119,33 @@ void update_slider_blockers(S_BOARD *pos, int c) {
         return;
     }
     int ksq = LSBINDEX(kbb);
-    pos->st->blockersForKing[c] = 0ULL;
-    pos->st->pinners[c ^ 1] = 0ULL;
 
     int them = c ^ 1;
     U64 themPieces = pos->byColorBB[them];
-    U64 snipers = ((get_rook_attacks(ksq, 0ULL) & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN])) |
-                   (get_bishop_attacks(ksq, 0ULL) & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN])))
+    U64 snipers = ((rook_pseudo_attacks[ksq] & (pos->byTypeBB[ROOK] | pos->byTypeBB[QUEEN])) |
+                   (bishop_pseudo_attacks[ksq] & (pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN])))
                   & themPieces;
+
+    //accumulate in locals: pos->st may alias the board, so in-place |= would
+    //reload and store on every sniper
+    U64 occ = pos->byTypeBB[ALL_PIECES];
+    U64 ours = pos->byColorBB[c];
+    U64 blockers = 0ULL, pinners = 0ULL;
 
     while (snipers) {
         int sniperSq = LSBINDEX(snipers);
         snipers &= snipers - 1;
-        U64 b = BetweenBB[ksq][sniperSq] & pos->byTypeBB[ALL_PIECES];
+        U64 b = BetweenBB[ksq][sniperSq] & occ;
         if (b && !(b & (b - 1))) {
-            pos->st->blockersForKing[c] |= b;
-            if (b & pos->byColorBB[c]) {
-                pos->st->pinners[them] |= (1ULL << sniperSq);
+            blockers |= b;
+            if (b & ours) {
+                pinners |= (1ULL << sniperSq);
             }
         }
     }
+
+    pos->st->blockersForKing[c] = blockers;
+    pos->st->pinners[them] = pinners;
 }
 
 void set_check_info(S_BOARD *pos) {
@@ -153,8 +160,6 @@ int legal(const S_BOARD *pos, int move) {
     int them = us ^ 1;
     int from = FROMSQ(move);
     int to = TOSQ(move);
-    int pce = pos->pieces[from];
-    int pt = TYPE_OF(pce);
     U64 kbb = pos->byColorBB[us] & pos->byTypeBB[KING];
     ASSERT(kbb);
     int ksq = LSBINDEX(kbb);
@@ -197,8 +202,8 @@ int legal(const S_BOARD *pos, int move) {
         return TRUE;
     }
 
-    // King moves
-    if (pt == KING) {
+    // King moves (only our king stands on ksq, no need to read the mailbox)
+    if (from == ksq) {
         U64 occ = pos->byTypeBB[ALL_PIECES] ^ (1ULL << from);
         return !is_square_attacked_occ(to, them, pos, occ);
     }
