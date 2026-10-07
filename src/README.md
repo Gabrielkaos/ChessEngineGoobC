@@ -17,9 +17,9 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ## Architectural Overview
 
 * **Board Representation:** Little-Endian Rank-File (A1 = 0, H8 = 63) bitboards (`byTypeBB` for piece types 1..6, `byColorBB` for white/black occupancy) paired with an 8-bit mailbox array (`pieces[64]`).
-* **State Management:** Linked [`StateInfo`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L83-L99) nodes (`pos->st->previous`). Rolling back moves via [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480) restores the pointer without recomputing Zobrist keys, 50-move counters, castling permissions, or en-passant squares.
+* **State Management:** Linked [`StateInfo`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L83-L99) nodes (`pos->st->previous`). Rolling back moves via [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L443-L485) restores the pointer without recomputing Zobrist keys, 50-move counters, castling permissions, or en-passant squares.
   The game history lives in `stateTable[MAXGAMESMOVES]` (550 states). When a `position ... moves` list outgrows it, [`compactStateHistory()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c) keeps the newest 275 states (repetition detection never looks further back than the fifty-move counter) and `gamePlyOffset` keeps `hisPly + gamePlyOffset` equal to the real game ply for time management, WDL output and FENs.
-* **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L151-L224) using pin and king-ray masks without making/unmaking moves.
+* **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158-L229) using pin and king-ray masks without making/unmaking moves.
 * **Evaluation:** Schoenemann-0.5.0 style NNUE architecture:
   * Topology: `(768 -> 1024)x2 -> 1x8 buckets` with Squared Clipped ReLU (SCReLU) activation.
   * King squares are omitted from the 768-feature index, making king moves ordinary $\mathcal{O}(1)$ incremental updates and eliminating accumulator rebuilds during search.
@@ -40,18 +40,19 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`bitboards.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.h) / [`bitboards.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.c):** Bitboard lookup tables (`FileBBMask`, `RankBBMask`, `BetweenBB`, `LineBB`) and manipulation utilities (LSB extraction, clearing least significant bits, bitboard printing).
 * **[`hashkeys.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.h) / [`hashkeys.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.c):** 64-bit Zobrist keys for positions (`posKey`), pawn-king structures (`pkHash`), non-pawn material keys per color (`npHash`), and minor pieces (`minorHash`).
 * **[`makemove.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h) / [`makemove.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c):** Core board transition functions:
-  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L238): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L26) for NNUE, updates Zobrist hashes incrementally, and checks repetitions.
-  * [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438): Reverses piece positions and restores `pos->st = pos->st->previous`.
-  * [`makeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L482) / [`takeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L519): Null-move transitions for Null Move Pruning.
-  * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L151): Fast on-the-fly pseudo-legal move validator.
+  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L26) for NNUE, updates Zobrist hashes incrementally, and checks repetitions.
+  * [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L443): Reverses piece positions and restores `pos->st = pos->st->previous`.
+  * [`makeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L487) / [`takeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L524): Null-move transitions for Null Move Pruning.
+  * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158): Fast on-the-fly pseudo-legal move validator.
+  * `update_slider_blockers()`: Recomputes the side to move's king blockers and the enemy pinners after every move, scanning snipers on the empty-board rays (`rook_pseudo_attacks` / `bishop_pseudo_attacks`) rather than through the magic/PEXT tables.
 
 ### Attacks & Move Generation
-* **[`attacks.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.h) / [`attacks.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.c):** Slider and leaper attack generation. Uses `_pext_u64` under BMI2 (`PEXT_ATTACKS`) with fallback to magic bitboards. Computes king attacks, knight attacks, pawn attacks, pinners, blockers, and check evasion target masks.
-* **[`movegen.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.h) / [`movegen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c):** Move generation routines:
-  * [`GenerateAllMoves()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L31): Full pseudo-legal generator.
-  * [`GenerateAllNoisy()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L428): Captures and promotions only.
-  * [`GenerateAllQuiet()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L807): Non-tactical moves only.
-  * [`moveIsPseudoLegal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L691): Rapid pseudo-legality validator for TT, killer, counter and follow-up moves.
+* **[`attacks.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.h) / [`attacks.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/attacks.c):** Slider and leaper attack generation. Uses `_pext_u64` under BMI2 (`PEXT_ATTACKS`) with fallback to magic bitboards. Computes king attacks, knight attacks, pawn attacks, empty-board slider rays (`bishop_pseudo_attacks` / `rook_pseudo_attacks`), `LineBB` / `BetweenBB`, and the attacker/threat maps used by SEE and move ordering.
+* **[`movegen.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.h) / [`movegen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c):** Move generation routines. All three generators share one inline core, `generate()`, that is specialized at compile time for the side to move and the move type (all / noisy / quiet); moves are written through a local list cursor. The emission order is fixed (pawns, knights, bishops, rooks, queens, castling, king; within a piece captures before quiets) because the move picker breaks score ties by list position:
+  * [`GenerateAllMoves()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L204): Full pseudo-legal generator.
+  * [`GenerateAllNoisy()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L212): Captures and promotions only.
+  * [`GenerateAllQuiet()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L221): Non-tactical moves only; appends to the list after the noisy moves.
+  * [`moveIsPseudoLegal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L230): Rapid pseudo-legality validator for TT, killer, counter and follow-up moves.
 
 ### Move Ordering & History Heuristics
 * **[`movepicker.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.h) / [`movepicker.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movepicker.c):** Staged move selection:

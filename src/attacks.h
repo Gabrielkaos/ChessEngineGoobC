@@ -24,6 +24,11 @@ extern const U64 bishop_magic_numbers[BOARD_NUMS_SQ];
 extern const int bishop_relevant_bits[BOARD_NUMS_SQ];
 extern const int rook_relevant_bits[BOARD_NUMS_SQ];
 
+//slider attacks on an empty board, filled by InitAttacks: plain table reads
+//for ray tests that do not depend on occupancy (pin/sniper detection)
+extern U64 bishop_pseudo_attacks[BOARD_NUMS_SQ];
+extern U64 rook_pseudo_attacks[BOARD_NUMS_SQ];
+
 INLINE U64 get_bishop_attacks(int square, U64 occupancy){
     ASSERT(square >= 0 && square < BOARD_NUMS_SQ);
 #if defined(PEXT_ATTACKS)

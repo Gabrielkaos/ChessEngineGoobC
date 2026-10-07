@@ -194,6 +194,8 @@ U64 rook_masks[BOARD_NUMS_SQ];
 U64 knight_attacks[BOARD_NUMS_SQ];
 U64 pawn_attacks[BOTH][BOARD_NUMS_SQ];
 U64 king_attacks[BOARD_NUMS_SQ];
+U64 bishop_pseudo_attacks[BOARD_NUMS_SQ];
+U64 rook_pseudo_attacks[BOARD_NUMS_SQ];
 
 U64 rook_attack_on_fly(int sq,U64 block){
 
@@ -479,6 +481,11 @@ void InitAttacks(){
     initLeaperAttacks();
     initSliderPiecesAttacks(1);
     initSliderPiecesAttacks(0);
+
+    for (int sq = 0; sq < 64; sq++) {
+        bishop_pseudo_attacks[sq] = get_bishop_attacks(sq, 0ULL);
+        rook_pseudo_attacks[sq]   = get_rook_attacks(sq, 0ULL);
+    }
 
     for (int s1 = 0; s1 < 64; s1++) {
         for (int s2 = 0; s2 < 64; s2++) {
