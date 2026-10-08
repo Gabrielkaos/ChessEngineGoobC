@@ -34,7 +34,7 @@ void initLMRTable(){
     int i,j;
     for(i=1;i<64;++i){
         for(j=1;j<64;++j){
-            LMRTable[i][j]=0.75 + log(i) * log(j) / 2.25;
+            LMRTable[i][j]=LMRBase / 100.0 + log(i) * log(j) / (LMRDivisor / 100.0);
         }
     }
 }
@@ -454,7 +454,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 StateInfo nullSt;
                 makeNullMove(pos, &nullSt);
 
-                R = 4 + depth / 6 + MIN(3, (eval - beta) / 200);
+                R = NMPBase + depth / NMPDepthDiv + MIN(3, (eval - beta) / NMPEvalDiv);
 
                 int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, &lpv);
                 takeNullMove(pos);
@@ -613,7 +613,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 && lmrDepth <= FutilityPruningDepth) {
                 TRACE_INC(pos, futility_move_attempted);
                 if ((eval + FutilityMargin * lmrDepth) <= alpha
-                    && hist < FutilityPruningHistoryLimit[improving]){
+                    && hist < (improving ? FutilityHistLimitI : FutilityHistLimitNI)){
                     TRACE_INC(pos, futility_move_pruned);
                     continue;
                 }
@@ -634,7 +634,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             if (!isSpecial && depth - R <= CounterMovePruningDepth[improving]) {
                 TRACE_INC(pos, countermove_attempted);
-                if (cmhist < CounterMoveHistoryLimit[improving]) {
+                if (cmhist < (improving ? CounterMoveHistLimitI : CounterMoveHistLimitNI)) {
                     TRACE_INC(pos, countermove_pruned);
                     continue;
                 }
@@ -642,7 +642,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             if (!isSpecial && depth - R <= FollowUpMovePruningDepth[improving]) {
                 TRACE_INC(pos, followup_attempted);
-                if (fmhist < FollowUpMoveHistoryLimit[improving]) {
+                if (fmhist < (improving ? FollowUpHistLimitI : FollowUpHistLimitNI)) {
                     TRACE_INC(pos, followup_pruned);
                     continue;
                 }
@@ -703,7 +703,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //then we search this line deeper
         if(!info->bruteForceMode){
             singular = !rootNode
-                     &&  depth >= 7
+                     &&  depth >= SingularDepth
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
                      && (ttBound >= HFBETA)
@@ -764,7 +764,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += ttCapture;
 
-            R -= MAX(-2, MIN(2, (hist + pawnHist) / 5000));
+            R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
 
 #if USE_SURPRISE_SRD
             // Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation Deficit
@@ -804,7 +804,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
             R += ttCapture;
-            R -= MAX(-2, MIN(2, hist / 5000));
+            R -= MAX(-2, MIN(2, hist / LMRNoisyHistDiv));
             R = MIN(depth - 1, MAX(R, 1));
             if (R > 1) {
                 TRACE_INC(pos, lmr_noisy_reduced);
@@ -921,7 +921,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
     if(!pvNode){
-        int bonus = (bestMove == ttMove) ? 918 : -747;
+        int bonus = (bestMove == ttMove) ? TTMoveHistBonus : -TTMoveHistMalus;
         int entry = pos->shared->ttMoveHistory;
         entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
         pos->shared->ttMoveHistory = entry;

@@ -26,6 +26,8 @@
 #  x86-64-v3: + AVX2 / BMI2.  attacks.c switches to PEXT.
 #  x86-64-v4: + AVX-512 (BW, F, VL, DQ).
 #  native   : tuned to the host CPU; for local benchmarking.
+#  tune     : native build with the search constants of tune.h exposed as UCI
+#             options, for SPSA tuning (bin/linux/GOOB-2.2-BETA-native-tune).
 #
 # Key design decisions
 # -----------------------------------------------------------------------------
@@ -127,6 +129,14 @@ else
     BIN_SUFFIX :=
 endif
 
+# Tunable search parameters exposed as UCI options (tune.h, tools/spsa)
+TUNE ?= 0
+ifeq ($(TUNE),1)
+    BASE_CFLAGS += -DTUNE
+    OBJ_SUFFIX := $(OBJ_SUFFIX)-tune
+    BIN_SUFFIX := $(BIN_SUFFIX)-tune
+endif
+
 # ---------------------------------------------------------------------------
 # Per-ISA march flags
 # ---------------------------------------------------------------------------
@@ -180,6 +190,10 @@ $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 .PHONY: trace
 trace:
 	$(MAKE) TRACE=1 native
+
+.PHONY: tune
+tune:
+	$(MAKE) TUNE=1 native
 
 # ---------------------------------------------------------------------------
 # Default target – build universal binary (or all with 'make all')

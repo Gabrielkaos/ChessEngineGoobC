@@ -110,6 +110,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
   * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability via local `lastBestMoveDepth`, root effort), and single legal move cutoff.
   * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1705) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1787). Thread-local node and tablebase hit counters written atomically and aggregated via `NodesSearchedThreadPool()` and `TbHitsThreadPool()` to prevent SMP cache-line contention.
+* **[`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h) / [`tune.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.c):** The tunable search constants (qsearch/TT margins, aspiration window, hindsight, razoring, RFP, NMP formula, IIR, ProbCut, futility and history-pruning limits, capture futility, SEE margins, singular/double extensions, ttMoveHistory, LMR formula and history divisors, Surprise-SRD margins) as one `TP(name, default, min, max, c_end)` table. Normal builds turn them into compile-time constants (an `enum`); `make tune` (`-DTUNE`) turns them into globals exposed as UCI spin options plus an `spsa` command, for the SPSA tuner in [`tools/spsa/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa). The constants that are not tuned (LMP table, counter/follow-up pruning depths, UCI reporting times, singular move limits) stay in `search.h`.
 * **[`pvtable.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h) / [`pvtable.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.c):** Transposition Table with 4-entry buckets (64 bytes per bucket, exactly matching an x86 L1 cache line). Uses lockless SMP key packing:
   $$\text{key}_{32} = \text{posKey} \oplus (\text{posKey} \gg 32) \oplus \text{smp\_data} \oplus (\text{smp\_data} \gg 32)$$
   Features inlined high-throughput probing ([`ProbeTTEntry()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L52)) returning direct entry pointers without stack spills or 7-parameter pointer indirection, fast-path inlined mate/TB score scaling ([`valueFromTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L26) and [`valueToTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L36)), a cached `hashMask` in `S_PVTABLE` avoiding per-probe decrements, and L1 cache hardware prefetching ([`prefetchTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L46)) triggered immediately after move execution.
@@ -157,6 +158,7 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 | `make x86-64-v2` | Requires SSE4.2 + POPCNT | Nehalem and newer |
 | `make x86-64` | Baseline 64-bit x86 (SSE2) | Legacy compatibility fallback |
 | `make trace` | Builds `native` with `-DTRACE` for search telemetry | Use with `tools/trace_search.py` |
+| `make tune` | Builds `native` with `-DTUNE` (`GOOB-2.2-BETA-native-tune`): `tune.h` constants become UCI options | SPSA tuning with `tools/spsa/spsa.py` |
 
 ### Compilation Examples
 ```bash
@@ -168,6 +170,9 @@ make -C src universal
 
 # Build with search trace telemetry enabled:
 make -C src trace
+
+# Build with tunable search constants (UCI options) for SPSA:
+make -C src tune
 
 # Clean build artifacts:
 make -C src clean
@@ -200,6 +205,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 | `SyzygyProbeLimit` | spin | `7` (0–7) | Maximum number of pieces for Syzygy probing. |
 | `UCI_ShowWDL` | check | `false` | Output Win-Draw-Loss probabilities in search info lines. |
 | `Surprise_SRD` | check | `true` | Enables dynamic LMR via sibling history and eval expectation. |
+| *(tune.h parameters)* | spin | see `tune.h` | `make tune` builds only: one option per search constant in [`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h), named after the constant (e.g. `LMRBase`, `FutilityMargin`). |
 
 ### Special Non-UCI Commands
 * `print`: Displays an ASCII representation of the board, current FEN, posKey, and checkers.
@@ -210,6 +216,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 * `test` (typed before `uci`): Runs the transposition table bucket replacement unit tests.
 * `trace <bench|print|json|reset>`: Controls the search telemetry tracking system.
 * `compiler`: Prints compiler flags and detected host ISA capabilities.
+* `spsa` (`make tune` builds only, after `uci`): Prints the tunable search constants in OpenBench SPSA format (`name, int, value, min, max, c_end, r_end`).
 * `bench [depth]`: As a command line argument (`GOOB-2.2-BETA-native bench 8`) or typed before `uci`: runs the 30-position fixed-depth benchmark (default depth 8) with the default UCI options. Its node count matches `trace bench` inside UCI mode.
 
 ---

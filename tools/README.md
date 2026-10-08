@@ -16,6 +16,7 @@ This directory contains the complete offline training, data generation, tuning, 
    * [Workflow E: Verify NNUE Correctness](#workflow-e-verify-nnue-correctness)
    * [Workflow F: Trace & Benchmark Search Heuristics](#workflow-f-trace--benchmark-search-heuristics)
    * [Workflow G: Classical Evaluation Tuning (Texel Tuner, legacy)](#workflow-g-classical-evaluation-tuning-texel-tuner-legacy)
+   * [Workflow H: Tune Search Constants with SPSA](#workflow-h-tune-search-constants-with-spsa)
 5. [Data Formats & Specifications](#data-formats--specifications)
 
 ---
@@ -26,7 +27,7 @@ The tooling is divided into three primary operational domains:
 
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
 2. **Self-Play & Dataset Generation:** Scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that run the engine in parallel under UCI to harvest evaluated positions.
-3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), plus the legacy hand-crafted-evaluation tuner ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
+3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)), plus the legacy hand-crafted-evaluation tuner ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 
 ---
@@ -111,6 +112,18 @@ The tooling is divided into three primary operational domains:
 
   # Run cutechess SPRT match:
   tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-candidate tools/sprt/bin/GOOB-base
+  ```
+
+### 8. SPSA Search Tuner ([`tools/spsa/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa))
+* **Purpose:** Tunes the search constants of [`src/tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h) (pruning margins, depth limits, NMP/LMR formula terms) by self-play SPSA, OpenBench style, with cutechess-cli.
+* **Key Components:**
+  * [`spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py): `run` (start/resume a run with parallel workers), `show` (tuned vs default values), `apply` (write the tuned values into `src/tune.h`). Needs a `make tune` engine build. Run state goes to `tools/spsa/runs/<name>/` (git-ignored).
+  * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/README.md): algorithm, options and tuning advice.
+* **Usage:**
+  ```bash
+  make -C src tune
+  python3 tools/spsa/spsa.py run pruning1 --tc 5+0.05 --workers 6
+  python3 tools/spsa/spsa.py show pruning1
   ```
 
 ---
@@ -264,6 +277,23 @@ Only applies to a pre-NNUE checkout of `src/`: `tuner.c` does not build against 
    ```bash
    gcc -O3 -fopenmp -Isrc tools/tuner.c -lm -o tools/tuner
    ./tools/tuner
+   ```
+
+### Workflow H: Tune Search Constants with SPSA
+1. Build the tunable engine and keep a normal baseline binary:
+   ```bash
+   make -C src tune
+   make -C src native && cp src/bin/linux/GOOB-2.2-BETA-native tools/sprt/bin/GOOB-base
+   ```
+2. Tune (Ctrl-C pauses, the same command resumes; `--include`/`--exclude` pick parameters):
+   ```bash
+   python3 tools/spsa/spsa.py run pruning1 --tc 5+0.05 --workers 6 --iterations 5000
+   ```
+3. Write the values into `src/tune.h`, rebuild and SPRT against the baseline:
+   ```bash
+   python3 tools/spsa/spsa.py apply pruning1
+   make -C src native && cp src/bin/linux/GOOB-2.2-BETA-native tools/sprt/bin/GOOB-tuned
+   tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-tuned tools/sprt/bin/GOOB-base spsa-pruning1 6+0.06 6
    ```
 
 ---
