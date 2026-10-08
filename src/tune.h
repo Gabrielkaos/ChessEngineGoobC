@@ -17,73 +17,73 @@
 
 #define SEARCH_PARAMS(TP) \
     /* qsearch */ \
-    TP(DeltaMarginQ,               110,    40,   250,   10) \
+    TP(DeltaMarginQ,               103,    40,   250,   10) \
     TP(QSSeeMargin,                110,    40,   250,   10) \
     /* transposition table */ \
-    TP(TTResearchMargin,           128,    50,   300,   12) \
+    TP(TTResearchMargin,           126,    50,   300,   12) \
     /* aspiration windows */ \
-    TP(ScoreWindow,                 10,     4,    30,    2) \
-    TP(WindowDepth,                  5,     2,     9,    1) \
+    TP(ScoreWindow,                  9,     4,    30,    2) \
+    TP(WindowDepth,                  6,     2,     9,    1) \
     /* hindsight depth adjustment */ \
-    TP(HindsightMargin,            166,    60,   320,   12) \
+    TP(HindsightMargin,            164,    60,   320,   12) \
     /* razoring */ \
     TP(RazoringDepth,                2,     1,     5,    1) \
-    TP(RazorMarginBase,            240,   100,   450,   18) \
-    TP(RazorMarginCoeff,           160,    60,   320,   12) \
+    TP(RazorMarginBase,            236,   100,   450,   18) \
+    TP(RazorMarginCoeff,           158,    60,   320,   12) \
     /* reverse futility (beta) pruning */ \
     TP(BetaPruningDepth,             8,     4,    12,    1) \
-    TP(BetaMargin,                  75,    35,   150,    6) \
+    TP(BetaMargin,                  72,    35,   150,    6) \
     /* null move pruning, R = NMPBase + depth/NMPDepthDiv + min(3,(eval-beta)/NMPEvalDiv) */ \
     TP(defaultNullMoveDepth,         2,     1,     5,    1) \
-    TP(NMPBase,                      4,     2,     6,    1) \
+    TP(NMPBase,                      5,     2,     6,    1) \
     TP(NMPDepthDiv,                  6,     3,    10,    1) \
-    TP(NMPEvalDiv,                 200,   100,   400,   15) \
+    TP(NMPEvalDiv,                 197,   100,   400,   15) \
     TP(NMPVerifyDepth,              16,     8,    24,    1) \
     /* internal iterative reduction */ \
     TP(IIRDepth,                     6,     3,    10,    1) \
     /* probcut */ \
-    TP(probCutDepth,                 5,     3,     8,    1) \
-    TP(probCutMargin,               80,    30,   200,    8) \
+    TP(probCutDepth,                 6,     3,     8,    1) \
+    TP(probCutMargin,               79,    30,   200,    8) \
     /* quiet futility pruning (history limits: NI = not improving, I = improving) */ \
     TP(FutilityPruningDepth,         8,     4,    12,    1) \
-    TP(FutilityMargin,              65,    30,   130,    5) \
+    TP(FutilityMargin,              67,    30,   130,    5) \
     TP(FutilityMarginNoHistory,    110,    40,   220,    9) \
-    TP(FutilityHistLimitNI,      12000,  4000, 20000,  800) \
-    TP(FutilityHistLimitI,        6000,     0, 14000,  700) \
+    TP(FutilityHistLimitNI,      12045,  4000, 20000,  800) \
+    TP(FutilityHistLimitI,        5962,     0, 14000,  700) \
     /* counter / follow-up move history pruning */ \
-    TP(CounterMoveHistLimitNI,       0, -3000,  2000,  250) \
-    TP(CounterMoveHistLimitI,    -1000, -4000,  1000,  250) \
-    TP(FollowUpHistLimitNI,       -500, -3500,  1500,  250) \
-    TP(FollowUpHistLimitI,       -1500, -4500,   500,  250) \
+    TP(CounterMoveHistLimitNI,       -205, -3000,  2000,  250) \
+    TP(CounterMoveHistLimitI,    -1096, -4000,  1000,  250) \
+    TP(FollowUpHistLimitNI,       -484, -3500,  1500,  250) \
+    TP(FollowUpHistLimitI,       -1584, -4500,   500,  250) \
     /* capture futility pruning */ \
     TP(CaptureFutilityDepth,         6,     3,    10,    1) \
-    TP(CaptureFutilityBase,        110,    30,   250,   10) \
-    TP(CaptureFutilityPerDepth,    120,    50,   250,   10) \
+    TP(CaptureFutilityBase,        105,    30,   250,   10) \
+    TP(CaptureFutilityPerDepth,    116,    50,   250,   10) \
     /* SEE pruning: quiet margin * depth, noisy margin * depth^2 */ \
     TP(SEEPruningDepth,              9,     5,    13,    1) \
-    TP(SEEQuietMargin,             -64,  -130,   -20,    5) \
+    TP(SEEQuietMargin,             -65,  -130,   -20,    5) \
     TP(SEENoisyMargin,             -19,   -50,    -5,    2) \
     /* extensions */ \
-    TP(SingularDepth,                7,     4,    10,    1) \
-    TP(DoubleExtMargin,            120,    40,   250,   10) \
-    TP(HistexLimit,              10000,  4000, 16000,  600) \
+    TP(SingularDepth,                8,     4,    10,    1) \
+    TP(DoubleExtMargin,            123,    40,   250,   10) \
+    TP(HistexLimit,               9810,  4000, 16000,  600) \
     /* ttMoveHistory (singular double-extension margin scaling) */ \
-    TP(TTMoveHistoryMax,          8192,  4096, 16384,  500) \
-    TP(TTMoveHistoryScale,          40,    15,   100,    4) \
-    TP(TTMoveHistBonus,            918,   400,  1600,   60) \
-    TP(TTMoveHistMalus,            747,   300,  1400,   60) \
+    TP(TTMoveHistoryMax,          8196,  4096, 16384,  500) \
+    TP(TTMoveHistoryScale,          42,    15,   100,    4) \
+    TP(TTMoveHistBonus,            887,   400,  1600,   60) \
+    TP(TTMoveHistMalus,            726,   300,  1400,   60) \
     /* late move reductions, LMRTable = LMRBase/100 + ln(d)ln(m) / (LMRDivisor/100) */ \
-    TP(LMRBase,                     75,    25,   150,    6) \
+    TP(LMRBase,                     76,    25,   150,    6) \
     TP(LMRDivisor,                 225,   150,   350,   10) \
-    TP(LMRQuietHistDiv,           5000,  2000, 10000,  400) \
-    TP(LMRNoisyHistDiv,           5000,  2000, 10000,  400) \
-    TP(AllNodeScale,               276,   100,   500,   20) \
-    TP(AllNodeBase,                268,   100,   500,   20) \
+    TP(LMRQuietHistDiv,           5005,  2000, 10000,  400) \
+    TP(LMRNoisyHistDiv,           5039,  2000, 10000,  400) \
+    TP(AllNodeScale,               279,   100,   500,   20) \
+    TP(AllNodeBase,                274,   100,   500,   20) \
     TP(LMRDeeperMargin,             40,    10,   100,    4) \
     TP(LMRShallowerMargin,           6,     0,    20,    1) \
     /* Surprise-SRD */ \
-    TP(EVAL_DEFICIT_MARGIN,        120,    40,   250,   10) \
-    TP(EVAL_SURPLUS_MARGIN,        100,    30,   250,   10) \
+    TP(EVAL_DEFICIT_MARGIN,        119,    40,   250,   10) \
+    TP(EVAL_SURPLUS_MARGIN,         94,    30,   250,   10) \
     TP(EVAL_MOVE_LIMIT,              4,     2,     8,    1)
 
 #ifdef TUNE
