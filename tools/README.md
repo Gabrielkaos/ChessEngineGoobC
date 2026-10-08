@@ -118,12 +118,13 @@ The tooling is divided into three primary operational domains:
 * **Purpose:** Tunes the search constants of [`src/tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h) (pruning margins, depth limits, NMP/LMR formula terms) by self-play SPSA, OpenBench style, with cutechess-cli.
 * **Key Components:**
   * [`spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py): `run` (start/resume a run with parallel workers), `show` (tuned vs default values), `apply` (write the tuned values into `src/tune.h`). Needs a `make tune` engine build. Run state goes to `tools/spsa/runs/<name>/` (git-ignored).
-  * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/README.md): algorithm, options and tuning advice.
+  * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/README.md): step-by-step guide (how SPSA works, where the tuned values are, applying and SPRT-verifying them, choosing parameters, options).
 * **Usage:**
   ```bash
   make -C src tune
   python3 tools/spsa/spsa.py run pruning1 --tc 5+0.05 --workers 6
-  python3 tools/spsa/spsa.py show pruning1
+  python3 tools/spsa/spsa.py show pruning1     # tuned values
+  python3 tools/spsa/spsa.py apply pruning1    # write them into src/tune.h
   ```
 
 ---
