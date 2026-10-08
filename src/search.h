@@ -6,35 +6,13 @@
 /*
     Some variables shamelessly copied from Ethereal
 */
-static const int SEEPruningDepth = 9;
-static const int SEEQuietMargin  = -64;
-static const int SEENoisyMargin  = -19;
+#include "tune.h"
 
-
-static const int DeltaMarginQ    = 110;
-
-static const int QSSeeMargin     = 110;
-
-static const int TTResearchMargin   = 128;   // Ethereal
-
-
-static const int ScoreWindow = 10;
-
-static const int probCutDepth = 5;
-
-static const int probCutMargin = 80;
-
-static const int HistexLimit = 10000;
-static const int FutilityMargin = 65;
-static const int FutilityMarginNoHistory = 110;
-static const int FutilityPruningDepth = 8;
-static const int FutilityPruningHistoryLimit[] = { 12000, 6000 };
+//The tunable search constants (margins, depth limits, LMR/NMP formula terms)
+//live in tune.h. The ones below are not tuned.
 static const int CounterMovePruningDepth[] = { 3, 2 };
-static const int CounterMoveHistoryLimit[] = { 0, -1000 };
 static const int FollowUpMovePruningDepth[] = { 3, 2 };
-static const int FollowUpMoveHistoryLimit[] = { -500, -1500 };
-static const int defaultNullMoveDepth = 2;
-static const int LateMovePruningDepth = 8;
+static const int LateMovePruningDepth = 8;   //last index of LateMovePruningCounts
 static const int LateMovePruningCounts[2][9] = {
     {  0,  3,  4,  6, 10, 14, 19, 25, 31},
     {  0,  5,  7, 11, 17, 26, 36, 48, 63},
@@ -44,46 +22,11 @@ static const int BoundReportTime = 2500;
 static const int DepthOneGraceMs = 300;
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
-static const int BetaPruningDepth = 8;
-static const int BetaMargin = 75;
-static const int WindowDepth = 5;
-
-#define RazoringDepth      2      
-#define RazorMarginBase    240    
-#define RazorMarginCoeff   160
-
-
-#define IIRDepth 6
-
-#define AllNodeScale 276
-#define AllNodeBase  268
-
-#define HindsightMargin 166   // Stockfish's value
-
-#define NMPVerifyDepth 16   // Stockfish's threshold
-
-#define DoubleExtMargin 15 * 8
-
-//capture futility pruning (Stockfish): eval + base + perDepth*depth +
-//captured value + capture history/16 <= alpha  -> skip the capture
-#define CaptureFutilityDepth     6
-#define CaptureFutilityBase      110
-#define CaptureFutilityPerDepth  120
-//post-LMR re-search depth adjustment (Stockfish doDeeper/doShallowerSearch)
-#define LMRDeeperMargin     40
-#define LMRShallowerMargin   6
-
-#define TTMoveHistoryMax 8192   // tunable
-#define TTMoveHistoryScale 40   // tunable
 
 // Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation
 #ifndef USE_SURPRISE_SRD
 #define USE_SURPRISE_SRD 1
 #endif
-
-#define EVAL_DEFICIT_MARGIN    120
-#define EVAL_SURPLUS_MARGIN    100
-#define EVAL_MOVE_LIMIT        4
 
 extern int SurpriseSRDEnabled;
 

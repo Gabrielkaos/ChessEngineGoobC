@@ -369,6 +369,11 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Surprise_SRD set to %s\n", SurpriseSRDEnabled ? "true" : "false");
     }
 #endif
+#ifdef TUNE
+    else if (tuneSetOption(line)) {
+        //tunable search parameter (tune.h), only in `make tune` builds
+    }
+#endif
 
 }
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
@@ -592,6 +597,9 @@ void uciPrint(){
 #if USE_SURPRISE_SRD
     printf("option name Surprise_SRD type check default true\n");
 #endif
+#ifdef TUNE
+    tunePrintUciOptions();
+#endif
     printf("uciok\n");
 }
 
@@ -636,6 +644,14 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         else if(strEquals(str,"compiler")){
             print_compiler_info();
         }
+
+#ifdef TUNE
+        //tunable search parameters in OpenBench SPSA format (tools/spsa/spsa.py)
+        else if(strEquals(str,"spsa")){
+            tunePrintSpsa();
+            fflush(stdout);
+        }
+#endif
 
         else if(strEquals(str,"isready")){
             printf("readyok\n");
