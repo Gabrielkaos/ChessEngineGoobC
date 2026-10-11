@@ -71,7 +71,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
   * Butterfly history with threat context (`[side][threat_from][threat_to][piece][to]`).
   * Capture history (`[piece][threat_from][threat_to][to][captured]`).
-  * Continuation history across 4 slots (1, 2, 4, 6 plies back).
+  * Continuation history across 4 slots (1, 2, 4, 6 plies back), including single-move continuation updates (`updateContinuationHistories`).
   * Low-ply butterfly history (first 5 plies near the root).
   * Pawn history indexed strictly by pawn structure Zobrist key (king zobrist keys stripped from `pkHash` via `pawnHistIndex()`).
   * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`. History updates are gated at depth $> 0$ to prevent inverted bonuses/maluses on horizon check evasions.
@@ -106,6 +106,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Check extensions and history extensions.
     * Late Move Reduction (LMR) table with adjustments for check, PV, improving, tactical TT moves (`ttCapture`), and history.
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
+    * Post-LMR re-search history penalty: quiet moves that trigger a full-depth re-search but fail low (`Score <= alpha`) receive a continuation history malus (`-stat_bonus(resDepth)`), penalizing false alarms.
     * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
   * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability via local `lastBestMoveDepth`, root effort), and single legal move cutoff.

@@ -106,6 +106,26 @@ static int getContEntry(S_BOARD *pos,int slot,int piece,int to){
     return pos->shared->continuation[slot][pos->search->pieceStack[pos->ply - back]][TOSQ(move)][piece][to];
 }
 
+void updateContinuationHistories(S_BOARD *pos, int move, int bonus){
+    if(move == NOMOVE || move == NULLMOVE) return;
+
+    const int piece = pieceType[pos->pieces[FROMSQ(move)]];
+    const int to    = TOSQ(move);
+
+    for(int slot = 0; slot < CONT_HIST_SLOTS; ++slot){
+        const int back = ContinuationOffsets[slot];
+        if(pos->ply < back) continue;
+
+        const int pmove = pos->search->moveStack[pos->ply - back];
+        if(pmove == NOMOVE || pmove == NULLMOVE) continue;
+
+        const int ppiece = pos->search->pieceStack[pos->ply - back];
+        const int pto    = TOSQ(pmove);
+
+        histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][piece][to], bonus, HistoryDivisor);
+    }
+}
+
 int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
 
     int piece = pieceType[pos->pieces[FROMSQ(move)]];

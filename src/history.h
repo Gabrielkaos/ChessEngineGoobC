@@ -24,4 +24,7 @@ extern int getPawnHistory(S_BOARD *pos,int move);
 //low-ply history helpers (per-thread, cleared to 102 every search like Stockfish)
 extern void clearLowPlyHistory(S_BOARD *pos);
 
+//continuation history update for a single move with arbitrary bonus/malus
+extern void updateContinuationHistories(S_BOARD *pos, int move, int bonus);
+
 #endif // HISTORY_H

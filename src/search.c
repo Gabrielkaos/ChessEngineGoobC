@@ -574,6 +574,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int isExempt      = (mp->lastStage==STAGE_TABLE || mp->lastStage==STAGE_GOOD_NOISY);
         int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE || mp->lastStage==STAGE_FOLLOWUP_MOVE);
         int isSpecial     = isExempt || isRefutation;
+        int didLmrResearch = 0;
 
         //Syzygy root filtering
         if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
@@ -835,6 +836,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
             if (R != 1 && Score > alpha) {
                 TRACE_INC(pos, lmr_researches);
+                didLmrResearch = 1;
             }
 #if USE_SURPRISE_SRD
             if (SurpriseSRDEnabled && R > 1) {
@@ -867,6 +869,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         else capturesTried[capturesPlayed++]     = moveInLoop;
 
         if(info->stopped==TRUE)return 0;
+
+        // Post-LMR re-search continuation history malus:
+        // If a reduced quiet move beat alpha under reduction but failed low on the
+        // full-depth re-search, it was a false alarm. Penalize it in continuation history.
+        if(didLmrResearch && quietMove && Score <= alpha){
+            int resDepth = MAX(1, newDepth - 1);
+            updateContinuationHistories(pos, moveInLoop, -stat_bonus(resDepth));
+        }
 
         
         if(Score>bestScore){
