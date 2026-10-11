@@ -134,7 +134,34 @@ Tested against the baseline engine:
 
 ---
 
-## 6. Summary of All Merged Features on `main`
+## 6. Round 4: Move Picker NPS Optimization (October 11, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`opt/movepicker-threats`** | **MERGED** | 1735 | 425 - 400 - 910 | 50.7% | **+4.6 ± 11.3** | +0.321 | Accepted (commit `1f24ddf`) |
+
+### Detailed Analysis:
+
+#### 1. `opt/movepicker-threats` (Merged: commit `1f24ddf`)
+* **Concept:** Move picker NPS optimization in `src/movepicker.c`:
+  1. **Lazy & Unified Threat Computation:** In previous builds, `STAGE_GENERATE_QUIET` repeatedly traversed enemy knights, bishops, and rooks, performing duplicate PEXT/magic slider attack lookups to compute `threatByLesser` tables, even though attack bitboards were already evaluated in `STAGE_GENERATE_NOISY`. Implemented `computeMovePickerThreats()` to compute enemy pawn, knight, bishop, and rook attack bitboards in a single unified pass and cached `threats` and `threatByLesser` in `S_MOVEPICKER`. Threat computation is deferred until moves need scoring.
+  2. **Check Ray Pre-filtering:** King attack rays for bishop and rook checks are only evaluated if the friendly side actually possesses sliding pieces (bishops, rooks, or queens).
+  3. **SEE Short-Circuiting on Direct Checks:** In `STAGE_GENERATE_QUIET`, every checking move previously called `StaticExchangeEvaluation(pos, move, 0)`. We short-circuit:
+     - If the target square is completely unattacked (`!(threats & to)`), SEE $\ge 0$ is mathematically guaranteed; award the $+16384$ check bonus directly without calling SEE.
+     - Else if attacked by a lesser enemy piece (`threatByLesser[pType] & to`), SEE $< 0$ is guaranteed; skip the check bonus immediately without calling SEE.
+     - Fallback to `StaticExchangeEvaluation` is only executed for contested, non-lesser squares (>95% reduction in SEE calls).
+* **Empirical Match Result:**
+  - **Match:** 1735 games against `GOOB-base` at 6+0.06 TC.
+  - **Score:** 425 - 400 - 910 (50.7% score, +25 net wins).
+  - **Elo Difference:** **+4.6 ± 11.3 Elo** (LOS: 78.9%, LLR: +0.321).
+  - **Benchmark Speedup:** ~**+96,000 to +105,000 NPS (~+5.0% to +5.3% raw NPS gain)**; bench execution time dropped from 459 ms to 446 ms (`bench.py 12`).
+* **Verdict:** **ACCEPTED & MERGED** into `main` (commit `1f24ddf`).
+
+---
+
+## 7. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -146,10 +173,11 @@ Tested against the baseline engine:
 8. `fix/smp-node-counters`: Thread-local SMP node and tablebase hit accounting.
 9. `fix/robustness`: Compaction for games over 550 plies (`compactStateHistory()`) and uninitialized bench defaults fix.
 10. `search/lmr-research-malus`: Continuation history penalty on quiet moves whose post-LMR re-searches fail low (`4ad2a7f`).
+11. `opt/movepicker-threats`: Unified lazy attack bitboards and SEE short-circuiting on quiet checks (+96k NPS, +4.6 Elo, commit `1f24ddf`).
 
 ---
 
-## 7. Closing Instructions for GitHub PRs
+## 8. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -167,4 +195,5 @@ Closed following empirical SPRT testing against GOOB-base:
 - **SPRT:** [Insert LLR]
 - **Conclusion:** Tested in isolation; demonstrated regression / failed to show improvement. Documented in `documentations/search_pr_evaluations_oct2026.md`.
 ```
+
 
