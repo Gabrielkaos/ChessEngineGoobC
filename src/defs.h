@@ -217,6 +217,8 @@ typedef struct {
     int followup;
 
     U64 threats;
+    U64 threatByLesser[6];
+    int threatsComputed;
 
     int lastStage;  // which case in selectNextMove produced the most recently returned move
 } S_MOVEPICKER;

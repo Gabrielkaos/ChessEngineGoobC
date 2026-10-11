@@ -65,7 +65,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   3. Killer moves 1 & 2 (with duplicate elimination ensuring `killer2 != killer1`).
   4. Counter move (keyed by opponent's previous move).
   5. Followup move (keyed by own move 2 plies ago).
-  6. Quiet moves: scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses; loop invariants (`pawnHistIndex(pos)`, `pawnTable`, `lowPlyTable`, and `basePiece`) are hoisted out of the candidate loop.
+  6. Quiet moves: scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses. Caches unified threat bitboards on the move picker to eliminate duplicate slider ray traversals, and short-circuits Static Exchange Evaluation for safe and losing check bonus candidates; loop invariants (`pawnHistIndex(pos)`, `pawnTable`, `lowPlyTable`, and `basePiece`) are hoisted out of the candidate loop.
   7. Bad noisy moves (losing captures sorted by least material loss first: `(victimVal - attackerVal) * 16 + chist / 16` to maximize cutoff probability).
   8. Bad quiet moves (moves below `GoodQuietThreshold`).
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
