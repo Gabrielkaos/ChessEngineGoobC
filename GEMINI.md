@@ -20,6 +20,25 @@ architecture of ChessEngineGoobC.
 
 ---
 
+## Read Documentation First
+
+Agents MUST inspect and read the relevant project documentation before
+proposing changes, formulating plans, or modifying code.
+
+1. Always check the `documentations/` directory (such as
+   `documentations/NNUE_IMPROVEMENT_PLAN.md`,
+   `documentations/search_pr_evaluations_oct2026.md`) and existing READMEs
+   (`README.md`, `src/README.md`, `tools/README.md`, `tools/sprt/README.md`,
+   `tools/spsa/README.md`, `tools/nnue_project/README.md`, `SURPRISE_SRD.md`)
+   first.
+2. If documentation for the relevant feature, subsystem, or task is not present,
+   agents must thoroughly inspect the implementation in the codebase and local
+   reference engines before making any assumptions or modifications.
+3. If documentation was missing or not present, document findings and ensure
+   new or modified functionality is documented as part of the task.
+
+---
+
 ## Source / Tools Documentation
 
 Whenever changes are made to `src/` or `tools/`, the `README.md` in the
