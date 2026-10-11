@@ -108,7 +108,33 @@ Tested against the newly compiled baseline incorporating the Round 1 improvement
 
 ---
 
-## 5. Summary of All Merged Features on `main`
+## 5. Round 3: LMR Re-Search Malus & Quiescence Checks (October 11, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/lmr-research-malus`** | **MERGED** | 3000 | 736 - 731 - 1533 | 50.1% | **+0.6 ± 8.7** | -0.488 | Accepted (commit `4ad2a7f`) |
+| **`search/qs-checks`** | **REVERTED** | 2458 | 579 - 614 - 1265 | 49.3% | **-4.3 ± 9.6** | -1.410 | Rejected / Reverted (Neutral / Slight drag) |
+
+### Detailed Analysis:
+
+#### 1. `search/lmr-research-malus` (Merged: commit `4ad2a7f`)
+* **Concept:** Applied continuation history malus (`-stat_bonus(resDepth)`) to quiet moves that triggered a full-depth re-search after Late Move Reduction (LMR) but failed low (`Score <= alpha`), penalizing false-alarm moves across subsequent iterations.
+* **Result:** Tested over 3000 games: 736 - 731 - 1533 (+0.6 ± 8.7 Elo, LLR -0.488). Accepted as non-regressive and clean history penalization.
+
+#### 2. `search/qs-checks` (Reverted: -4.3 Elo / Neutral)
+* **Concept:** Detected in-check positions inside Quiescence search (`Quiescence()`), bypassed stand-pat and delta pruning, generated all pseudo-legal evasions (captures, quiet king evasions, interpositions), and returned exact checkmate scores when no legal evasions existed.
+* **Empirical Result:** 2458 games, 579 wins, 614 losses, 1265 draws (49.3% win rate, **-4.3 ± 9.6 Elo**, LLR -1.410).
+* **Failure Analysis:**
+  1. **Node Overhead on Quiet Evasions:** In quiescence search, generating all quiet evasions without pruning expanded search trees in tactically resolved positions where quiet king moves or interpositions merely delayed material loss without changing the outcome.
+  2. **Horizon Protection Already in AlphaBeta:** `AlphaBeta()` already extends or resolves check positions before dropping into Quiescence (`depth <= 0 && !inCheck`). Positions where a quiescence capture gives check and results in checkmate without any legal captures are extremely rare (<0.01% of search nodes).
+  3. **No Measurable Strength Gain:** The theoretical correctness fix produced no measurable gain and instead created a slight speed/node overhead.
+* **Action:** Reverted completely from `src/search.c` to preserve baseline search speed and node efficiency. Documented here for reference.
+
+---
+
+## 6. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -119,10 +145,11 @@ Tested against the newly compiled baseline incorporating the Round 1 improvement
 7. `fix/history-depth0`: History update gating at depth $> 0$.
 8. `fix/smp-node-counters`: Thread-local SMP node and tablebase hit accounting.
 9. `fix/robustness`: Compaction for games over 550 plies (`compactStateHistory()`) and uninitialized bench defaults fix.
+10. `search/lmr-research-malus`: Continuation history penalty on quiet moves whose post-LMR re-searches fail low (`4ad2a7f`).
 
 ---
 
-## 6. Closing Instructions for GitHub PRs
+## 7. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -130,6 +157,7 @@ For each rejected PR on GitHub:
 - `search/qsearch-tt-store`
 - `search/all-improvements`
 - `fix/tt-generation`
+- `search/qs-checks`
 
 Leave a closing note and close the PR:
 
