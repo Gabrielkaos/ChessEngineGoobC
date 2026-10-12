@@ -161,7 +161,29 @@ Tested against the baseline engine:
 
 ---
 
-## 7. Summary of All Merged Features on `main`
+## 7. Round 5: RFP Soft-Bound & Improving Scaling (October 12, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/rfp-softbound`** | **REVERTED** | 2416 | 581 - 623 - 1212 | 49.1% | **-5.9 ± 9.8** | -1.68 | Rejected / Reverted (Elo Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/rfp-softbound` (Reverted: -5.9 Elo)
+* **Concept:** Reverse Futility Pruning (RFP) adjustments adapted from reference engines (Stockfish/Berserk/Schoenemann):
+  1. Scaled pruning margin by `BetaMargin * (depth - improving)` with `eval >= beta` precondition, allowing tighter pruning when evaluation is improving.
+  2. Returned soft-bound `(eval + beta) / 2` instead of raw `eval` to avoid inflating minimax bounds and TT scores.
+* **Empirical Result:** 2416 games, 581 wins, 623 losses, 1212 draws (49.1% win rate, **-5.9 ± 9.8 Elo**, LLR -1.68).
+* **Failure Analysis:**
+  1. **Premature Pruning at Shallow Depths:** When `improving == 1`, `depth - improving` dropped to $0$ at depth 1. Any position where static eval $\ge \beta$ was pruned unconditionally at depth 1. In GOOB, NNUE evaluations can exhibit small local fluctuations; pruning depth-1 nodes without verifying single-reply tactics resulted in tactical blunders.
+  2. **Score Attenuation in TT / Minimax:** Returning `(eval + beta) / 2` attenuated the fail-high return value. In GOOB's search architecture, returning the higher static eval provides a stronger signal to parent aspiration windows and TT beta bounds.
+* **Action:** Reverted completely from `src/search.c` and `src/README.md`. Baseline bench (938,199 nodes) restored. Documented here for reference.
+
+---
+
+## 8. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -177,7 +199,7 @@ Tested against the baseline engine:
 
 ---
 
-## 8. Closing Instructions for GitHub PRs
+## 9. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -186,6 +208,7 @@ For each rejected PR on GitHub:
 - `search/all-improvements`
 - `fix/tt-generation`
 - `search/qs-checks`
+- `search/rfp-softbound`
 
 Leave a closing note and close the PR:
 
@@ -195,5 +218,6 @@ Closed following empirical SPRT testing against GOOB-base:
 - **SPRT:** [Insert LLR]
 - **Conclusion:** Tested in isolation; demonstrated regression / failed to show improvement. Documented in `documentations/search_pr_evaluations_oct2026.md`.
 ```
+
 
 
