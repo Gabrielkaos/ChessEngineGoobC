@@ -183,7 +183,29 @@ Tested against the baseline engine:
 
 ---
 
-## 8. Summary of All Merged Features on `main`
+## 8. Round 6: LMR Gives-Check Reduction Deduction (October 12, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/lmr-gives-check`** | **MERGED** | 2772 | 685 - 656 - 1431 | 50.5% | **+3.8 ± 9.0** | +0.302 | Accepted (Positive Elo Gain) |
+
+### Detailed Analysis:
+
+#### 1. `search/lmr-gives-check` (Merged: +3.8 Elo)
+* **Concept:** Deducted 1 ply of Late Move Reduction (`R -= givesCheck`, where `givesCheck = (pos->st->checkersBB != 0)`) for candidate moves that give check to the opponent's king, evaluated across both quiet and noisy moves in `AlphaBeta()`.
+* **Rationale:** Checking moves are forcing and severely restrict enemy replies. Reducing them with normal LMR frequently causes search horizon dropouts on mating attacks or saving tactical lines. Deducting a ply of reduction searches them at full or near-full depth.
+* **Empirical Match Result:**
+  - **Match:** 2772 games against `GOOB-base` at 6+0.06 TC.
+  - **Score:** 685 - 656 - 1431 (50.5% score, +29 net wins).
+  - **Elo Difference:** **+3.8 ± 9.0 Elo** (LOS: 79.4%, LLR: +0.302).
+  - **Benchmark:** Benchmark node count decreased from 938,199 to **812,959 nodes** (-13.3% tree size); bench execution time dropped from 456 ms to **405 ms** (`bench.py 12`).
+* **Verdict:** **ACCEPTED & MERGED** into `main`.
+
+---
+
+## 9. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -196,10 +218,11 @@ Tested against the baseline engine:
 9. `fix/robustness`: Compaction for games over 550 plies (`compactStateHistory()`) and uninitialized bench defaults fix.
 10. `search/lmr-research-malus`: Continuation history penalty on quiet moves whose post-LMR re-searches fail low (`4ad2a7f`).
 11. `opt/movepicker-threats`: Unified lazy attack bitboards and SEE short-circuiting on quiet checks (+96k NPS, +4.6 Elo, commit `1f24ddf`).
+12. `search/lmr-gives-check`: 1-ply Late Move Reduction deduction for candidate moves giving check (`givesCheck`, +3.8 Elo).
 
 ---
 
-## 9. Closing Instructions for GitHub PRs
+## 10. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

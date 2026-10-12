@@ -751,6 +751,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //Late Move Reduction, see how much we should cut depth
         //prunes if the move is quiet and that this is one of the many moves searched already
         //we prune if the move is unlikely promising
+        int givesCheck = (pos->st->checkersBB != 0);
+
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             TRACE_INC(pos, lmr_quiet_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
@@ -764,6 +766,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R += cutNode;
 
             R += ttCapture;
+
+            // Reduce LMR on moves that give check (forcing moves)
+            R -= givesCheck;
 
             R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
 
@@ -805,6 +810,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
             R += ttCapture;
+            R -= givesCheck;
             R -= MAX(-2, MIN(2, hist / LMRNoisyHistDiv));
             R = MIN(depth - 1, MAX(R, 1));
             if (R > 1) {

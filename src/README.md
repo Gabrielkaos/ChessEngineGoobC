@@ -104,7 +104,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
     * Singular Extensions ($D \ge 7$, TT move), double extensions, and multicut.
     * Check extensions and history extensions.
-    * Late Move Reduction (LMR) table with adjustments for check, PV, improving, tactical TT moves (`ttCapture`), and history.
+    * Late Move Reduction (LMR) table with adjustments for check evasions, moves giving check (`givesCheck`), PV, improving, tactical TT moves (`ttCapture`), and history.
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * Post-LMR re-search history penalty: quiet moves that trigger a full-depth re-search but fail low (`Score <= alpha`) receive a continuation history malus (`-stat_bonus(resDepth)`), penalizing false alarms.
     * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
