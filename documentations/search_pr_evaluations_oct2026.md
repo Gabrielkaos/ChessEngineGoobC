@@ -205,7 +205,28 @@ Tested against the baseline engine:
 
 ---
 
-## 9. Summary of All Merged Features on `main`
+## 9. Round 7: Small ProbCut (Instant TT Cutoff) (October 13, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/small-probcut`** | **REVERTED** | 2695 | 633 - 674 - 1388 | 49.2% | **-5.3 ± 9.2** | Rejected / Reverted (Neutral / Slight Drag) |
+
+### Detailed Analysis:
+
+#### 1. `search/small-probcut` (Reverted: -5.3 Elo / Neutral)
+* **Concept:** Added Stockfish Step 13 "Small ProbCut" instant TT cutoff at the start of the ProbCut block in `src/search.c`: when `!info->bruteForceMode && !pvNode && !inCheck && depth >= probCutDepth && abs(beta) < ISMATE && ttHit && (ttBound >= HFBETA) && ttDepth >= depth - 4 && ttValue >= probCutBeta && abs(ttValue) < ISMATE && pos->st->fiftyMove < 96`, cut off immediately and return `probCutBeta = MIN(beta + SmallProbCutMargin, ISMATE - 1)` with `SmallProbCutMargin = 428`.
+* **Rationale:** A shallower search in the TT ($\ge \text{depth} - 4$) that already proved a high lower bound $\ge \beta + 428$ implies that recursive verification searches on tactical moves would pass high anyway; returning `probCutBeta` immediately skips generating moves, computing SEE, and recursive searching.
+* **Empirical Result:** 2695 games, 633 wins, 674 losses, 1388 draws (49.2% win rate, **-5.3 ± 9.2 Elo**).
+* **Failure Analysis:**
+  1. **Shallow TT Lower Bounds in GOOB:** Unlike Stockfish, which uses a larger transposition table with depth replacement and a deeply trained large NNUE with tight bound calibration, GOOB's TT entries from $\text{depth} - 4$ with high lower bounds occasionally turn out to be tactical anomalies or fail-highs from non-quiet or volatile nodes.
+  2. **Insufficient Verification:** In GOOB, standard ProbCut actually verifies that at least one tactical move succeeds at $\text{depth} - 4$ with zero-width window before cutting off. Bypassing that verification based solely on a shallow TT lower bound resulted in slight tactical degradation rather than Elo improvement.
+* **Action:** Reverted completely from `src/search.c`, `src/tune.h`, and `src/README.md`. Baseline bench (812,959 nodes) restored. Documented here for reference.
+
+---
+
+## 10. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -222,7 +243,7 @@ Tested against the baseline engine:
 
 ---
 
-## 10. Closing Instructions for GitHub PRs
+## 11. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -232,6 +253,7 @@ For each rejected PR on GitHub:
 - `fix/tt-generation`
 - `search/qs-checks`
 - `search/rfp-softbound`
+- `search/small-probcut`
 
 Leave a closing note and close the PR:
 
