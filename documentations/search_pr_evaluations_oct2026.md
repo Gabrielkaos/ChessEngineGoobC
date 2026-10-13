@@ -226,7 +226,28 @@ Tested against the baseline engine:
 
 ---
 
-## 10. Summary of All Merged Features on `main`
+## 10. Round 8: Depth-Scaled Combined Continuation History Pruning (October 13, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/conthist-prune`** | **REVERTED** | 1836 | 414 - 455 - 967 | 48.9% | **-7.8 ± 11.1** | Rejected / Reverted (Elo Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/conthist-prune` (Reverted: -7.8 Elo)
+* **Concept:** Replaced GOOB's flat countermove and follow-up pruning (`CounterMoveHistLimit`, `FollowUpHistLimit` gated at `depth - R <= 3`) with Stockfish-style combined continuation history pruning: `contHist = cmhist + fmhist + pawnHist`, pruning quiets when `!inCheck && !isSpecial && contHist < -ContinuationHistoryMargin * depth` (`ContinuationHistoryMargin = 4136`).
+* **Rationale:** Summing 1-ply, 2-ply continuation, and pawn history scales dynamically across depths 1–11 without requiring arbitrary step cutoffs, pruning quiet moves with consistently poor track records across plies.
+* **Empirical Result:** 1836 games, 414 wins, 455 losses, 967 draws (48.9% win rate, **-7.8 ± 11.1 Elo**).
+* **Failure Analysis:**
+  1. **History Table Calibration Discrepancy:** In Stockfish, continuation history tables are backed by deeper searches with extensive correction histories and dedicated quiet move pickers. In GOOB, continuation histories have higher variance, meaning individual poor scores in 1-ply or 2-ply tables prematurely penalized valid quiet defensive resources at moderate depths ($D = 4..8$).
+  2. **Over-pruning without Depth Ceilings:** GOOB's previous flat limits were strictly gated to shallow residual depths (`depth - R <= 3`). Expanding pruning to all depths up to 11 pruned critical quiet defensive moves that had negative history in prior iterations but were tactically essential in the current branch.
+* **Action:** Reverted completely from `src/search.c`, `src/tune.h`, and `src/README.md`. Baseline bench (812,959 nodes) restored. Documented here for reference.
+
+---
+
+## 11. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -243,7 +264,7 @@ Tested against the baseline engine:
 
 ---
 
-## 11. Closing Instructions for GitHub PRs
+## 12. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -254,6 +275,7 @@ For each rejected PR on GitHub:
 - `search/qs-checks`
 - `search/rfp-softbound`
 - `search/small-probcut`
+- `search/conthist-prune`
 
 Leave a closing note and close the PR:
 
