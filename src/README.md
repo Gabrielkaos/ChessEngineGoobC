@@ -75,6 +75,8 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Low-ply butterfly history (first 5 plies near the root).
   * Pawn history indexed strictly by pawn structure Zobrist key (king zobrist keys stripped from `pkHash` via `pawnHistIndex()`).
   * Gravity formula updates: `entry += bonus - entry * abs(bonus) / D`. History updates are gated at depth $> 0$ to prevent inverted bonuses/maluses on horizon check evasions.
+  * Position-dependent malus decay by search order (`actualMalus * HistMalusDecay / 1024`), penalizing earlier-tried quiet moves more heavily than late failures.
+  * Move-count bonus scaling (`HistMoveCountBonusMul`) for cutoff moves found deep in the quiet search list (`quietsTried > HistMoveCountThreshold`).
 
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.

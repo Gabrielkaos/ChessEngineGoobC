@@ -3,6 +3,7 @@
 #include "some_maths.h"
 #include "init.h"
 #include "bitboards.h"
+#include "tune.h"
 
 //pkHash also hashes both kings; the pawn history wants the pawn structure
 //alone (Stockfish keys it on pawn_key), otherwise every king step scatters
@@ -185,14 +186,21 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     if(depth > 0 && !(length==1 && depth <= 3)){
 
         U64 threats = allAttackedSquares(pos, pos->side ^ 1);
-        int index,bonus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
+        int index,bonus,bestBonus,actualMalus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
 
         bonus = stat_bonus(depth);
+        bestBonus = (length - 1 > HistMoveCountThreshold) ? (bonus * HistMoveCountBonusMul / 1024) : bonus;
+        actualMalus = bonus;
 
         for(index=0;index<length;++index){
             move = moves[index];
 
-            delta = move==bestMove ? bonus:-bonus;
+            if(move == bestMove){
+                delta = bestBonus;
+            } else {
+                delta = -actualMalus;
+                actualMalus = actualMalus * HistMalusDecay / 1024;
+            }
 
             piece = pieceType[pos->pieces[FROMSQ(move)]];
             from  = FROMSQ(move);

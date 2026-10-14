@@ -84,7 +84,11 @@
     /* Surprise-SRD */ \
     TP(EVAL_DEFICIT_MARGIN,        116,    40,   250,   10) \
     TP(EVAL_SURPLUS_MARGIN,         97,    30,   250,   10) \
-    TP(EVAL_MOVE_LIMIT,              4,     2,     8,    1)
+    TP(EVAL_MOVE_LIMIT,              4,     2,     8,    1) \
+    /* quiet history update */ \
+    TP(HistMoveCountThreshold,        8,     4,    16,    1) \
+    TP(HistMoveCountBonusMul,      1280,  1024,  2048,   50) \
+    TP(HistMalusDecay,              921,   800,  1000,   10)
 
 #ifdef TUNE
 
