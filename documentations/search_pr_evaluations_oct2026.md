@@ -291,7 +291,29 @@ Tested against the baseline engine:
 
 ---
 
-## 13. Summary of All Merged Features on `main`
+## 13. Round 11: Position-Dependent History Malus & Move-Count Bonus (October 14, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/hist-order-bonus`** | **MERGED** | 2543 | 595 - 581 - 1367 | 50.3% | **+2.1 ± 9.2** | Accepted (Positive Elo Gain) |
+
+### Detailed Analysis:
+
+#### 1. `search/hist-order-bonus` (Merged: +2.1 Elo)
+* **Concept:** Position-dependent history malus decay by move order and move-count bonus scaling adapted from Stockfish and Berserk:
+  1. **Malus Decay by Order:** Quiet moves that were tried earlier in the move list get penalized more heavily than moves tried at the very end (`actualMalus = actualMalus * HistMalusDecay / 1024` with `HistMalusDecay = 921`). Earlier moves were expected by move ordering to be best, so failing is a stronger negative signal.
+  2. **Move Count Bonus Scaling:** If the search had to explore deep into the quiet list before finding the refutation move (`length - 1 > HistMoveCountThreshold` with `HistMoveCountThreshold = 8`), the cutoff move gets an extra bonus multiplier (`HistMoveCountBonusMul = 1280` / 1.25×) for rescuing a difficult node.
+* **Empirical Match Result:**
+  - **Match:** 2543 games against `GOOB-base` at 6+0.06 TC.
+  - **Score:** 595 - 581 - 1367 (50.3% score, +14 net wins).
+  - **Elo Difference:** **+2.1 ± 9.2 Elo** (LOS: 66.9%, LLR: -0.102).
+* **Verdict:** **ACCEPTED & MERGED** into `main` (commit `885291b`).
+
+---
+
+## 14. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -305,10 +327,11 @@ Tested against the baseline engine:
 10. `search/lmr-research-malus`: Continuation history penalty on quiet moves whose post-LMR re-searches fail low (`4ad2a7f`).
 11. `opt/movepicker-threats`: Unified lazy attack bitboards and SEE short-circuiting on quiet checks (+96k NPS, +4.6 Elo, commit `1f24ddf`).
 12. `search/lmr-gives-check`: 1-ply Late Move Reduction deduction for candidate moves giving check (`givesCheck`, +3.8 Elo).
+13. `search/hist-order-bonus`: Position-dependent history malus decay by search order and move-count bonus scaling for late quiet refutations (+2.1 Elo, commit `885291b`).
 
 ---
 
-## 14. Closing Instructions for GitHub PRs
+## 15. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
