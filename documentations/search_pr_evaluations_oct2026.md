@@ -269,7 +269,29 @@ Tested against the baseline engine:
 
 ---
 
-## 12. Summary of All Merged Features on `main`
+## 12. Round 10: Singular Extension Margin Calibration & Triple Extensions (October 14, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/singular-margin-triple-ext`** | **REVERTED** | 651 | 148 - 169 - 334 | 48.4% | **-11.9 ± 18.8** | Rejected / Reverted (Elo Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/singular-margin-triple-ext` (Reverted: -11.9 Elo)
+* **Concept:** Calibrated singular extension margin and added triple extensions adapted from Stockfish and Berserk:
+  1. Scaled singular search margin dynamically: `rBeta = MAX(ttValue - SingularMargin * depth, -AB_BOUND)` with `SingularMargin = 2` (tunable in `SEARCH_PARAMS`), replacing the flat `ttValue - depth` margin. Synchronized `multiCut` cutoff value to match.
+  2. Awarded triple extensions (`extension = 3`) when `value < rBeta - adjustedTripleMargin` with `TripleExtMargin = 218` (tunable).
+* **Empirical Result:** 651 games against `GOOB-base`: 148 wins, 169 losses, 334 draws (48.4% score, **-11.9 ± 18.8 Elo**, LOS 10.7%).
+* **Failure Analysis:**
+  1. **Tree Bloat from Doubled Margin:** Doubling the margin to `2 * depth` (e.g. 20–30 cp below TT score instead of 10–15 cp) lowered `rBeta` significantly. Alternative moves failed low much more easily during the singular verification search, causing a dramatic spike in false-positive singular detections.
+  2. **Over-extension from Triple Extensions:** Granting +3 plies expanded tactical subtrees too deeply; fixed-depth benchmark node count exploded from 812,959 to **1,104,630 nodes (+35.9% tree growth)**. Under time controls, this inflated time spent on speculative branches without delivering tangible tactical gains.
+* **Action:** Reverted completely from `src/search.c`, `src/tune.h`, and `src/README.md`. Baseline bench (812,959 nodes) restored. Documented here for reference.
+
+---
+
+## 13. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -286,7 +308,7 @@ Tested against the baseline engine:
 
 ---
 
-## 13. Closing Instructions for GitHub PRs
+## 14. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -299,6 +321,7 @@ For each rejected PR on GitHub:
 - `search/small-probcut`
 - `search/conthist-prune`
 - `search/tt-lmr`
+- `search/singular-margin-triple-ext`
 
 Leave a closing note and close the PR:
 
