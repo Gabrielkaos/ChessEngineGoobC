@@ -35,7 +35,7 @@ for f in fens:
     send("ucinewgame"); send("isready"); readuntil("readyok")
     send(f"position fen {f}"); send(f"go depth {depth}")
     lines = readuntil("bestmove")
-    last = [l for l in lines if l.startswith(f"info depth {depth} ")]
+    last = [l for l in lines if l.startswith("info depth ") and " nodes " in l]
     last = last[-1] if last else ""
     n = int(re.search(r" nodes (\d+)", last).group(1)) if last else 0
     t = int(re.search(r" time (\d+)", last).group(1)) if last else 0

@@ -5,7 +5,7 @@
 #include "board.h"
 
 
-#define MAXTHREADS 2048
+#define MAXTHREADS 512
 
 typedef struct{
     S_PVTABLE *ttable;

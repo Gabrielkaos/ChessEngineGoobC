@@ -11,8 +11,8 @@ Usage:
     book         opening book EPD/FEN file      (default book.epd)
     pos_cap      max quiet positions kept per game; 0 = keep all (default)
 
-Output format is "FEN;result" (result from white's POV), which tools/tuner.c
-parses directly.
+Output format is "FEN;result" (result from white's POV), formerly parsed
+by tools/tuner.c.
 """
 
 import os

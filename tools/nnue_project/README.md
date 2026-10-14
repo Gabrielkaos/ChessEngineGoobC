@@ -35,7 +35,6 @@ scripts/
   check_net.py          checks an exported net and prints bit-exact reference evals
   test_net.py           evaluates FENs with a saved checkpoint
   scale_test.py         quantization headroom of a checkpoint
-  nnue_loader.c/.h      old standalone loader for an earlier king-bucketed design (unused)
   claude-suggest.txt    notes from an earlier review of this pipeline
 data_selfplay/          self-play records from tools/selfplay_nnue.py (tracked)
 data/, data_json/, checkpoints/   created by the scripts (not tracked)

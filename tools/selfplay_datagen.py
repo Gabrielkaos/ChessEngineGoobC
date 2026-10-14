@@ -1,1 +1,0 @@
-selfplay_nnue.py

@@ -15,7 +15,7 @@ This directory contains the complete offline training, data generation, tuning, 
    * [Workflow D: Quantize & Export Weights for the Engine](#workflow-d-quantize--export-weights-for-the-engine)
    * [Workflow E: Verify NNUE Correctness](#workflow-e-verify-nnue-correctness)
    * [Workflow F: Trace & Benchmark Search Heuristics](#workflow-f-trace--benchmark-search-heuristics)
-   * [Workflow G: Classical Evaluation Tuning (Texel Tuner, legacy)](#workflow-g-classical-evaluation-tuning-texel-tuner-legacy)
+   * [Workflow G: Classical Evaluation Tuning (historical note)](#workflow-g-classical-evaluation-tuning-historical-note)
    * [Workflow H: Tune Search Constants with SPSA](#workflow-h-tune-search-constants-with-spsa)
 5. [Data Formats & Specifications](#data-formats--specifications)
 
@@ -27,7 +27,7 @@ The tooling is divided into three primary operational domains:
 
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
 2. **Self-Play & Dataset Generation:** Scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that run the engine in parallel under UCI to harvest evaluated positions.
-3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)), plus the legacy hand-crafted-evaluation tuner ([`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)).
+3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)).
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 
 ---
@@ -49,7 +49,7 @@ The tooling is divided into three primary operational domains:
   ```
 
 ### 2. [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)
-* **Purpose:** Generates self-play games outputting EPD lines formatted as `FEN;result` (with results from White's perspective) used by the legacy hand-crafted-evaluation tuner [`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c). It still runs against the current engine.
+* **Purpose:** Generates self-play games outputting EPD lines formatted as `FEN;result` (with results from White's perspective), formerly used by the legacy hand-crafted-evaluation tuner. It still runs against the current engine.
 * **Usage:**
   ```bash
   python3 tools/datagen.py <nodes_per_move> <total_games> <threads> <output_file> <opening_book>
@@ -92,12 +92,8 @@ The tooling is divided into three primary operational domains:
   python3 tools/test_nnue_comprehensive.py
   ```
 
-### 6. [`tuner.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/tuner.c)
-* **Status: legacy.** Texel tuner (C, OpenMP, Adam) for the hand-crafted evaluation GOOB used before NNUE (PSTs, passed pawns, king safety tables, mobility). That evaluation (`PiecesVal`, `initPQSTMAT()`, ...) is no longer in `src/`, so this file does not build against the current sources; it is kept for reference.
-* **Compilation** (against a pre-NNUE checkout of `src/`):
-  ```bash
-  gcc -O3 -fopenmp -Isrc tools/tuner.c -lm -o tools/tuner
-  ```
+### 6. Classical Evaluation Tuner (`tuner.c`, retired)
+* **Status: retired.** The Texel tuner for GOOB's pre-NNUE hand-crafted evaluation has been removed from `tools/` as all classical evaluation arrays were replaced by NNUE.
 
 ### 7. SPRT Testing Suite ([`tools/sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt))
 * **Purpose:** Automated engine strength and regression testing harness comparing modified engine builds against a baseline version.
@@ -153,7 +149,6 @@ tools/nnue_project/
     ├── check_net.py      # Checks an exported net: size, int16 limits, bit-exact reference evals
     ├── test_net.py       # Evaluates FENs with a saved PyTorch checkpoint
     ├── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
-    ├── nnue_loader.c/.h  # Old standalone loader for an earlier king-bucketed design; unused
     └── claude-suggest.txt # Notes from an earlier review of this pipeline
 ```
 
@@ -268,17 +263,8 @@ make -C src trace
 python3 tools/trace_search.py --bench 8
 ```
 
-### Workflow G: Classical Evaluation Tuning (Texel Tuner, legacy)
-Only applies to a pre-NNUE checkout of `src/`: `tuner.c` does not build against the current sources (see section 6).
-1. Generate an EPD dataset:
-   ```bash
-   python3 tools/datagen.py 5000 50000 8 tools/dataset.epd path/to/book.epd
-   ```
-2. Build and run the Texel tuner:
-   ```bash
-   gcc -O3 -fopenmp -Isrc tools/tuner.c -lm -o tools/tuner
-   ./tools/tuner
-   ```
+### Workflow G: Classical Evaluation Tuning (historical note)
+GOOB previously used Texel tuning for hand-crafted evaluation terms (PSTs, piece values, king safety). With the transition to pure NNUE evaluation, hand-crafted evaluation code and `tools/tuner.c` have been retired. Refer to Workflows C and D for the active NNUE training pipeline.
 
 ### Workflow H: Tune Search Constants with SPSA
 1. Build the tunable engine and keep a normal baseline binary:

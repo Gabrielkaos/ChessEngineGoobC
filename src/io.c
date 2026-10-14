@@ -97,6 +97,7 @@ void printFen(const S_BOARD *pos,char *fen){
 }
 
 int ParseMove(char *ptrChar, S_BOARD *pos){
+    if (!ptrChar || !ptrChar[0] || !ptrChar[1] || !ptrChar[2] || !ptrChar[3]) return NOMOVE;
     if (ptrChar[1] > '8' || ptrChar[1] < '1') return NOMOVE;
     if (ptrChar[3] > '8' || ptrChar[3] < '1') return NOMOVE;
     if (ptrChar[0] > 'h' || ptrChar[0] < 'a') return NOMOVE;

@@ -190,7 +190,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 ### Supported UCI Options
 | Option Name | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `Threads` | spin | `1` (max 2048) | Number of search threads (Lazy SMP). |
+| `Threads` | spin | `1` (max 512) | Number of search threads (Lazy SMP). |
 | `Hash` | spin | `64` (max 1024) | Transposition Table size in megabytes. |
 | `MultiPV` | spin | `1` (max 256) | Number of principal variation lines to output. |
 | `Move Overhead` | spin | `50` (0–5000) | Buffer in milliseconds to absorb GUI/network lag. |

@@ -529,6 +529,14 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     mainSearchThread = LaunchSearchThread(pos, info, table);
 }
 void parsePosition(char* lineIn,S_BOARD *pos){
+    if(strlen(lineIn) < 9){
+        ParseFEN(START_FEN,pos);
+        pos->hisPly = 0;
+        initStacks(pos);
+        pos->ply = 0;
+        nnue_refresh_accumulator(pos);
+        return;
+    }
     lineIn+=9;
     char *ptrChar=lineIn;
     if(strncmp(lineIn,"startpos",8)==0){
