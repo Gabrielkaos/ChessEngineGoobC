@@ -35,10 +35,10 @@ INLINE int valueFromTT(int score, int ply) {
 
 INLINE int valueToTT(int score, int ply) {
     if (__builtin_expect(abs(score) >= TB_WIN_VALUE - MAXDEPTH, 0)) {
-        if (score > ISMATE)       score -= ply;
-        else if (score < -ISMATE) score += ply;
-        else if (score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) score -= ply;
-        else if (score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) score += ply;
+        if (score > ISMATE)       score += ply;
+        else if (score < -ISMATE) score -= ply;
+        else if (score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) score += ply;
+        else if (score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) score -= ply;
     }
     return score;
 }

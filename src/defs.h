@@ -243,8 +243,8 @@ typedef struct {
 
 //Search Details
 typedef struct {
-    int starttime;
-    int stoptime;
+    U64 starttime;
+    U64 stoptime;
     volatile int stopped;
     int depth;
     int movestogo;
@@ -269,8 +269,8 @@ typedef struct {
     volatile int stopOnPonderhit;
 
     //soft time management
-    int optimumTime;
-    int maximumTime;
+    U64 optimumTime;
+    U64 maximumTime;
     int softTimeSet;
     double originalTimeAdjust;
     double previousTimeReduction;   // persists across the whole game, like originalTimeAdjust

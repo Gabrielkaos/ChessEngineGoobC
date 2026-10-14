@@ -1,21 +1,21 @@
 
 #include "stdio.h"
 #include <string.h>
+#include <stdint.h>
 #include "misc.h"
 
 #if defined(_WIN32) || defined(WIN32)
 #include <windows.h>
 #else
-#include <unistd.h>
-#include <sys/time.h>
+#include <time.h>
 #endif
 
-int getTimeMs(){
+uint64_t getTimeMs(void){
 #if defined(_WIN32) || defined(WIN32)
-    return GetTickCount();
+    return GetTickCount64();
 #else
-    struct timeval t;
-    gettimeofday(&t,NULL);
-    return t.tv_sec*1000+t.tv_usec/1000;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)(ts.tv_nsec / 1000000);
 #endif
 }

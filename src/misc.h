@@ -1,7 +1,9 @@
 #ifndef MISC_H
 #define MISC_H
 
+#include <stdint.h>
+
 //misc.c
-extern int getTimeMs();
+extern uint64_t getTimeMs(void);
 
 #endif

@@ -1237,7 +1237,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     } S_DEPTH_PV;
 
     //iterative deepening
-    for(currentDepth=1;currentDepth<=MAXDEPTH;++currentDepth){
+    for(currentDepth=1;currentDepth<MAXDEPTH;++currentDepth){
 
         bestMoveChanges /= 2.0;
 
@@ -1895,25 +1895,27 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     trace_start_search();
 #endif
 
+    int activeThreads = MIN(info->threadNum, poolSize);
+
     //worker 0 already sums every worker's counters (node limits) while the
     //others are still being set up, so clear them all before starting any
-    for (int i = 0; i < MIN(info->threadNum, poolSize); ++i) {
+    for (int i = 0; i < activeThreads; ++i) {
         threadPool[i].originalPos->search->nodes  = 0;
         threadPool[i].originalPos->search->tbhits = 0;
     }
 
     //start workers
-    for (int i = 0; i < info->threadNum; ++i) {
+    for (int i = 0; i < activeThreads; ++i) {
         startWorkerSearch(i, pos, info, table);
     }
 
     //wait for all workers to complete
-    for (int i = 0; i < info->threadNum; ++i) {
+    for (int i = 0; i < activeThreads; ++i) {
         waitWorkerSearch(i);
     }
 
 #ifdef TRACE
-    for (int i = 0; i < info->threadNum; ++i) {
+    for (int i = 0; i < activeThreads; ++i) {
         if (threadPool[i].originalPos && threadPool[i].originalPos->search) {
             trace_aggregate_thread(&threadPool[i].originalPos->search->trace);
         }

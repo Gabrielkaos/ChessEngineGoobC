@@ -421,7 +421,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
         depth=atoi(ptr+6);
     }
     if((ptr=strstr(line,"nodes"))){
-        nodestogo=(U64)atoi(ptr+6);
+        nodestogo=strtoull(ptr+6, NULL, 10);
     }
     if((ptr=strstr(line,"mate"))){
         info->mateLimit=atoi(ptr+5);
@@ -519,7 +519,7 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     info->nodeLimit = nodestogo;
 
     //depth limits
-    info->depth         = depth > 0 ? depth:MAXDEPTH;
+    info->depth         = depth > 0 ? MIN(depth, MAXDEPTH - 1) : (MAXDEPTH - 1);
     info->depthSet      = depth > 0;
 
     //init things
