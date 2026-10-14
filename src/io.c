@@ -8,7 +8,7 @@
 //getting square string
 char * PrSq(const int sq){
 
-    static char SqStr[3];
+    _Thread_local static char SqStr[3];
 
     int file=FILE_OF(sq);
     int rank=RANK_OF(sq);

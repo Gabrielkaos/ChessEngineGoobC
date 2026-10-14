@@ -148,8 +148,7 @@ tools/nnue_project/
     ├── clear_cache.py    # Repairs caches from the original prepare_data.py (one label per position, no val leakage, optional shuffle)
     ├── check_net.py      # Checks an exported net: size, int16 limits, bit-exact reference evals
     ├── test_net.py       # Evaluates FENs with a saved PyTorch checkpoint
-    ├── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
-    └── claude-suggest.txt # Notes from an earlier review of this pipeline
+    └── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
 ```
 
 ### Script Reference

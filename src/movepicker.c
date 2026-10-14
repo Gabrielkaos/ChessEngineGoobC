@@ -159,8 +159,6 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 for(int i = 0; i < mp->list->count; ++i){
                     move = mp->list->moves[i].move;
                     int to = TOSQ(move);
-                    int from = FROMSQ(move);
-                    int pt = pieceType[pos->pieces[from]];
                     int captured = pieceType[pos->pieces[to]];
                     if(move & MVFLAGEP)   captured = p_pawn;
                     else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;

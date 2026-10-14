@@ -244,7 +244,7 @@ implementation and training cost, and regression risk.
 
 ### Wall-clock expectations
 
-From the per-batch timing recorded in `tools/nnue_project/scripts/claude-suggest.txt`
+From earlier per-batch benchmark timing
 (about 730 ms per 8192-position batch on this CPU). These are planning
 numbers; Phase 0 measures the real figure.
 

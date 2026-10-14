@@ -123,7 +123,7 @@ def goob_eval(fen):
         stderr=subprocess.PIPE,
         text=True
     )
-    cmds = f"uci\nsetoption name UseNNUE value true\nposition fen {fen}\neval\nquit\n"
+    cmds = f"uci\nposition fen {fen}\neval\nquit\n"
     out, _ = proc.communicate(input=cmds, timeout=5)
     for line in out.splitlines():
         if line.startswith("Eval:"):
