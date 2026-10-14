@@ -247,7 +247,29 @@ Tested against the baseline engine:
 
 ---
 
-## 11. Summary of All Merged Features on `main`
+## 11. Round 9: TT Depth & TT-PV Context in LMR (October 14, 2026)
+
+Tested against the baseline engine:
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/tt-lmr`** | **REVERTED** | ~2363 | ~50% in 2k, 74 - 82 - 207 in 363 | 48.9% (last 363) | **-7.7 ± 23.5** | Rejected / Reverted (Neutral / Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/tt-lmr` (Reverted: Neutral to -7.7 Elo)
+* **Concept:** Added Transposition Table depth and PV context to Late Move Reductions (LMR) adapted from Berserk and Stockfish:
+  1. Maintained a `ttPv` flag (`pvNode || (ttHit && ttBound == HFEXACT)`), replacing `!pvNode` with `!ttPv` in quiet and noisy LMR to exempt known transposed exact PV lines from non-PV reduction.
+  2. Deducted 1 ply of reduction (`R -= (ttDepth >= depth)`) across quiet and noisy moves when the position was already probed and searched to at least `depth` in the TT.
+* **Empirical Result:** Tested in two stages against `GOOB-base`: ~2,000 games overnight resulted in a 50/50 neutral split; a subsequent 363-game run scored 74 wins, 82 losses, 207 draws (48.9% score, -7.7 ± 23.5 Elo, LLR -0.356).
+* **Failure Analysis:**
+  1. **Tree Explosion on Transposed Nodes:** Deducting 1 ply of reduction whenever `ttDepth >= depth` expanded search trees in complex middlegame transpositions where the TT move had already been probed and refuted, searching secondary and tertiary moves deeper without finding better alternatives.
+  2. **TT Bound Ambiguity:** Treating `ttBound == HFEXACT` as a full PV node for reduction purposes reduced search selectivity in sibling subtrees where an exact score had been recorded under a different alpha-beta window.
+* **Action:** Reverted completely from `src/search.c` and `src/README.md`. Baseline bench (812,959 nodes) restored. Documented here for reference.
+
+---
+
+## 12. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -264,7 +286,7 @@ Tested against the baseline engine:
 
 ---
 
-## 12. Closing Instructions for GitHub PRs
+## 13. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -276,6 +298,7 @@ For each rejected PR on GitHub:
 - `search/rfp-softbound`
 - `search/small-probcut`
 - `search/conthist-prune`
+- `search/tt-lmr`
 
 Leave a closing note and close the PR:
 
