@@ -49,9 +49,9 @@ INLINE void prefetchTT(S_PVTABLE *table, U64 key) {
     __builtin_prefetch(&table->pTable[index]);
 }
 
-// Direct pointer probe: avoids 7-parameter passing and stack spills.
-// Returns pointer to the matching entry on hit, or NULL on miss.
-INLINE S_PVENTRY* ProbeTTEntry(S_PVTABLE *table, U64 key) {
+// Lockless probe: validates XOR key to detect torn writes and returns entry contents directly.
+// Returns TRUE on hit with validated data and eval, or FALSE on miss.
+INLINE int ProbeTTEntry(S_PVTABLE *table, U64 key, uint64_t *out_data, int *out_eval) {
     int index = key & table->hashMask;
     S_PVBUCKET *bucket = &table->pTable[index];
     uint32_t posFold = (uint32_t)(key ^ (key >> 32));
@@ -59,21 +59,22 @@ INLINE S_PVENTRY* ProbeTTEntry(S_PVTABLE *table, U64 key) {
     for (int i = 0; i < TT_BUCKET_SIZE; ++i) {
         uint64_t data = bucket->entries[i].smp_data;
         if (!data) continue;
+        int16_t ev = bucket->entries[i].eval;
         uint32_t test_key = posFold ^ (uint32_t)(data ^ (data >> 32));
         if (bucket->entries[i].smp_key == test_key) {
             bucket->entries[i].generation = table->generation;
-            return &bucket->entries[i];
+            *out_data = data;
+            if (out_eval) *out_eval = (int)ev;
+            return TRUE;
         }
     }
-    return NULL;
+    return FALSE;
 }
 
 // Backward-compatible probe wrapper for legacy callers and unit tests
 INLINE int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score, int *ttDepth, int *ttBound, int *ttEval) {
-    S_PVENTRY *entry = ProbeTTEntry(table, pos->st->posKey);
-    if (entry) {
-        uint64_t data = entry->smp_data;
-        *ttEval  = entry->eval;
+    uint64_t data;
+    if (ProbeTTEntry(table, pos->st->posKey, &data, ttEval)) {
         *move    = EXTRACT_MOVE(data);
         *ttDepth = EXTRACT_DEPTH(data);
         *ttBound = EXTRACT_FLAGS(data);
@@ -85,8 +86,8 @@ INLINE int ProbeHashEntry(S_BOARD *pos, S_PVTABLE *table, int *move, int *score,
 
 // Probe for PV line extraction
 INLINE int ProbePvTable(const S_BOARD *pos, S_PVTABLE *table) {
-    S_PVENTRY *entry = ProbeTTEntry(table, pos->st->posKey);
-    return entry ? EXTRACT_MOVE(entry->smp_data) : NOMOVE;
+    uint64_t data;
+    return ProbeTTEntry(table, pos->st->posKey, &data, NULL) ? EXTRACT_MOVE(data) : NOMOVE;
 }
 
 // Inlined store entry with streamlined replacement search

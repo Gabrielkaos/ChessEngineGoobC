@@ -169,21 +169,19 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     }
 
     int ttMove=NOMOVE, ttValue=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit=FALSE;
-    S_PVENTRY *tte = ProbeTTEntry(table, pos->st->posKey);
-    if(tte){
+    uint64_t ttData;
+    if(ProbeTTEntry(table, pos->st->posKey, &ttData, &ttEval)){
         ttHit = TRUE;
         TRACE_INC(pos, qs_tt_hits);
-        uint64_t data = tte->smp_data;
-        ttBound = EXTRACT_FLAGS(data);
-        ttValue = valueFromTT(EXTRACT_SCORE(data), pos->ply);
+        ttBound = EXTRACT_FLAGS(ttData);
+        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos->ply);
         if(pos->st->fiftyMove < 96){
             if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
                 TRACE_INC(pos, qs_tt_cutoffs);
                 return ttValue;
             }
         }
-        ttEval  = tte->eval;
-        ttMove  = EXTRACT_MOVE(data);
+        ttMove  = EXTRACT_MOVE(ttData);
     }
 
     //standing pat: save the corrected static eval for history, then deflate
@@ -312,15 +310,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     pos->search->searchKillers[1][pos->ply+1] = NOMOVE;
 
     //probing Transposition Table
-    S_PVENTRY *tte = ProbeTTEntry(table, pos->st->posKey);
-    if(tte){
+    uint64_t ttData;
+    if(ProbeTTEntry(table, pos->st->posKey, &ttData, &ttEval)){
         ttHit = TRUE;
         TRACE_INC(pos, tt_hits);
 
-        uint64_t data = tte->smp_data;
-        ttBound = EXTRACT_FLAGS(data);
-        ttValue = valueFromTT(EXTRACT_SCORE(data), pos->ply);
-        ttDepth = EXTRACT_DEPTH(data);
+        ttBound = EXTRACT_FLAGS(ttData);
+        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos->ply);
+        ttDepth = EXTRACT_DEPTH(ttData);
 
         if(ttDepth >= depth && (depth==0 || !pvNode) && pos->st->fiftyMove < 96){
             if(    ttBound==HFEXACT
@@ -340,8 +337,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             return alpha;
         }
 
-        ttEval  = tte->eval;
-        ttMove  = EXTRACT_MOVE(data);
+        ttMove  = EXTRACT_MOVE(ttData);
     }
 
     //Syzygy interior-node probe
@@ -689,6 +685,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
         pawnHist = (quietMove && depth >= 2 && Legal >= 1 + rootNode) ? getPawnHistory(pos, moveInLoop) : 0;
+        int shuffling = (moveInLoop == ttMove) ? isShuffling(pos, moveInLoop) : FALSE;
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -708,7 +705,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
                      && (ttBound >= HFBETA)
-                     && !isShuffling(pos, moveInLoop);
+                     && !shuffling;
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
             if (singular) {
@@ -892,10 +889,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 alpha=Score;
                 if (pv != NULL) {
                     pv->moves[0] = moveInLoop;
-                    pv->count = 1 + lpv.count;
-                    for (int i = 0; i < lpv.count; i++) {
+                    int count = (lpv.count > 0) ? MIN(lpv.count, MAXDEPTH - 1) : 0;
+                    for (int i = 0; i < count; i++) {
                         pv->moves[i+1] = lpv.moves[i];
                     }
+                    pv->count = 1 + count;
                 }
 
                 if(alpha>=beta) {

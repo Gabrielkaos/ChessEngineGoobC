@@ -377,6 +377,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
 
 }
 void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
+    if (searchThreadValid) joinSearchThread(info);
 
     info->timeSet     =FALSE;
     info->softTimeSet = FALSE;

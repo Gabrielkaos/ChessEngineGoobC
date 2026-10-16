@@ -220,9 +220,11 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                         badScore = (piece_mvv_lva_val(captured) - piece_mvv_lva_val(pt)) * 16 + chist / 16;
                     }
 
-                    mp->badNoisies[mp->badNoisyCount].move  = move;
-                    mp->badNoisies[mp->badNoisyCount].score = badScore;
-                    mp->badNoisyCount++;
+                    if (mp->badNoisyCount < MAXPOSMOVES) {
+                        mp->badNoisies[mp->badNoisyCount].move  = move;
+                        mp->badNoisies[mp->badNoisyCount].score = badScore;
+                        mp->badNoisyCount++;
+                    }
                     continue;
                 }
 

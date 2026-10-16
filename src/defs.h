@@ -200,7 +200,7 @@ typedef struct {
     S_MOVELIST list[1];
 
     int split;
-    S_MOVE badNoisies[128];
+    S_MOVE badNoisies[MAXPOSMOVES];
     int badNoisyCount;
     int badNoisyIndex;
     int noisySize;  // active un-popped count within [0, split)
