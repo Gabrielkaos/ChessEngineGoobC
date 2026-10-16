@@ -124,17 +124,17 @@ static int isExcludedRootMove(const S_BOARD *pos,int move){
 }
 
 
-static int isShuffling(S_BOARD *pos, int move){
-    if(moveIsTactical(pos,move) || pos->st->fiftyMove < 10) return FALSE;
-    if(pos->st->pliesFromNull < 6 || pos->ply < 20) return FALSE;
-    if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
+// static int isShuffling(S_BOARD *pos, int move){
+//     if(moveIsTactical(pos,move) || pos->st->fiftyMove < 10) return FALSE;
+//     if(pos->st->pliesFromNull < 6 || pos->ply < 20) return FALSE;
+//     if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
 
-    int m2 = pos->search->moveStack[pos->ply-2];
-    int m4 = pos->search->moveStack[pos->ply-4];
-    if(m2==NOMOVE || m2==NULLMOVE || m4==NOMOVE || m4==NULLMOVE) return FALSE;
+//     int m2 = pos->search->moveStack[pos->ply-2];
+//     int m4 = pos->search->moveStack[pos->ply-4];
+//     if(m2==NOMOVE || m2==NULLMOVE || m4==NOMOVE || m4==NULLMOVE) return FALSE;
 
-    return FROMSQ(move)==TOSQ(m2) && FROMSQ(m2)==TOSQ(m4);
-}
+//     return FROMSQ(move)==TOSQ(m2) && FROMSQ(m2)==TOSQ(m4);
+// }
 
 
 //Fifty-move-rule (FMR) eval deflation, from Berserk: as the fifty-move
@@ -685,7 +685,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
         pawnHist = (quietMove && depth >= 2 && Legal >= 1 + rootNode) ? getPawnHistory(pos, moveInLoop) : 0;
-        int shuffling = (moveInLoop == ttMove) ? isShuffling(pos, moveInLoop) : FALSE;
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -704,8 +703,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                      &&  depth >= SingularDepth
                      &&  moveInLoop == ttMove
                      &&  ttDepth >= depth - 2
-                     && (ttBound >= HFBETA)
-                     && !shuffling;
+                     && (ttBound >= HFBETA);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
             if (singular) {
