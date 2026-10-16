@@ -35,7 +35,6 @@ typedef struct {
     //NodesSearchedThreadPool()/TbHitsThreadPool() for reports and limits
     U64 nodes;
     U64 tbhits;
-    S_UNDO history[MAXGAMESMOVES]; //stores state of the board
     int eval_stack[MAXDEPTH];
     int reduction_stack[MAXDEPTH];
     int moveStack[MAXDEPTH];

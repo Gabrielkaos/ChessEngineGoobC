@@ -40,7 +40,7 @@ U64 GeneratePKHash(const S_BOARD *pos){
     for(sq=0;sq<BOARD_NUMS_SQ;++sq){
         piece=pos->pieces[sq];
         //piece=pos->piece64[sq];
-        if(piece != EMPTY && (piecePawn[piece] || pieceKing[piece])){
+        if(piece != EMPTY && (TYPE_OF(piece) == PAWN || pieceKing[piece])){
             finalKey ^= pieceKeys[piece][sq];
         }
     }
@@ -58,7 +58,7 @@ U64 GenerateNonPawnHash(const S_BOARD *pos, int color){
 
     for(sq=0;sq<BOARD_NUMS_SQ;++sq){
         piece=pos->pieces[sq];
-        if(piece != EMPTY && pieceCol[piece]==color && !piecePawn[piece]){
+        if(piece != EMPTY && COLOR_OF(piece)==color && TYPE_OF(piece) != PAWN){
             finalKey ^= pieceKeys[piece][sq];
         }
     }

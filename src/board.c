@@ -242,7 +242,7 @@ int ParseFEN(char *fen ,S_BOARD *pos){
         int epFile=fen[0]-'a';
         int epRank=fen[1]-'1';
         if(epFile<FILE_A || epFile>FILE_H || epRank<RANK_1 || epRank>RANK_8 ||
-           (ranksBoard[FRtoSQ(epFile,epRank)]!=RANK_3 && ranksBoard[FRtoSQ(epFile,epRank)]!=RANK_6)){
+           (epRank!=RANK_3 && epRank!=RANK_6)){
             printf("FEN Not Valid \n");
             return -1;
         }

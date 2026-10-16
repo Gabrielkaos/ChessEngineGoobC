@@ -12,8 +12,8 @@ int DistanceBetween[64][64];
 void initDistancesForEval(void) {
     for (int sq1 = 0; sq1 < 64; sq1++) {
         for (int sq2 = 0; sq2 < 64; sq2++) {
-            DistanceBetween[sq1][sq2] = MAX(abs(filesBoard[sq1] - filesBoard[sq2]),
-                                            abs(ranksBoard[sq1] - ranksBoard[sq2]));
+            DistanceBetween[sq1][sq2] = MAX(abs(FILE_OF(sq1) - FILE_OF(sq2)),
+                                            abs(RANK_OF(sq1) - RANK_OF(sq2)));
         }
     }
 }

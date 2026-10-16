@@ -229,16 +229,6 @@ typedef struct {
     int moves[MAXDEPTH];
 } S_PVLINE;
 
-//Undoing Moves - packed to 16 bytes (was 32): the made move itself lives in
-//S_BOARD::moveStack[ply], so it is not duplicated here. enPas max is NO_SQ=64,
-//castleRights max 15, both fit int8_t.
-typedef struct {
-    U64     posKey;
-    int16_t fiftyMove;
-    int16_t pliesFromNull;
-    int8_t  enPas;
-    int8_t  castleRights;
-} S_UNDO;
 
 
 //Search Details
@@ -340,11 +330,7 @@ extern const char pieceChar[];
 extern const char sideChar[];
 extern const char fileChar[];
 extern const char rankChar[];
-extern const int pieceCol[16];
-extern const int piecePawn[16];
 extern const int pieceType[16];
-extern const int filesBoard[BOARD_NUMS_SQ];
-extern const int ranksBoard[BOARD_NUMS_SQ];
 extern S_OPTIONS EngineOptions[1];
 
 
