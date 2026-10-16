@@ -101,7 +101,7 @@ enum {  MAXDEPTH=128,
         ISMATE=AB_BOUND-MAXDEPTH,
         TB_WIN_VALUE=ISMATE-1000,
         VALUE_NONE=AB_BOUND+1};
-enum {defaultElo=2700,defaultHash=64,maxHash=1024};
+enum {defaultElo=2700,defaultHash=64,maxHash=65536};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
 enum {
     EMPTY = 0,

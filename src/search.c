@@ -934,9 +934,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //as a trust signal for singular-extension margin scaling
     if(!pvNode){
         int bonus = (bestMove == ttMove) ? TTMoveHistBonus : -TTMoveHistMalus;
-        int entry = pos->shared->ttMoveHistory;
+        int entry = pos->search->ttMoveHistory;
         entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
-        pos->shared->ttMoveHistory = entry;
+        pos->search->ttMoveHistory = entry;
     }
 
     //correction history update, only meaningful when staticEval was
@@ -1026,7 +1026,7 @@ static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int th
     if(value <= rBeta){
         int extension = 1;
 
-        int adjustedDoubleMargin = DoubleExtMargin - pos->shared->ttMoveHistory / TTMoveHistoryScale;
+        int adjustedDoubleMargin = DoubleExtMargin - pos->search->ttMoveHistory / TTMoveHistoryScale;
 
         if(value < rBeta - adjustedDoubleMargin) extension++;
         return extension;
@@ -1187,6 +1187,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
     workerthread->bestMove       = NOMOVE;
     workerthread->ponderMove     = NOMOVE;
+    if (pos->search) pos->search->ttMoveHistory = 0;
 
     S_MOVELIST rootList[1];
     GenerateAllMoves(pos, rootList);

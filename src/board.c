@@ -16,7 +16,6 @@ void resetContinuationTable(S_BOARD *pos){
     memset(pos->shared->cmtable,0,sizeof(CounterMoveTable));
     memset(pos->shared->followupTable,0,sizeof(FollowupMoveTable));
     clearCorrectionHistory(pos);
-    pos->shared->ttMoveHistory = 0;
 }
 
 void initStacks(S_BOARD *pos){
@@ -29,7 +28,7 @@ void initStacks(S_BOARD *pos){
         pos->search->nnue_accumulators[index].computed[WHITE]=0;
         pos->search->nnue_accumulators[index].computed[BLACK]=0;
     }
-    pos->shared->ttMoveHistory = 0;
+    pos->search->ttMoveHistory = 0;
 }
 
 int checkBoard(const S_BOARD *pos){

@@ -52,6 +52,7 @@ typedef struct {
     S_MOVEPICKER singularMovePickers[MAXDEPTH];
     ALIGN64 NNUE_Accumulator nnue_accumulators[MAXDEPTH];
     DirtyPiece dirtyPieces[MAXDEPTH];
+    int ttMoveHistory;
 #ifdef TRACE
     SearchTrace trace;
 #endif
@@ -81,7 +82,6 @@ typedef struct {
     ALIGN64 MinorCorrectionTable minorCorrHist;
     ALIGN64 PawnHistoryTable     pawnHist;
     ALIGN64 ContCorrectionTable  contCorrHist;
-    int ttMoveHistory;
 } S_SHARED_TABLES;
 
 typedef struct StateInfo {

@@ -248,7 +248,7 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Hashtables cleared\n");
         clearPvTable(pvTable);
         clearCorrectionHistory(pos);
-        pos->shared->ttMoveHistory = 0;
+        if (pos->search) pos->search->ttMoveHistory = 0;
     }
 
     else if (!strncmp(line, "setoption name Ponder value ", 28)) {

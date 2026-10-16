@@ -197,6 +197,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
                     if(mp->type == NOISY_PICKER){
                         TRACE_INC(pos, qs_see_pruned);
+                        continue;
                     }
                     int from = FROMSQ(move);
                     int to = TOSQ(move);

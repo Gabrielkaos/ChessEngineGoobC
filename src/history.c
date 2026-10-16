@@ -159,6 +159,7 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
 }
 
 void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
+    if (length <= 0) return;
 
     int bestMove = moves[length - 1];
     updateKillers(pos,bestMove);
