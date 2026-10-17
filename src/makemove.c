@@ -158,8 +158,13 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
     dp->add_count = 0;
     dp->king_moved[WHITE] = 0;
     dp->king_moved[BLACK] = 0;
+    dp->refresh[WHITE] = 0;
+    dp->refresh[BLACK] = 0;
     if (pt == KING) {
         dp->king_moved[side] = 1;
+        if (((from & 7) >= 4) != ((to & 7) >= 4)) {
+            dp->refresh[side] = 1;
+        }
     }
 
     pos->st->fiftyMove++;
@@ -388,6 +393,8 @@ void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
     dp->add_count = 0;
     dp->king_moved[WHITE] = 0;
     dp->king_moved[BLACK] = 0;
+    dp->refresh[WHITE] = 0;
+    dp->refresh[BLACK] = 0;
 
     pos->search->moveStack[pos->ply] = NULLMOVE;
     pos->ply++;

@@ -1,15 +1,22 @@
 import os
+import struct
 import subprocess
 import numpy as np
 import torch
 import torch.nn as nn
 
-# 1. Load PyTorch model with Schoenemann weights
+# 1. Load PyTorch model with GOOB NNUE weights (supports GOOBNNUE v2 trailer)
 with open("src/weights/quantised.bin", "rb") as f:
     feat_w_raw = np.frombuffer(f.read(768 * 1024 * 2), dtype=np.int16).reshape(768, 1024)
     feat_b_raw = np.frombuffer(f.read(1024 * 2), dtype=np.int16)
     out_w_raw = np.frombuffer(f.read(8 * 2048 * 2), dtype=np.int16).reshape(8, 2048)
     out_b_raw = np.frombuffer(f.read(8 * 2), dtype=np.int16)
+    trailer = f.read(48)
+
+MIRROR = False
+if len(trailer) == 48 and trailer[:8] == b"GOOBNNUE":
+    _, ver, flags, kb, hs, ob, _ = struct.unpack("<8sIIIII20s", trailer)
+    MIRROR = bool(flags & 1)
 
 QA = 255
 QB = 64
@@ -42,13 +49,21 @@ def parse_fen(fen):
             
     return pieces, stm
 
+def perspective_flips(pieces):
+    if not MIRROR:
+        return 0, 0
+    wk = next(sq for c, pt, sq in pieces if c == 0 and pt == 5)
+    bk = next(sq for c, pt, sq in pieces if c == 1 and pt == 5)
+    return (7 if (wk & 7) >= 4 else 0), (7 if (bk & 7) >= 4 else 0)
+
 def py_eval_integer(fen):
     pieces, stm = parse_fen(fen)
+    flip_w, flip_b = perspective_flips(pieces)
     w_acc = feat_b_raw.astype(np.int32).copy()
     b_acc = feat_b_raw.astype(np.int32).copy()
     for color, ptype, sq in pieces:
-        w_idx = color * 384 + ptype * 64 + sq
-        b_idx = (color ^ 1) * 384 + ptype * 64 + (sq ^ 56)
+        w_idx = color * 384 + ptype * 64 + (sq ^ flip_w)
+        b_idx = (color ^ 1) * 384 + ptype * 64 + ((sq ^ 56) ^ flip_b)
         w_acc += feat_w_raw[w_idx]
         b_acc += feat_w_raw[b_idx]
 
@@ -100,8 +115,9 @@ with torch.no_grad():
 
 def py_eval_float(fen):
     pieces, stm = parse_fen(fen)
-    w_feat = [c * 384 + pt * 64 + sq for c, pt, sq in pieces]
-    b_feat = [(c ^ 1) * 384 + pt * 64 + (sq ^ 56) for c, pt, sq in pieces]
+    flip_w, flip_b = perspective_flips(pieces)
+    w_feat = [c * 384 + pt * 64 + (sq ^ flip_w) for c, pt, sq in pieces]
+    b_feat = [(c ^ 1) * 384 + pt * 64 + ((sq ^ 56) ^ flip_b) for c, pt, sq in pieces]
 
     w_idx = torch.tensor(w_feat, dtype=torch.long)
     b_idx = torch.tensor(b_feat, dtype=torch.long)
@@ -131,9 +147,9 @@ def goob_eval(fen):
     raise RuntimeError(f"Could not parse eval from GOOB output: {out}")
 
 # optional cross-check against the Schoenemann binary the inference code was
-# adapted from; skipped when it is not built at this path
+# adapted from; skipped when it is not built at this path or when MIRROR=True
 SCHOENEMANN = "./Schoenemann-0.5.0/src/null"
-HAVE_SCHOENEMANN = os.access(SCHOENEMANN, os.X_OK)
+HAVE_SCHOENEMANN = os.access(SCHOENEMANN, os.X_OK) and not MIRROR
 
 def schoenemann_raw_eval(fen):
     proc = subprocess.Popen(

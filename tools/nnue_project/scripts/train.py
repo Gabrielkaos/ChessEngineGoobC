@@ -147,6 +147,7 @@ def save_checkpoint(
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
         "best_val": best_val,
+        "arch": getattr(model, "arch", {"mirror": False, "king_buckets": 1}),
     }
     if batch is not None:
         checkpoint["batch"] = batch
@@ -226,6 +227,17 @@ def main():
         default=0.75,
         help="Weight on eval sigmoid vs WDL game result in [0, 1] (default: 0.75; 1.0 = pure eval)",
     )
+    arch_group = ap.add_mutually_exclusive_group()
+    arch_group.add_argument(
+        "--mirror",
+        action="store_true",
+        help="Horizontal king mirroring: flip perspective squares horizontally when own king is on files e..h",
+    )
+    arch_group.add_argument(
+        "--flip-augment",
+        action="store_true",
+        help="Random horizontal flip augmentation (p=0.5 per sample, both perspectives) without mirroring",
+    )
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -239,7 +251,18 @@ def main():
     if total_batches == 0:
         raise SystemExit("Training set is smaller than one batch.")
 
-    collate = functools.partial(nnue_collate, wdl_lambda=args.wdl_lambda)
+    train_collate = functools.partial(
+        nnue_collate,
+        wdl_lambda=args.wdl_lambda,
+        mirror=args.mirror,
+        flip_augment=args.flip_augment,
+    )
+    val_collate = functools.partial(
+        nnue_collate,
+        wdl_lambda=args.wdl_lambda,
+        mirror=args.mirror,
+        flip_augment=False,
+    )
 
     train_sampler = ResumableBatchSampler(
         len(train_ds), args.batch_size, args.shuffle, args.seed, args.shuffle_batches
@@ -252,7 +275,7 @@ def main():
         batch_sampler=train_sampler,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
-        collate_fn=collate,
+        collate_fn=train_collate,
         persistent_workers=(args.workers > 0),
     )
     val_loader = DataLoader(
@@ -261,12 +284,16 @@ def main():
         shuffle=False,
         num_workers=args.workers,
         pin_memory=(device.type == "cuda"),
-        collate_fn=collate,
+        collate_fn=val_collate,
         persistent_workers=(args.workers > 0),
     )
 
-    model = NNUE().to(device)
-    print(f"Model architecture: {model.num_features} -> ({model.l1_size}x2) -> 1x{model.num_buckets}")
+    model = NNUE(mirror=args.mirror).to(device)
+    print(
+        f"Model architecture: {model.num_features} -> ({model.l1_size}x2) -> 1x{model.num_buckets} "
+        f"| arch={model.arch}"
+        + (" [flip_augment=True]" if args.flip_augment else "")
+    )
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=args.epochs, eta_min=1e-5
@@ -282,6 +309,15 @@ def main():
         if os.path.isfile(args.resume):
             print(f"--> Resuming from checkpoint: {args.resume}")
             checkpoint = torch.load(args.resume, map_location=device)
+            ckpt_arch = checkpoint.get("arch", {"mirror": False, "king_buckets": 1})
+            if (
+                bool(ckpt_arch.get("mirror", False)) != bool(model.arch["mirror"])
+                or int(ckpt_arch.get("king_buckets", 1)) != int(model.arch["king_buckets"])
+            ):
+                raise SystemExit(
+                    f"Refusing to --resume '{args.resume}': checkpoint arch {ckpt_arch} "
+                    f"does not match requested arch {model.arch}."
+                )
             model.load_state_dict(checkpoint["model_state_dict"])
             opt.load_state_dict(checkpoint["optimizer_state_dict"])
             sched.load_state_dict(checkpoint["scheduler_state_dict"])

@@ -23,11 +23,13 @@ typedef struct {
     int remove_count;
     int add_count;
     int king_moved[COLOR_NB];
+    uint8_t refresh[COLOR_NB];  /* 1 when side's king crossed the d/e mirror boundary */
 } DirtyPiece;
 
 typedef struct {
     ALIGN64 int16_t accumulation[COLOR_NB][NNUE_ACC_SIZE];
     uint8_t computed[COLOR_NB];
+    uint8_t flip[COLOR_NB];     /* 0 or 7: horizontal square XOR mask for perspective */
 } NNUE_Accumulator;
 
 typedef struct {
@@ -158,6 +160,7 @@ extern int ParseFEN(char *fen ,S_BOARD *pos);
 extern void PrintBoard(const S_BOARD *pos);
 extern void updateListMaterial(S_BOARD *pos);
 extern void MirrorBoard(S_BOARD *pos);
+extern void HMirrorBoard(S_BOARD *pos);
 extern void update_slider_blockers(S_BOARD *pos, int c);
 extern void set_check_info(S_BOARD *pos);
 extern void compactStateHistory(S_BOARD *pos);

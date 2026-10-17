@@ -27,6 +27,8 @@ void initStacks(S_BOARD *pos){
         pos->search->reduction_stack[index]=0;
         pos->search->nnue_accumulators[index].computed[WHITE]=0;
         pos->search->nnue_accumulators[index].computed[BLACK]=0;
+        pos->search->nnue_accumulators[index].flip[WHITE]=0;
+        pos->search->nnue_accumulators[index].flip[BLACK]=0;
     }
     pos->search->ttMoveHistory = 0;
 }
@@ -123,6 +125,35 @@ void MirrorBoard(S_BOARD *pos){
     pos->st->npHash[WHITE]=GenerateNonPawnHash(pos,WHITE);
     pos->st->npHash[BLACK]=GenerateNonPawnHash(pos,BLACK);
     pos->st->minorHash=GenerateMinorHash(pos);
+
+    updateListMaterial(pos);
+    set_check_info(pos);
+}
+
+void HMirrorBoard(S_BOARD *pos){
+    int tempPiecesArray[64];
+    int tempSide = pos->side;
+    int tempEnPass = (pos->st->enPas != NO_SQ) ? (pos->st->enPas ^ 7) : NO_SQ;
+
+    for (int sq = 0; sq < 64; sq++) {
+        tempPiecesArray[sq] = pos->pieces[sq ^ 7];
+    }
+
+    ResetBoard(pos);
+
+    for (int sq = 0; sq < 64; sq++) {
+        pos->pieces[sq] = tempPiecesArray[sq];
+    }
+
+    pos->side = tempSide;
+    pos->st->castleRights = 0;
+    pos->st->enPas = tempEnPass;
+
+    pos->st->posKey = GeneratePosKey(pos);
+    pos->st->pkHash = GeneratePKHash(pos);
+    pos->st->npHash[WHITE] = GenerateNonPawnHash(pos, WHITE);
+    pos->st->npHash[BLACK] = GenerateNonPawnHash(pos, BLACK);
+    pos->st->minorHash = GenerateMinorHash(pos);
 
     updateListMaterial(pos);
     set_check_info(pos);

@@ -58,7 +58,10 @@ int main(int argc, char *argv[])
     setbuf(stdin, NULL);
     setbuf(stdout, NULL);
 
-    nnue_init(NULL);
+    if (!nnue_init(NULL)) {
+        printf("info string FATAL: embedded NNUE network failed to load\n");
+        return 1;
+    }
     trace_init();
 
     if (argc > 1 && (strcmp(argv[1], "bench") == 0 || strcmp(argv[1], "trace-bench") == 0)) {

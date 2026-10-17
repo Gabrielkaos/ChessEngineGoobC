@@ -9,30 +9,35 @@ quantized `quantised.bin` format. The engine side is `src/nnue_loader.h`;
 
 Schoenemann-0.5.0 / bullet style, `(768 -> 1024)x2 -> 1x8`:
 
-- 768 inputs per perspective: `colour * 384 + piece_type * 64 + square`, with
-  colours swapped and squares flipped (`sq ^ 56`) for Black's perspective. No
-  king buckets, so a king move is an ordinary feature change.
+- 768 inputs per perspective: `colour * 384 + piece_type * 64 + (square ^ flip)`,
+  with colours swapped and squares flipped vertically (`sq ^ 56`) for Black's
+  perspective. When trained with `--mirror`, `flip = 7` if that perspective's
+  own king is on files `e..h` (`0` on `a..d`), folding king files into `a..d`.
 - One feature transformer (768 -> 1024) shared by both perspectives,
   SCReLU activation (`clamp(x, 0, 1)^2`).
 - The two activations, side to move first, feed one of 8 output buckets
   chosen by piece count: `clamp((pieces - 2) / 4, 0, 7)`.
 - Training target: `sigmoid(cp_stm / 400)`, optionally blended with the game
   result (`--wdl-lambda`). The engine multiplies the output by 400.
+- Exported `quantised.bin` files end with a 48-byte `GOOBNNUE` v2 architecture
+  trailer (`<8sIIIII20s`: magic `"GOOBNNUE"`, version `2`, flags `bit 0 = mirror`,
+  `king_buckets`, `hidden_size`, `output_buckets`, 20 zero bytes) verified by
+  `src/nnue_loader.h` and `check_net.py`.
 
 ## Layout
 
 ```
 scripts/
-  model.py              the network above
+  model.py              the network above + arch metadata
   fen_utils.py          FEN <-> 68-byte record (shared by data prep and loading)
-  nnue_dataset.py       memmapped records -> feature indices, buckets, targets
+  nnue_dataset.py       memmapped records -> feature indices, buckets, targets (supports --mirror / --flip-augment)
   prepare_data.py       Hugging Face Lichess/chess-position-evaluations -> data/train1.bin, val1.bin
   prepare_data_jsonl.py local lichess_db_eval.jsonl(.zst) -> data/train.bin, val.bin (quiet positions only)
   append_data.py        appends new, de-duplicated Hugging Face positions to an existing set
   clear_cache.py        repairs caches written by the original prepare_data.py (see its docstring)
-  train.py              training loop (Adam, cosine LR, weight clipping, exact mid-epoch resume)
-  export_weights.py     checkpoint -> quantised.bin
-  check_net.py          checks an exported net and prints bit-exact reference evals
+  train.py              training loop (Adam, cosine LR, weight clipping, --mirror / --flip-augment, exact mid-epoch resume)
+  export_weights.py     checkpoint -> quantised.bin (writes GOOBNNUE v2 trailer)
+  check_net.py          checks an exported net and prints bit-exact reference & mirror evals
   test_net.py           evaluates FENs with a saved checkpoint
   scale_test.py         quantization headroom of a checkpoint
 data_selfplay/          self-play records from tools/selfplay_nnue.py (tracked)
@@ -57,8 +62,8 @@ keep is overwritten.
 python prepare_data_jsonl.py --input ../data_json/lichess_db_eval.jsonl.zst --out-dir ../data
 python prepare_data.py --n-train 8000000 --n-val 50000 --out-dir ../data
 
-# 2. train (add --init <checkpoint> to fine-tune, --resume to continue)
-python train.py --train ../data/train.bin --val ../data/val.bin --epochs 20 --batch-size 8192
+# 2. train (add --init <checkpoint> to fine-tune, --mirror for king mirroring, --resume to continue)
+python train.py --train ../data/train.bin --val ../data/val.bin --epochs 20 --batch-size 8192 --mirror
 
 # 3. export and check
 python export_weights.py --checkpoint ../checkpoints/nnue.pt --out ../checkpoints/quantised.bin
@@ -71,4 +76,5 @@ overflow. `export_weights.py` and `check_net.py` warn when a net exceeds
 either limit; the engine then falls back to its slower exact kernel.
 
 To use a new net, either point the `EvalFile` UCI option at it or rebuild the
-engine with it as `src/weights/quantised.bin` (embedded at build time).
+engine with it as `src/weights/quantised.bin` (embedded at build time, with
+matching `NNUE_MIRROR=0/1`).

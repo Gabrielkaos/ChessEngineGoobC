@@ -41,6 +41,8 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, ab_nodes);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, qs_nodes);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, eval_calls);
+    ADD_TRACE_FIELD(&g_current_trace, thread_trace, nnue_refresh_mg);
+    ADD_TRACE_FIELD(&g_current_trace, thread_trace, nnue_refresh_eg);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_hits);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_cutoffs);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_research_cutoffs);
@@ -142,6 +144,8 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, ab_nodes);
     ADD_TRACE_FIELD(dst, src, qs_nodes);
     ADD_TRACE_FIELD(dst, src, eval_calls);
+    ADD_TRACE_FIELD(dst, src, nnue_refresh_mg);
+    ADD_TRACE_FIELD(dst, src, nnue_refresh_eg);
     ADD_TRACE_FIELD(dst, src, tt_hits);
     ADD_TRACE_FIELD(dst, src, tt_cutoffs);
     ADD_TRACE_FIELD(dst, src, tt_research_cutoffs);
@@ -254,6 +258,12 @@ void trace_print(int current_only) {
     printf("  Nodes Visited:   AB Nodes = %" PRIu64 " | QS Nodes = %" PRIu64 " | Total = %" PRIu64 "\n",
            t->ab_nodes, t->qs_nodes, total_nodes);
     printf("  Static Evals:    Calls = %" PRIu64 "\n", t->eval_calls);
+    {
+        double ref_mg_per_k = t->eval_calls > 0 ? ((double)t->nnue_refresh_mg * 1000.0 / (double)t->eval_calls) : 0.0;
+        double ref_eg_per_k = t->eval_calls > 0 ? ((double)t->nnue_refresh_eg * 1000.0 / (double)t->eval_calls) : 0.0;
+        printf("  NNUE Refreshes:  MG = %" PRIu64 " (%.2f / 1k evals) | EG = %" PRIu64 " (%.2f / 1k evals)\n",
+               t->nnue_refresh_mg, ref_mg_per_k, t->nnue_refresh_eg, ref_eg_per_k);
+    }
     printf("  TT Probes:       Hits = %" PRIu64 " (%.2f%% of AB) | Cutoffs = %" PRIu64 " (%.2f%% of hits)\n",
            t->tt_hits, rate(t->tt_hits, t->ab_nodes),
            t->tt_cutoffs, rate(t->tt_cutoffs, t->tt_hits));
@@ -420,6 +430,8 @@ void trace_print_json(int current_only) {
     printf("  \"qs_nodes\": %" PRIu64 ",\n", t->qs_nodes);
     printf("  \"total_nodes\": %" PRIu64 ",\n", total_nodes);
     printf("  \"eval_calls\": %" PRIu64 ",\n", t->eval_calls);
+    printf("  \"nnue_refresh_mg\": %" PRIu64 ",\n", t->nnue_refresh_mg);
+    printf("  \"nnue_refresh_eg\": %" PRIu64 ",\n", t->nnue_refresh_eg);
     printf("  \"tt_hits\": %" PRIu64 ",\n", t->tt_hits);
     printf("  \"tt_cutoffs\": %" PRIu64 ",\n", t->tt_cutoffs);
     printf("  \"tt_research_cutoffs\": %" PRIu64 ",\n", t->tt_research_cutoffs);

@@ -22,8 +22,8 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158-L229) using pin and king-ray masks without making/unmaking moves.
 * **Evaluation:** Schoenemann-0.5.0 style NNUE architecture:
   * Topology: `(768 -> 1024)x2 -> 1x8 buckets` with Squared Clipped ReLU (SCReLU) activation.
-  * King squares are omitted from the 768-feature index, making king moves ordinary $\mathcal{O}(1)$ incremental updates and eliminating accumulator rebuilds during search.
-  * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks).
+  * Perspective horizontal king mirroring (`NNUE_MIRROR`, default `1`): when a perspective's own king is on files `e..h` (`(king_sq & 7) >= 4`), all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d` (`c1`/`g1` both map to `c1`). Ordinary king moves within the same half remain $\mathcal{O}(1)$ incremental updates; crossing the d/e file boundary (`d<->e` or `O-O-O`) triggers a single-perspective accumulator refresh (`dp->refresh[side]`).
+  * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks) with `GOOBNNUE` v2 architecture trailer verification.
 * **Correction History:** Multi-table evaluation error correction indexed by pawn-king hash, minor-piece hash, dual non-pawn material hashes, and 2-ply / 4-ply continuation moves.
 * **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double extensions and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, SEE pruning, and **Surprise-SRD** (dynamic LMR responding to sibling fail highs and evaluation expectation).
 * **Transposition Table:** 4-entry, 64-byte buckets (matching an x86 L1 cache line), lockless SMP key verification combining `posKey` and `smp_data`, and age/depth replacement.
@@ -36,11 +36,11 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 ### Board & Move Representation
 * **[`defs.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/defs.h) / [`defs.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/defs.c):** Global constants, piece types (`PAWN`..`KING`), piece colors (`WHITE`, `BLACK`), square enums (`A1`..`H8`), piece arrays, align64 allocation wrappers (`goob_aligned_alloc`, `goob_aligned_free`), bit-counting macros, and search limits.
-* **[`board.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h) / [`board.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c):** Defines [`S_BOARD`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L102-L142), [`StateInfo`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L83-L99), [`S_SEARCH_THREAD`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L33-L58), and [`S_SHARED_TABLES`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L69-L81). Implements FEN parsing ([`ParseFEN`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c#L153)), board resetting ([`ResetBoard`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c#L288)), board printing, board mirroring, material list updates, and stack initializations.
+* **[`board.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h) / [`board.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c):** Defines [`S_BOARD`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L102-L142), [`StateInfo`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L83-L99), [`S_SEARCH_THREAD`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L33-L58), and [`S_SHARED_TABLES`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L69-L81). Implements FEN parsing ([`ParseFEN`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c#L153)), board resetting ([`ResetBoard`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c#L288)), board printing, vertical/color board mirroring ([`MirrorBoard`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c)), horizontal file mirroring ([`HMirrorBoard`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c)), material list updates, and stack initializations.
 * **[`bitboards.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.h) / [`bitboards.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.c):** Bitboard lookup tables (`FileBBMask`, `RankBBMask`, `BetweenBB`, `LineBB`) and manipulation utilities (LSB extraction, clearing least significant bits, bitboard printing).
 * **[`hashkeys.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.h) / [`hashkeys.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.c):** 64-bit Zobrist keys for positions (`posKey`), pawn-king structures (`pkHash`), non-pawn material keys per color (`npHash`), and minor pieces (`minorHash`).
 * **[`makemove.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h) / [`makemove.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c):** Core board transition functions:
-  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L26) for NNUE, updates Zobrist hashes incrementally, and checks repetitions.
+  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L27) for NNUE (including `dp->refresh[side]` when a king crosses the d/e file boundary), updates Zobrist hashes incrementally, and checks repetitions.
   * [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L443): Reverses piece positions and restores `pos->st = pos->st->previous`.
   * [`makeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L487) / [`takeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L524): Null-move transitions for Null Move Pruning.
   * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h): Fast inlined on-the-fly pseudo-legal move validator featuring an ultra-fast non-pinned fast path (3 bitwise tests for ordinary non-king moves when not in check).
@@ -81,12 +81,12 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
-  * Schoenemann 0.5.0 NNUE architecture inference engine (768 input features, 1024 hidden, 8 material buckets).
+  * Schoenemann 0.5.0 NNUE architecture inference engine (768 input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`).
   * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
-  * Synchronized dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) with fallbacks to bitboard-driven full refresh when beyond `NNUE_REFRESH_THRESHOLD` (32 plies) or when no ancestor accumulator is computed.
-  * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`).
+  * Dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h): uses the synchronized dual-perspective fast path when no king crossed the d/e file boundary along the ancestor chain, and falls back to per-perspective refresh (`nnue_refresh_perspective`) only for the perspective whose king crossed the d/e boundary or when beyond `NNUE_REFRESH_THRESHOLD` (32 plies).
+  * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`), using cached `acc->flip[p]` (`0` or `7`).
   * Precomputed 64-byte `s_piece_offset` table and bit-shift feature row addressing (`<< 10`).
-  * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option).
+  * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option), verifying the 48-byte `GOOBNNUE` v2 architecture trailer (`mirror`, `king_buckets`, `hidden_size`, `output_buckets`) against the compiled engine flags before replacing active weights.
 * **[`correction_types.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction_types.h), [`correction.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.h) / [`correction.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.c):** Four-table correction history blending pawn structure, minor pieces, non-pawn material per color, and 2-ply / 4-ply continuation corrections into static evaluations.
 
 ### Search & Transposition Table
@@ -124,7 +124,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 ### System, Threading, Telemetry, and UCI
 * **[`uci.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.h) / [`uci.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c):** Universal Chess Interface loop. Parses commands (`position`, `go`, `setoption`, `ucinewgame`, `stop`, `ponderhit`, `evaluate`, `perft`, `trace`), formats search output, and computes Win-Draw-Loss (WDL) probabilities via a 3rd-order polynomial fit.
-* **[`trace.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.h) / [`trace.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.c):** Comprehensive telemetry system tracking over 50 search counters (AB/QS nodes, TT hits/cutoffs, RFP, NMP, IIR, ProbCut, LMP, LMR, Surprise-SRD, and move ordering cutoff stages). Formats outputs in plain text and JSON.
+* **[`trace.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.h) / [`trace.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.c):** Comprehensive telemetry system tracking over 50 search counters (AB/QS nodes, TT hits/cutoffs, RFP, NMP, IIR, ProbCut, LMP, LMR, Surprise-SRD, move ordering cutoff stages, and NNUE accumulator refreshes `nnue_refresh_mg` / `nnue_refresh_eg`). Formats outputs in plain text and JSON.
 * **[`perft.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.h) / [`perft.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.c):** Standard and bulk move generation testing (`perft`, `uperft`, and `perfttest` test suites).
 * **[`cpu.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.h) / [`cpu.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.c):** Runtime CPU instruction set detection (POPCNT, BMI2, AVX2, AVX-512) for dynamic dispatch.
 * **[`thread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/thread.h), [`tinycthread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.h) / [`tinycthread.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c):** Cross-platform C11 threads emulation on POSIX `pthread` and Windows Win32 thread APIs.
@@ -133,7 +133,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`misc.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.h) / [`misc.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c):** Monotonic 64-bit timing ([`getTimeMs()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c#L13)) via `clock_gettime(CLOCK_MONOTONIC)` on Linux and `GetTickCount64()` on Windows.
 * **[`some_maths.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/some_maths.h):** Utility math functions (`MIN`, `MAX`, `floorPowerOf2`).
 * **[`validate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/validate.h) / [`validate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/validate.c):** Debug assertions for squares, moves, sides, and pieces.
-* **[`main.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/main.c):** Entry point. Initializes subsystems via [`AllInit()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/init.c#L49), handles CLI arguments, and hands execution over to [`UCILoop()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c#L598).
+* **[`main.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/main.c):** Entry point. Initializes subsystems via [`AllInit()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/init.c#L49), loads the embedded NNUE network via [`nnue_init(NULL)`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c) (exiting with status `1` if the embedded net fails to load), handles CLI arguments, and hands execution over to [`UCILoop()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c#L598).
 
 ---
 
@@ -141,8 +141,9 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
 * **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
-  * `quantised.bin`: Production network, embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
-  * `pknet.bin`: Left over from the earlier PKNet evaluation; no current code reads it.
+  * `quantised.bin`: Production network (`GOOBNNUE` v2, horizontal king mirroring enabled), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
+  * `quantised_phase1_control.bin`: Previous Phase 1 control fine-tuned unmirrored network (`NNUE_MIRROR=0`).
+  * `quantised_228_old.bin`: Original unmirrored 228M Lichess network (`NNUE_MIRROR=0`).
 * **`models/`:** An older release binary kept for comparison (untracked).
 * **[`others/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/others/):** Commit history logs and development test outputs.
 
@@ -150,7 +151,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 ## Compilation & Multi-ISA Build System
 
-The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures:
+The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures (with `NNUE_MIRROR ?= 1` configurable via `make NNUE_MIRROR=0/1` and `EVALFILE ?= weights/quantised.bin`):
 
 | Target | Description | Recommended Usage |
 | :--- | :--- | :--- |
@@ -167,6 +168,9 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 ```bash
 # Build native binary for local testing:
 make -C src native
+
+# Build native binary with unmirrored NNUE net:
+make -C src native NNUE_MIRROR=0
 
 # Build universal binary for distribution:
 make -C src universal
@@ -212,7 +216,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 
 ### Special Non-UCI Commands
 * `print`: Displays an ASCII representation of the board, current FEN, posKey, and checkers.
-* `eval` or `evaluate`: Prints the static NNUE evaluation and mirrored evaluation.
+* `eval` or `evaluate`: Prints the static NNUE evaluation (`Eval`), vertical/color-mirrored evaluation (`Eval Mirrored`), and horizontal file-mirrored evaluation (`Eval H-Mirrored`).
 * `perft <depth>`: Runs move generation perft to the specified depth.
 * `uperft <depth>`: Fast bulk perft test.
 * `perfttest`: Runs the built-in perft test suite across multiple positions.
@@ -226,8 +230,8 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 
 ## Design Details & Key Invariants
 
-1. **King-Omitted Feature Indexing:**
-   In standard HalfKP / HalfKA NNUE architectures, the king square is part of the feature tuple, meaning every king move invalidates the entire accumulator and requires an $\mathcal{O}(N)$ recomputation. In GOOB, features are indexed purely by `(color * 384 + piece_type * 64 + square)`. King moves are treated as simple 1-remove/1-add piece movements, keeping incremental updates strictly $\mathcal{O}(1)$.
+1. **Perspective Horizontal King Mirroring & Incremental Updates:**
+   In GOOB, features are indexed by `(color * 384 + piece_type * 64 + (square ^ flip))`, where `flip = 7` when `NNUE_MIRROR=1` and that perspective's own king is on files `e..h` (`0` otherwise). Ordinary king moves that stay on the same half of the board (`a..d` or `e..h`) are treated as simple 1-remove/1-add piece movements ($\mathcal{O}(1)$). Only moves where a king crosses the d/e file boundary (`d<->e` or `O-O-O`) trigger a single-perspective accumulator rebuild (`dp->refresh[side]`).
 2. **64-Byte Cache Alignment:**
    * Every Transposition Table bucket contains 4 entries of 16 bytes each ($4 \times 16 = 64$ bytes), matching the L1 cache line size of x86 processors.
    * `S_SEARCH_THREAD` and `NNUE_Accumulator` structures use `ALIGN64` to avoid false sharing across multiple CPU cores in Lazy SMP.

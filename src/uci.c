@@ -728,6 +728,16 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             PrintBoard(pos);
             printf("Eval Mirrored:%d\n",EvalPosition(pos));
             MirrorBoard(pos);
+            int savedCastle = pos->st->castleRights;
+            int savedFifty = pos->st->fiftyMove;
+            U64 savedKey = pos->st->posKey;
+            HMirrorBoard(pos);
+            PrintBoard(pos);
+            printf("Eval H-Mirrored:%d\n",EvalPosition(pos));
+            HMirrorBoard(pos);
+            pos->st->castleRights = savedCastle;
+            pos->st->fiftyMove = savedFifty;
+            pos->st->posKey = savedKey;
             fflush(stdout);
         }
 

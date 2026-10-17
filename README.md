@@ -25,9 +25,10 @@ Just trying to see how far I can make GOOB stronger by watching, reading, and re
 
 
 ## NNUE Evaluation
-GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation function based on the **Schoenemann-0.5.0** architecture:
+GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation function based on the **Schoenemann-0.5.0** architecture with **perspective horizontal king mirroring**:
 * **Architecture:** Perspective-aware dual-accumulator topology `(768 -> 1024)x2 -> 1x8` with Squared Clipped ReLU (SCReLU) activation and 8 material buckets.
-* **Inference Code:** SIMD-accelerated inference adapted from [Schoenemann](https://github.com/Jochengehtab/Schoenemann) by Jochen Gehtab (licensed under GNU AGPL-3.0).
+* **Horizontal King Mirroring:** When a perspective's own king stands on files `e..h`, all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d`. King moves within the same half (`a..d` or `e..h`) remain $\mathcal{O}(1)$ incremental updates; crossing the `d/e` file boundary triggers a single-perspective lazy accumulator refresh.
+* **Inference Code:** SIMD-accelerated inference (AVX-512, AVX2, scalar) adapted from [Schoenemann](https://github.com/Jochengehtab/Schoenemann) by Jochen Gehtab (licensed under GNU AGPL-3.0), extended with `GOOBNNUE` v2 architecture trailer verification.
 * **Data & Training:** Network weights (`quantised.bin`) and datasets were independently produced and trained by Gabriel Montes using custom data and training pipelines (`tools/nnue_project/`).
 
 ## Credits

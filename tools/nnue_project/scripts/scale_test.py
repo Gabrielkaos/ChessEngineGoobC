@@ -22,7 +22,9 @@ def main():
     args = ap.parse_args()
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
-    sd = ckpt.get("model_state_dict", ckpt)
+    sd = ckpt.get("model_state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+    arch = ckpt.get("arch", {"mirror": False, "king_buckets": 1}) if isinstance(ckpt, dict) else {"mirror": False, "king_buckets": 1}
+    print(f"Checkpoint arch: {arch}")
 
     for name, scale, limit in (("ft.weight", QA, 32767),
                                ("ft_bias", QA, 32767),

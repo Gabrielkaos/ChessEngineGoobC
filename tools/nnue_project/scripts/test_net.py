@@ -33,13 +33,16 @@ def main():
     args = ap.parse_args()
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
-    model = NNUE()
-    model.load_state_dict(ckpt.get("model_state_dict", ckpt))
+    arch = ckpt.get("arch", {"mirror": False, "king_buckets": 1}) if isinstance(ckpt, dict) else {"mirror": False, "king_buckets": 1}
+    mirror = bool(arch.get("mirror", False))
+    model = NNUE(mirror=mirror, king_buckets=int(arch.get("king_buckets", 1)))
+    model.load_state_dict(ckpt.get("model_state_dict", ckpt) if isinstance(ckpt, dict) else ckpt)
     model.eval()
+    print(f"Checkpoint arch: {model.arch}")
 
     for fen in args.fen or DEFAULT_FENS:
         rec = np.frombuffer(pack_record(fen, 0, None), dtype=np.uint8).reshape(1, -1)
-        features, _ = nnue_collate(rec)   # the cp in the record only affects the target
+        features, _ = nnue_collate(rec, mirror=mirror)   # the cp in the record only affects the target
         with torch.no_grad():
             out = model(*features).item()
         print(f"{out:+.4f} raw  {out * CP_SCALE:+8.1f} cp (side to move)  {fen}")

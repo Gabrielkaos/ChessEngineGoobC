@@ -12,6 +12,8 @@ typedef struct {
     uint64_t ab_nodes;
     uint64_t qs_nodes;
     uint64_t eval_calls;
+    uint64_t nnue_refresh_mg;
+    uint64_t nnue_refresh_eg;
     uint64_t tt_hits;
     uint64_t tt_cutoffs;
     uint64_t tt_research_cutoffs;

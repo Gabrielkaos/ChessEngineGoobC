@@ -11,18 +11,26 @@
  * Adaptations for GOOB:
  *   - Adapted data structures, integration hooks, and accumulator management
  *     for GOOB's board representation and search by Gabriel Montes.
+ *   - Added perspective horizontal king mirroring (NNUE_MIRROR), per-perspective
+ *     lazy accumulator refresh on d/e file crossings, and GOOBNNUE v2 format
+ *     trailer verification.
  *   - Network weights and training data independently generated and trained
  *     by Gabriel Montes.
  *
- * NNUE Details — Schoenemann-0.5.0 Architecture:
+ * NNUE Details — Schoenemann-0.5.0 Architecture + Horizontal King Mirroring:
  *
  *   - 768 perspective-aware input features (2 colors x 6 piece types x 64 squares).
- *     Unlike HalfKP/HalfKA, king positions are NOT part of the feature index!
- *     Moving a king is an ordinary piece move (O(1) incremental update),
- *     eliminating king-move accumulator refreshes during search.
+ *   - Perspective Horizontal King Mirroring (NNUE_MIRROR, default 1):
+ *     When a perspective's own king is on files e..h ((king_sq & 7) >= 4), all
+ *     piece squares for that perspective are horizontally mirrored (flip = 7,
+ *     sq ^= flip), folding king files into a..d (so e.g. g1 and c1 both map to c1).
+ *     King moves that stay within the same half (a..d or e..h) are ordinary O(1)
+ *     1-add/1-sub incremental updates. Only moves where a king crosses the d/e
+ *     file boundary (d<->e or O-O-O) set dp->refresh[side] and trigger a lazy
+ *     single-perspective accumulator rebuild.
  *   - Dual accumulators per position:
- *       acc[WHITE]: color * 384 + piece * 64 + sq
- *       acc[BLACK]: (color ^ 1) * 384 + piece * 64 + (sq ^ 56)
+ *       acc[WHITE]: color * 384 + piece * 64 + (sq ^ flip_w)
+ *       acc[BLACK]: (color ^ 1) * 384 + piece * 64 + ((sq ^ 56) ^ flip_b)
  *     Width: 1024 (int16_t)
  *   - Activation: Squared Clipped ReLU (SCReLU):
  *       clamp(x, 0, QA)^2 where QA = 255
@@ -33,10 +41,11 @@
  *   - Fully quantized integer forward pass (AVX2 / AVX-512 SIMD):
  *       eval = sum(screlu * weight) / QA + bias
  *       eval = eval * scale / (QA * QB)   [scale=400, QA=255, QB=64]
- *   - Memory footprint: ~1.6 MB (803,848 int16 values = 1,607,696 bytes).
- *
- * File format and public API are unchanged from the previous version, so
- * existing quantised.bin files load as before.
+ *   - Memory footprint: ~1.6 MB (803,848 int16 values = 1,607,696 bytes +
+ *     48-byte GOOBNNUE v2 architecture trailer = 1,607,744 bytes).
+ *   - Architecture trailer validation: nnue_init() verifies the 48-byte trailer
+ *     (mirror flag, king_buckets, hidden_size, output_buckets) against compiled
+ *     constants and refuses mismatched networks.
  *
  * Build notes (these matter for speed):
  *   - Compile with -O3 -march=native (or at least -mavx2 -mbmi2 -mpopcnt).
@@ -157,13 +166,20 @@ static inline int cpu_supports_avx2(void) {
 #define NNUE_QB                64
 #define NNUE_REFRESH_THRESHOLD 32
 
+#ifndef NNUE_MIRROR
+#define NNUE_MIRROR            1
+#endif
+#ifndef NNUE_KING_BUCKETS
+#define NNUE_KING_BUCKETS      1
+#endif
+
 /* The fast SCReLU kernel computes (w * v) in int16 before the madd, with
  * v in [0, QA]. That product only fits if |w| <= 128 (128 * 255 = 32640),
  * i.e. |float weight| <= ~2.0. Nets trained without weight clipping can
  * exceed this; they are detected at load time and use the exact kernel. */
 #define NNUE_FAST_OUT_W_LIMIT  128
 
-/* Trailing bytes bullet appends to pad the file to a multiple of 64. */
+/* Trailing bytes bullet / GOOBNNUE v2 appends to pad the file to a multiple of 64. */
 #define NNUE_BULLET_PADDING    48
 
 #define NNUE_TOTAL_SHORTS      (NNUE_INPUT_SIZE * NNUE_HIDDEN_SIZE + \
@@ -211,13 +227,26 @@ static void nnue_init_piece_offset(void) {
 }
 
 /* ── Feature Index Calculation ───────────────────────────────────────────── */
-static inline size_t nnue_feature_index(int us, int piece, int sq) {
-    int s = (us == WHITE) ? sq : (sq ^ 56);
+static inline uint8_t nnue_king_flip(const S_BOARD *pos, int us) {
+#if NNUE_MIRROR
+    U64 kbb = pos->byColorBB[us] & pos->byTypeBB[KING];
+    if (!kbb) return 0;
+    int ksq = LSBINDEX(kbb);
+    return ((ksq & 7) >= 4) ? 7 : 0;
+#else
+    (void)pos;
+    (void)us;
+    return 0;
+#endif
+}
+
+static inline size_t nnue_feature_index(int us, int piece, int sq, int flip) {
+    int s = ((us == WHITE) ? sq : (sq ^ 56)) ^ flip;
     return (size_t)(s_piece_offset[us][piece] + s);
 }
 
-static inline const int16_t *nnue_ft_row(int us, int piece, int sq) {
-    return g_weights->ft_w + (nnue_feature_index(us, piece, sq) << 10);
+static inline const int16_t *nnue_ft_row(int us, int piece, int sq, int flip) {
+    return g_weights->ft_w + (nnue_feature_index(us, piece, sq, flip) << 10);
 }
 
 /* Shared integer tail of the forward pass (identical for every kernel). */
@@ -666,29 +695,36 @@ static inline int32_t nnue_forward(const int16_t *us, const int16_t *them, int b
 }
 
 /* ── Full Perspective Refresh ────────────────────────────────────────────── */
-static void nnue_refresh_perspective(const S_BOARD *pos, int us, int16_t *acc) {
+static void nnue_refresh_perspective(const S_BOARD *pos, int us, int16_t *acc, uint8_t *out_flip) {
     const int16_t *rows[64];
     int n = 0;
+    uint8_t flip = nnue_king_flip(pos, us);
+    if (out_flip) *out_flip = flip;
     U64 pieces = pos->byTypeBB[ALL_PIECES];
     while (pieces) {
         int sq = poplsb(&pieces);
         int p = pos->pieces[sq];
-        rows[n++] = nnue_ft_row(us, p, sq);
+        rows[n++] = nnue_ft_row(us, p, sq, flip);
     }
     /* One tiled pass: bias + all pieces, accumulator stored once per tile. */
     nnue_acc_apply(acc, g_weights->ft_b, rows, n, NULL, 0);
 }
 
-static void nnue_refresh_both(const S_BOARD *pos, int16_t *acc_w, int16_t *acc_b) {
+static void nnue_refresh_both(const S_BOARD *pos, int16_t *acc_w, int16_t *acc_b,
+                              uint8_t *flip_w, uint8_t *flip_b) {
     const int16_t *rows_w[64];
     const int16_t *rows_b[64];
     int n = 0;
+    uint8_t fw = nnue_king_flip(pos, WHITE);
+    uint8_t fb = nnue_king_flip(pos, BLACK);
+    if (flip_w) *flip_w = fw;
+    if (flip_b) *flip_b = fb;
     U64 pieces = pos->byTypeBB[ALL_PIECES];
     while (pieces) {
         int sq = poplsb(&pieces);
         int p = pos->pieces[sq];
-        rows_w[n] = nnue_ft_row(WHITE, p, sq);
-        rows_b[n] = nnue_ft_row(BLACK, p, sq);
+        rows_w[n] = nnue_ft_row(WHITE, p, sq, fw);
+        rows_b[n] = nnue_ft_row(BLACK, p, sq, fb);
         n++;
     }
     nnue_acc_apply(acc_w, g_weights->ft_b, rows_w, n, NULL, 0);
@@ -702,29 +738,32 @@ void nnue_refresh_accumulator(S_BOARD *pos) {
      * into the last slot (as before) could leave a wrong accumulator marked
      * as computed for the position that really lives at MAXDEPTH - 1. */
     if (ply < 0 || ply >= MAXDEPTH) return;
+    NNUE_Accumulator *acc = &pos->search->nnue_accumulators[ply];
     nnue_refresh_both(pos,
-                      pos->search->nnue_accumulators[ply].accumulation[WHITE],
-                      pos->search->nnue_accumulators[ply].accumulation[BLACK]);
-    pos->search->nnue_accumulators[ply].computed[WHITE] = 1;
-    pos->search->nnue_accumulators[ply].computed[BLACK] = 1;
+                      acc->accumulation[WHITE],
+                      acc->accumulation[BLACK],
+                      &acc->flip[WHITE],
+                      &acc->flip[BLACK]);
+    acc->computed[WHITE] = 1;
+    acc->computed[BLACK] = 1;
 }
 
 /* ── Incremental Move Step ───────────────────────────────────────────────── */
-static void nnue_update_accumulator_step(int us,
+static void nnue_update_accumulator_step(int us, int flip,
                                          const int16_t *prev_acc,
                                          int16_t *curr_acc,
                                          const DirtyPiece *dp) {
     if (dp->remove_count == 1 && dp->add_count == 1) {
         nnue_acc_1add_1sub(curr_acc, prev_acc,
-                           nnue_ft_row(us, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(us, dp->piece_remove[0], dp->from[0]));
+                           nnue_ft_row(us, dp->piece_add[0], dp->to[0], flip),
+                           nnue_ft_row(us, dp->piece_remove[0], dp->from[0], flip));
         return;
     }
     if (dp->remove_count == 2 && dp->add_count == 1) {
         nnue_acc_1add_2sub(curr_acc, prev_acc,
-                           nnue_ft_row(us, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(us, dp->piece_remove[0], dp->from[0]),
-                           nnue_ft_row(us, dp->piece_remove[1], dp->from[1]));
+                           nnue_ft_row(us, dp->piece_add[0], dp->to[0], flip),
+                           nnue_ft_row(us, dp->piece_remove[0], dp->from[0], flip),
+                           nnue_ft_row(us, dp->piece_remove[1], dp->from[1], flip));
         return;
     }
     if (dp->remove_count == 0 && dp->add_count == 0) {
@@ -739,11 +778,11 @@ static void nnue_update_accumulator_step(int us,
     do {
         int na = 0, nr = 0;
         while (a < dp->add_count && na < 4) {
-            adds[na++] = nnue_ft_row(us, dp->piece_add[a], dp->to[a]);
+            adds[na++] = nnue_ft_row(us, dp->piece_add[a], dp->to[a], flip);
             a++;
         }
         while (r < dp->remove_count && nr < 4) {
-            subs[nr++] = nnue_ft_row(us, dp->piece_remove[r], dp->from[r]);
+            subs[nr++] = nnue_ft_row(us, dp->piece_remove[r], dp->from[r], flip);
             r++;
         }
         nnue_acc_apply(curr_acc, src, adds, na, subs, nr);
@@ -751,27 +790,28 @@ static void nnue_update_accumulator_step(int us,
     } while (a < dp->add_count || r < dp->remove_count);
 }
 
-static void nnue_update_accumulator_step_both(const int16_t *prev_w, int16_t *curr_w,
+static void nnue_update_accumulator_step_both(int flip_w, int flip_b,
+                                              const int16_t *prev_w, int16_t *curr_w,
                                               const int16_t *prev_b, int16_t *curr_b,
                                               const DirtyPiece *dp) {
     if (dp->remove_count == 1 && dp->add_count == 1) {
         nnue_acc_1add_1sub(curr_w, prev_w,
-                           nnue_ft_row(WHITE, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(WHITE, dp->piece_remove[0], dp->from[0]));
+                           nnue_ft_row(WHITE, dp->piece_add[0], dp->to[0], flip_w),
+                           nnue_ft_row(WHITE, dp->piece_remove[0], dp->from[0], flip_w));
         nnue_acc_1add_1sub(curr_b, prev_b,
-                           nnue_ft_row(BLACK, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(BLACK, dp->piece_remove[0], dp->from[0]));
+                           nnue_ft_row(BLACK, dp->piece_add[0], dp->to[0], flip_b),
+                           nnue_ft_row(BLACK, dp->piece_remove[0], dp->from[0], flip_b));
         return;
     }
     if (dp->remove_count == 2 && dp->add_count == 1) {
         nnue_acc_1add_2sub(curr_w, prev_w,
-                           nnue_ft_row(WHITE, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(WHITE, dp->piece_remove[0], dp->from[0]),
-                           nnue_ft_row(WHITE, dp->piece_remove[1], dp->from[1]));
+                           nnue_ft_row(WHITE, dp->piece_add[0], dp->to[0], flip_w),
+                           nnue_ft_row(WHITE, dp->piece_remove[0], dp->from[0], flip_w),
+                           nnue_ft_row(WHITE, dp->piece_remove[1], dp->from[1], flip_w));
         nnue_acc_1add_2sub(curr_b, prev_b,
-                           nnue_ft_row(BLACK, dp->piece_add[0], dp->to[0]),
-                           nnue_ft_row(BLACK, dp->piece_remove[0], dp->from[0]),
-                           nnue_ft_row(BLACK, dp->piece_remove[1], dp->from[1]));
+                           nnue_ft_row(BLACK, dp->piece_add[0], dp->to[0], flip_b),
+                           nnue_ft_row(BLACK, dp->piece_remove[0], dp->from[0], flip_b),
+                           nnue_ft_row(BLACK, dp->piece_remove[1], dp->from[1], flip_b));
         return;
     }
     if (dp->remove_count == 0 && dp->add_count == 0) {
@@ -780,48 +820,129 @@ static void nnue_update_accumulator_step_both(const int16_t *prev_w, int16_t *cu
         return;
     }
 
-    nnue_update_accumulator_step(WHITE, prev_w, curr_w, dp);
-    nnue_update_accumulator_step(BLACK, prev_b, curr_b, dp);
+    nnue_update_accumulator_step(WHITE, flip_w, prev_w, curr_w, dp);
+    nnue_update_accumulator_step(BLACK, flip_b, prev_b, curr_b, dp);
+}
+
+static inline void nnue_trace_mirror_refresh(S_BOARD *pos) {
+#ifdef TRACE
+    if (COUNTBIT(pos->byTypeBB[ALL_PIECES]) > 12) {
+        TRACE_INC(pos, nnue_refresh_mg);
+    } else {
+        TRACE_INC(pos, nnue_refresh_eg);
+    }
+#else
+    (void)pos;
+#endif
 }
 
 /* ── Lazy Accumulator Multi-Ply Traversal ────────────────────────────────── */
 static void nnue_update_accumulators_to_ply(S_BOARD *pos, int target_ply) {
-    if (pos->search->nnue_accumulators[target_ply].computed[WHITE] &&
-        pos->search->nnue_accumulators[target_ply].computed[BLACK]) {
+    NNUE_Accumulator *accs = pos->search->nnue_accumulators;
+    if (accs[target_ply].computed[WHITE] && accs[target_ply].computed[BLACK]) {
         return;
     }
 
-    int ancestor = -1;
-    for (int p = target_ply - 1; p >= 0; p--) {
-        if (pos->search->nnue_accumulators[p].computed[WHITE] &&
-            pos->search->nnue_accumulators[p].computed[BLACK]) {
-            ancestor = p;
-            break;
+    int ancestor[COLOR_NB]     = { -1, -1 };
+    int need_update[COLOR_NB]  = { !accs[target_ply].computed[WHITE], !accs[target_ply].computed[BLACK] };
+    int need_refresh[COLOR_NB] = { 0, 0 };
+    int crossed[COLOR_NB]      = { 0, 0 };
+
+    for (int c = WHITE; c <= BLACK; c++) {
+        if (!need_update[c]) continue;
+        for (int p = target_ply; p > 0; p--) {
+#if NNUE_MIRROR
+            if (pos->search->dirtyPieces[p].refresh[c]) {
+                crossed[c] = 1;
+                break;
+            }
+#endif
+            if (accs[p - 1].computed[c]) {
+                ancestor[c] = p - 1;
+                break;
+            }
+        }
+        if (crossed[c] || ancestor[c] < 0 || (target_ply - ancestor[c] > NNUE_REFRESH_THRESHOLD)) {
+            need_refresh[c] = 1;
         }
     }
 
-    // With 768 features, king moves never force a full refresh!
-    // Refresh only if we don't have a recent ancestor in search tree.
-    if (ancestor < 0 || (target_ply - ancestor > NNUE_REFRESH_THRESHOLD)) {
+    /* Both perspectives need a full refresh at target_ply */
+    if (need_update[WHITE] && need_update[BLACK] && need_refresh[WHITE] && need_refresh[BLACK]) {
+        if (crossed[WHITE]) nnue_trace_mirror_refresh(pos);
+        if (crossed[BLACK]) nnue_trace_mirror_refresh(pos);
         nnue_refresh_both(pos,
-                          pos->search->nnue_accumulators[target_ply].accumulation[WHITE],
-                          pos->search->nnue_accumulators[target_ply].accumulation[BLACK]);
-        pos->search->nnue_accumulators[target_ply].computed[WHITE] = 1;
-        pos->search->nnue_accumulators[target_ply].computed[BLACK] = 1;
+                          accs[target_ply].accumulation[WHITE],
+                          accs[target_ply].accumulation[BLACK],
+                          &accs[target_ply].flip[WHITE],
+                          &accs[target_ply].flip[BLACK]);
+        accs[target_ply].computed[WHITE] = 1;
+        accs[target_ply].computed[BLACK] = 1;
         return;
     }
 
-    for (int step = ancestor + 1; step <= target_ply; step++) {
-        if (!pos->search->nnue_accumulators[step].computed[WHITE] ||
-            !pos->search->nnue_accumulators[step].computed[BLACK]) {
-            nnue_update_accumulator_step_both(
-                pos->search->nnue_accumulators[step - 1].accumulation[WHITE],
-                pos->search->nnue_accumulators[step].accumulation[WHITE],
-                pos->search->nnue_accumulators[step - 1].accumulation[BLACK],
-                pos->search->nnue_accumulators[step].accumulation[BLACK],
-                &pos->search->dirtyPieces[step]);
-            pos->search->nnue_accumulators[step].computed[WHITE] = 1;
-            pos->search->nnue_accumulators[step].computed[BLACK] = 1;
+    /* Fast path: both perspectives can be incrementally updated from the same ancestor */
+    if (need_update[WHITE] && need_update[BLACK] &&
+        !need_refresh[WHITE] && !need_refresh[BLACK] &&
+        ancestor[WHITE] == ancestor[BLACK]) {
+        uint8_t fw = accs[ancestor[WHITE]].flip[WHITE];
+        uint8_t fb = accs[ancestor[BLACK]].flip[BLACK];
+        for (int step = ancestor[WHITE] + 1; step <= target_ply; step++) {
+            if (!accs[step].computed[WHITE] && !accs[step].computed[BLACK]) {
+                nnue_update_accumulator_step_both(
+                    fw, fb,
+                    accs[step - 1].accumulation[WHITE],
+                    accs[step].accumulation[WHITE],
+                    accs[step - 1].accumulation[BLACK],
+                    accs[step].accumulation[BLACK],
+                    &pos->search->dirtyPieces[step]);
+                accs[step].flip[WHITE] = fw;
+                accs[step].flip[BLACK] = fb;
+                accs[step].computed[WHITE] = 1;
+                accs[step].computed[BLACK] = 1;
+            } else {
+                if (!accs[step].computed[WHITE]) {
+                    nnue_update_accumulator_step(WHITE, fw,
+                                                 accs[step - 1].accumulation[WHITE],
+                                                 accs[step].accumulation[WHITE],
+                                                 &pos->search->dirtyPieces[step]);
+                    accs[step].flip[WHITE] = fw;
+                    accs[step].computed[WHITE] = 1;
+                }
+                if (!accs[step].computed[BLACK]) {
+                    nnue_update_accumulator_step(BLACK, fb,
+                                                 accs[step - 1].accumulation[BLACK],
+                                                 accs[step].accumulation[BLACK],
+                                                 &pos->search->dirtyPieces[step]);
+                    accs[step].flip[BLACK] = fb;
+                    accs[step].computed[BLACK] = 1;
+                }
+            }
+        }
+        return;
+    }
+
+    /* Per-perspective path (when one perspective crossed the d/e boundary or ancestors differ) */
+    for (int c = WHITE; c <= BLACK; c++) {
+        if (!need_update[c]) continue;
+        if (need_refresh[c]) {
+            if (crossed[c]) nnue_trace_mirror_refresh(pos);
+            nnue_refresh_perspective(pos, c,
+                                     accs[target_ply].accumulation[c],
+                                     &accs[target_ply].flip[c]);
+            accs[target_ply].computed[c] = 1;
+        } else {
+            uint8_t fc = accs[ancestor[c]].flip[c];
+            for (int step = ancestor[c] + 1; step <= target_ply; step++) {
+                if (!accs[step].computed[c]) {
+                    nnue_update_accumulator_step(c, fc,
+                                                 accs[step - 1].accumulation[c],
+                                                 accs[step].accumulation[c],
+                                                 &pos->search->dirtyPieces[step]);
+                    accs[step].flip[c] = fc;
+                    accs[step].computed[c] = 1;
+                }
+            }
         }
     }
 }
@@ -847,7 +968,7 @@ int nnue_eval(S_BOARD *pos) {
      * from scratch without touching the cache. */
     if (!pos->search || ply < 0 || ply >= MAXDEPTH) {
         ALIGN64 int16_t acc[2][NNUE_HIDDEN_SIZE];
-        nnue_refresh_both(pos, acc[WHITE], acc[BLACK]);
+        nnue_refresh_both(pos, acc[WHITE], acc[BLACK], NULL, NULL);
         return nnue_forward(acc[stm], acc[other], bucket);
     }
 
@@ -865,6 +986,54 @@ static void *nnue_aligned_alloc(size_t align, size_t size) {
 
 static void nnue_aligned_free(void *p) {
     goob_aligned_free(p);
+}
+
+typedef struct {
+    uint32_t version;
+    uint32_t mirror;
+    uint32_t king_buckets;
+    uint32_t hidden_size;
+    uint32_t output_buckets;
+    int      tagged;
+} NNUE_TrailerInfo;
+
+static void nnue_parse_trailer(const unsigned char *buf, size_t len, NNUE_TrailerInfo *info) {
+    info->tagged         = 0;
+    info->version        = 1;
+    info->mirror         = 0;
+    info->king_buckets   = 1;
+    info->hidden_size    = 1024;
+    info->output_buckets = 8;
+    if (len >= NNUE_BULLET_PADDING && memcmp(buf, "GOOBNNUE", 8) == 0) {
+        uint32_t fields[5];
+        memcpy(fields, buf + 8, sizeof(fields));
+        info->tagged         = 1;
+        info->version        = fields[0];
+        info->mirror         = fields[1] & 1u;
+        info->king_buckets   = fields[2];
+        info->hidden_size    = fields[3];
+        info->output_buckets = fields[4];
+    }
+}
+
+static int nnue_validate_trailer(const unsigned char *buf, size_t len, const char *opened) {
+    NNUE_TrailerInfo info;
+    nnue_parse_trailer(buf, len, &info);
+    if (info.mirror != (uint32_t)NNUE_MIRROR ||
+        info.king_buckets != (uint32_t)NNUE_KING_BUCKETS ||
+        info.hidden_size != (uint32_t)NNUE_HIDDEN_SIZE ||
+        info.output_buckets != (uint32_t)NNUE_OUTPUT_BUCKETS) {
+        printf("info string NNUE error: architecture mismatch in '%s': "
+               "expected (mirror=%d, king_buckets=%d, hidden=%d, out_buckets=%d), "
+               "found %s (mirror=%u, king_buckets=%u, hidden=%u, out_buckets=%u)\n",
+               opened,
+               NNUE_MIRROR, NNUE_KING_BUCKETS, NNUE_HIDDEN_SIZE, NNUE_OUTPUT_BUCKETS,
+               info.tagged ? "GOOBNNUE tag" : "legacy/untagged",
+               info.mirror, info.king_buckets, info.hidden_size, info.output_buckets);
+        fflush(stdout);
+        return 0;
+    }
+    return 1;
 }
 
 int nnue_init(const char *path) {
@@ -887,9 +1056,13 @@ int nnue_init(const char *path) {
             read += fread(w->out_w, sizeof(int16_t), NNUE_OUTPUT_BUCKETS * NNUE_HIDDEN_SIZE * 2, f);
             read += fread(w->out_b, sizeof(int16_t), NNUE_OUTPUT_BUCKETS, f);
 
+            unsigned char trailer[NNUE_BULLET_PADDING];
+            memset(trailer, 0, sizeof(trailer));
             long extra = 0;
+            size_t tlen = 0;
             {
                 long here = ftell(f);
+                tlen = fread(trailer, 1, NNUE_BULLET_PADDING, f);
                 if (here >= 0 && fseek(f, 0, SEEK_END) == 0) {
                     long end = ftell(f);
                     if (end > here) extra = end - here;
@@ -908,6 +1081,10 @@ int nnue_init(const char *path) {
                 printf("info string NNUE warning: '%s' has %ld unexpected trailing bytes "
                        "(different architecture or layout?)\n", opened, extra);
             }
+            if (!nnue_validate_trailer(trailer, tlen, opened)) {
+                nnue_aligned_free(w);
+                return 0;
+            }
         } else {
             printf("info string NNUE: cannot open '%s'\n", path);
             fflush(stdout);
@@ -915,10 +1092,16 @@ int nnue_init(const char *path) {
         }
     } else {
         /* No path specified, or "<empty>" / "default": use embedded weights */
-        if (gEmbeddedNetSize < (size_t)NNUE_TOTAL_SHORTS * sizeof(int16_t)) {
+        size_t payload_bytes = (size_t)NNUE_TOTAL_SHORTS * sizeof(int16_t);
+        if (gEmbeddedNetSize < payload_bytes) {
             printf("info string NNUE error: embedded network is missing or too small (%u bytes)\n",
                    gEmbeddedNetSize);
             fflush(stdout);
+            return 0;
+        }
+        opened = "embedded network (weights/quantised.bin)";
+        size_t tlen = (gEmbeddedNetSize > payload_bytes) ? (gEmbeddedNetSize - payload_bytes) : 0;
+        if (!nnue_validate_trailer(gEmbeddedNetData + payload_bytes, tlen, opened)) {
             return 0;
         }
         w = (NNUE_Weights *)nnue_aligned_alloc(64, sizeof(NNUE_Weights));
@@ -928,7 +1111,6 @@ int nnue_init(const char *path) {
             return 0;
         }
         memcpy(w, gEmbeddedNetData, sizeof(NNUE_Weights));
-        opened = "embedded network (weights/quantised.bin)";
     }
 
     int max_abs_out = 0;
@@ -966,7 +1148,7 @@ int nnue_init(const char *path) {
 #endif
     if (old) nnue_aligned_free(old);
 
-    printf("info string NNUE: loaded %s\n", opened);
+    printf("info string NNUE: loaded %s (mirror=%d)\n", opened, NNUE_MIRROR);
     if (g_out_needs_exact) {
         printf("info string NNUE: output weights reach %d (fast kernel needs <= %d); "
                "using the exact kernel. Retrain with weight clipping for full speed.\n",

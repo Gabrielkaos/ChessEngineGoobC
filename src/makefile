@@ -106,9 +106,10 @@ endif
 # ---------------------------------------------------------------------------
 # Source / name settings
 # ---------------------------------------------------------------------------
-NAME     := GOOB-2.2-BETA
-SRCS     := $(wildcard *.c)
-EVALFILE ?= weights/quantised.bin
+NAME        := GOOB-2.2-BETA
+SRCS        := $(wildcard *.c)
+EVALFILE    ?= weights/quantised.bin
+NNUE_MIRROR ?= 1
 
 # ---------------------------------------------------------------------------
 # Common compiler flags (ISA-neutral)
@@ -116,7 +117,7 @@ EVALFILE ?= weights/quantised.bin
 # -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
 #               path; the inner #ifdef __BMI2__ guard makes it a no-op on
 #               CPUs that do not have BMI2.
-BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\"
+BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\" -DNNUE_MIRROR=$(NNUE_MIRROR)
 
 # Trace search heuristic tracking
 TRACE ?= 0

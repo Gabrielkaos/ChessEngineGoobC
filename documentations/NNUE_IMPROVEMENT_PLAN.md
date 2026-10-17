@@ -4,9 +4,14 @@ Plan for improving GOOB's network while keeping its two strengths: it is
 **fast to train** and it is **strong on little data** (the current net was
 trained on roughly 300M Lichess positions).
 
-Nothing in this document has been implemented or measured yet. Every phase
-ends with its own SPRT against the previous accepted engine, as `AGENTS.md`
-requires; only a passed SPRT counts as an improvement.
+> **Implementation Progress (Updated Oct 2026):**
+> - **Phase 0 (Baseline, Safety & Verification):** Completed (`dequantize_net.py`, fatal startup on failed embedded-net load in `src/main.c`).
+> - **Phase 1 (Control Fine-Tune):** Completed and **accepted** (passed both STC `6+0.06` and LTC `12+0.1`; archived at `src/weights/quantised_phase1_control.bin`).
+> - **Phase 2 (Native Self-Play Data Generation):** Skipped by user due to generation time.
+> - **Phase 3 (Horizontal King Mirroring) & Section 12 (`GOOBNNUE` v2 Format Versioning):** Implemented across `src/` and `tools/nnue_project/scripts/`, trained (`exp_mirror`), **accepted** at STC & LTC, and promoted to production `src/weights/quantised.bin` (`NNUE_MIRROR=1` default).
+
+Every phase ends with its own SPRT against the previous accepted engine, as
+`AGENTS.md` requires; only a passed SPRT counts as an improvement.
 
 This is the second revision. It follows a static review of the first
 revision against the engine source, the trainer scripts and the Stockfish

@@ -26,7 +26,7 @@ This directory contains the complete offline training, data generation, tuning, 
 The tooling is divided into three primary operational domains:
 
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
-2. **Self-Play & Dataset Generation:** Scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that run the engine in parallel under UCI to harvest evaluated positions.
+2. **Self-Play & Dataset Generation:** Native C generator ([`datagen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.c)) and Python scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that harvest evaluated self-play positions with game outcomes.
 3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)).
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 
@@ -34,7 +34,24 @@ The tooling is divided into three primary operational domains:
 
 ## Root Tools & Diagnostic Scripts
 
-### 1. [`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py)
+### 1. [`datagen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.c)
+* **Purpose:** Standalone native C self-play generator linked directly against the engine search (no UCI or Python overhead) that writes 68-byte [`fen_utils.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/fen_utils.py) binary records with WDL game outcomes.
+* **Key Features:**
+  * Starts from a random opening in [`book.epd`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/book.epd) plus `--random-plies` (default 4, or 8 from `START_FEN`) for diversity.
+  * Runs node-limited searches (`--nodes`, default 5000) directly in-process (one process per core, seeded via `--seed`).
+  * Records quiet positions only (side to move not in check, best move not a capture/promotion, best move does not give check), keeps lopsided scores (saturated at $\pm 3000$) and mate flags, and sets result bits (`1`=White win, `2`=Draw, `3`=Black win) after game end or adjudication (`--resign-eval 1500` for 4 plies; `--draw-eval 10` for 8 plies after move 40; `--max-ply 400`).
+  * Refuses to open or overwrite any existing output file (`O_CREAT | O_EXCL`).
+* **Build & Usage:**
+  ```bash
+  gcc -O3 -march=native -pthread -DUSE_PEXT \
+      -DEVALFILE='"tools/nnue_project/checkpoints/exp_control/quantised.bin"' \
+      -Isrc tools/datagen.c $(ls src/*.c | grep -v -E 'src/(main|search)\.c') \
+      -lm -o tools/datagen
+
+  ./tools/datagen --out tools/nnue_project/data_gen/gen_s1.bin --nodes 5000 --positions 1000000 --seed 1
+  ```
+
+### 2. [`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py)
 * **Purpose:** Multi-threaded self-play game generator that runs GOOB directly via UCI and writes positions into the 68-byte packed binary format consumed by [`train.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py).
 * **Key Features:**
   * Runs multiple engine processes concurrently.
@@ -48,7 +65,7 @@ The tooling is divided into three primary operational domains:
   python3 tools/selfplay_nnue.py --n-train 100000 --n-val 5000 --depth 20 --workers 8 --out-dir tools/nnue_project/data
   ```
 
-### 2. [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)
+### 3. [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)
 * **Purpose:** Generates self-play games outputting EPD lines formatted as `FEN;result` (with results from White's perspective), formerly used by the legacy hand-crafted-evaluation tuner. It still runs against the current engine.
 * **Usage:**
   ```bash
@@ -76,13 +93,13 @@ The tooling is divided into three primary operational domains:
   ```
 
 ### 4. [`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)
-* **Purpose:** C unit test verifying that incremental accumulator updates match complete accumulator refreshes bit-for-bit across complex game sequences (castling, promotions, en-passant, captures) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position.
+* **Purpose:** C unit test verifying that incremental accumulator updates match complete accumulator refreshes bit-for-bit across complex game sequences (castling including `O-O-O`, king d/e boundary walks and captures, promotions, en-passant, captures, multi-ply lazy crossings, and 50 random games) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position. Accepts an optional `.bin` network path on the command line.
 * **Compilation & Execution:**
   ```bash
   # from the repository root; builds into /tmp so the committed tools/test_incremental is left alone
-  gcc -O2 -march=native -pthread -DUSE_PEXT -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
+  gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
       tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o /tmp/test_incremental
-  /tmp/test_incremental
+  /tmp/test_incremental [optional_net.bin]
   ```
 
 ### 5. [`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)
@@ -120,7 +137,7 @@ The tooling is divided into three primary operational domains:
   make -C src tune
   python3 tools/spsa/spsa.py run pruning1 --tc 5+0.05 --workers 6
   python3 tools/spsa/spsa.py show pruning1     # tuned values
-  python3 tools/spsa/spsa.py apply pruning1    # write them into src/tune.h
+  python3 tools/spsa/spsa.py apply pruning1    # write them into `src/tune.h`
   ```
 
 ---
@@ -137,16 +154,16 @@ tools/nnue_project/
 ├── data/                 # Created by data prep: binary training datasets (train.bin, val.bin)
 ├── data_json/            # Raw JSONL datasets (e.g. lichess_db_eval.jsonl.zst)
 └── scripts/
-    ├── model.py          # PyTorch Schoenemann NNUE topology
-    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator with WDL target blending
-    ├── train.py          # Training loop with Adam, LR scheduling, weight clipping, and --wdl-lambda
-    ├── export_weights.py # Quantizer exporting .pt to quantised.bin
+    ├── model.py          # PyTorch Schoenemann NNUE topology + DEFAULT_ARCH metadata
+    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator (WDL blending, king mirroring, flip augmentation)
+    ├── train.py          # Training loop with Adam, LR scheduling, weight clipping, --wdl-lambda, --mirror, --flip-augment
+    ├── export_weights.py # Quantizer exporting .pt to quantised.bin with GOOBNNUE v2 trailer
     ├── fen_utils.py      # FEN to 68-byte record encoder/decoder
     ├── prepare_data.py   # Streams the Hugging Face Lichess evaluations to binary
     ├── prepare_data_jsonl.py # Streams a local Lichess JSONL(.zst) to binary, quiet positions only
     ├── append_data.py    # Appends new, de-duplicated Hugging Face positions to an existing train/val set
     ├── clear_cache.py    # Repairs caches from the original prepare_data.py (one label per position, no val leakage, optional shuffle)
-    ├── check_net.py      # Checks an exported net: size, int16 limits, bit-exact reference evals
+    ├── check_net.py      # Checks an exported net: trailer, size, int16 limits, bit-exact reference & mirror evals
     ├── test_net.py       # Evaluates FENs with a saved PyTorch checkpoint
     └── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
 ```
@@ -154,7 +171,7 @@ tools/nnue_project/
 ### Script Reference
 
 * **[`model.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/model.py):**
-  * Topology: `(768 -> 1024)x2 -> 1x8 buckets`.
+  * Topology: `(768 -> 1024)x2 -> 1x8 buckets`, carrying `arch = {"mirror": bool, "king_buckets": int}` metadata (`DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}`).
   * Feature transformer: Shared weights for both perspectives ($2 \times 6 \times 64 = 768$ inputs $\to 1024$ hidden outputs).
   * Activation: Squared Clipped ReLU ($\text{clamp}(x, 0, 1)^2$).
   * Buckets: 8 material buckets selected by piece count:
@@ -162,9 +179,10 @@ tools/nnue_project/
   * Forward pass uses a single batched matrix multiplication (`x @ output_weights.t()`) followed by sample bucket gathering.
 * **[`nnue_dataset.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/nnue_dataset.py):**
   * Memory-mapped dataset handler reading 68-byte records via `np.memmap`.
-  * Implements `__getitems__` for zero-copy batched array reading and vectorized collation directly into feature indices.
+  * Implements `__getitems__` for zero-copy batched array reading and vectorized collation directly into feature indices, supporting perspective horizontal king mirroring (`mirror=True`) and 50% horizontal flip augmentation (`flip_augment=True`).
 * **[`train.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py):**
-  * Supports training from scratch or fine-tuning existing checkpoints.
+  * Supports training from scratch or fine-tuning existing checkpoints (`--init`), with mutually exclusive `--mirror` and `--flip-augment` options.
+  * Saves `arch` metadata inside checkpoints and refuses `--resume` if the checkpoint architecture differs from the command-line flags.
   * Uses [`ResumableBatchSampler`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L57-L100) for deterministic, mid-epoch checkpoint resumption.
   * Enforces weight clipping ([`clip_weights(model, limit=1.98)`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L45-L55)) to guarantee that output weights and accumulators do not overflow 16-bit integer boundaries in C SIMD kernels.
 * **[`export_weights.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/export_weights.py):**
@@ -172,6 +190,7 @@ tools/nnue_project/
     * Feature weights and bias: $\times 255$ (`QA`)
     * Output weights: $\times 64$ (`QB`)
     * Output bias: $\times (255 \times 64 = 16320)$ (`QA * QB`)
+  * Writes the 48-byte `GOOBNNUE` v2 architecture trailer (`<8sIIIII20s`) encoding `mirror`, `king_buckets`, `hidden_size`, and `output_buckets`.
   * Validates whether any output weight exceeds `FAST_OUT_W_LIMIT` ($\pm 128$) so the engine can safely run its fast SCReLU SIMD kernel.
 * **[`fen_utils.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/fen_utils.py):**
   * Packs and unpacks 68-byte binary records containing 64 board squares, side to move, 16-bit signed eval, and flags.
@@ -206,10 +225,11 @@ python3 prepare_data_jsonl.py \
 ```bash
 cd tools/nnue_project/scripts
 
-# Train from scratch:
+# Train from scratch (with horizontal king mirroring):
 python3 train.py \
     --train ../data/train.bin \
     --val ../data/val.bin \
+    --mirror \
     --epochs 20 \
     --batch-size 8192 \
     --lr 1e-3 \
@@ -217,12 +237,13 @@ python3 train.py \
     --out-best ../checkpoints/nnue_best.pt \
     --out-last ../checkpoints/last.pt
 
-# Fine-tune an existing network on new data:
+# Fine-tune an existing network:
 python3 train.py \
     --train ../data/train.bin \
     --val ../data/val.bin \
     --init ../checkpoints/nnue_best.pt \
-    --epochs 8 \
+    --mirror \
+    --epochs 10 \
     --batch-size 8192 \
     --lr 3e-4 \
     --clip 1.98 \
@@ -305,4 +326,4 @@ Total size: **1,607,744 bytes** (~1.53 MB):
 | `1,572,864..1,574,911` | Feature Biases (`ft_bias`) | `int16[1024]` | $\times 255$ (`QA`) |
 | `1,574,912..1,607,679` | Output Weights (`output_weights`) | `int16[8 * 2048]` | $\times 64$ (`QB`) |
 | `1,607,680..1,607,695` | Output Biases (`output_biases`) | `int16[8]` | $\times 16320$ (`QA * QB`) |
-| `1,607,696..1,607,743` | Trailing Padding | `bytes[48]` | Bullet format compatibility string (`b"bullet" * 8`) |
+| `1,607,696..1,607,743` | Architecture Trailer | `bytes[48]` | `GOOBNNUE` v2 trailer (`<8sIIIII20s`: magic `"GOOBNNUE"`, version `2`, flags `bit 0 = mirror`, `king_buckets`, `hidden_size`, `output_buckets`, 20 zero bytes) or legacy `b"bullet" * 8` |

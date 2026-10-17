@@ -1,10 +1,14 @@
 """
-NNUE Architecture: Schoenemann-0.5.0 / Bullet style.
+NNUE Architecture: Schoenemann-0.5.0 / Bullet style + Horizontal King Mirroring.
 Topology: (768 -> 1024)x2 -> 1x8
 
 Features:
   - 768 sparse perspective-aware inputs (2 colors x 6 piece types x 64 squares).
-  - No king square in the feature index: king moves are ordinary O(1) piece moves.
+  - Perspective horizontal king mirroring (when mirror=True): if a perspective's
+    own king is on files e..h ((king_sq & 7) >= 4), all piece squares for that
+    perspective are horizontally flipped (sq ^= 7), folding king files into a..d.
+    King moves within the same half remain O(1) incremental updates; crossing the
+    d/e file boundary triggers a single-perspective accumulator refresh.
   - Shared feature transformer: 768 -> 1024.
   - Activation: SCReLU (clamp(x, 0, 1) ** 2).
   - Output: 8 material buckets based on remaining piece count:
@@ -23,12 +27,23 @@ QB = 64.0
 CP_SCALE = 400.0
 
 
+DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}
+
+
 class NNUE(nn.Module):
-    def __init__(self, num_features=NUM_FEATURES, l1=L1_SIZE, num_buckets=NUM_BUCKETS):
+    def __init__(
+        self,
+        num_features=NUM_FEATURES,
+        l1=L1_SIZE,
+        num_buckets=NUM_BUCKETS,
+        mirror=False,
+        king_buckets=1,
+    ):
         super().__init__()
         self.num_features = num_features
         self.l1_size = l1
         self.num_buckets = num_buckets
+        self.arch = {"mirror": bool(mirror), "king_buckets": int(king_buckets)}
 
         self.ft = nn.EmbeddingBag(num_features, l1, mode="sum")
         self.ft_bias = nn.Parameter(torch.zeros(l1))
