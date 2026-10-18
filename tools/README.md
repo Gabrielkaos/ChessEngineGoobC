@@ -244,6 +244,14 @@ python3 prepare_data_jsonl.py \
     --n-val 1000000 \
     --min-depth 20 \
     --out-dir ../data
+
+# Or append new unique positions from an updated Lichess dump (e.g. October):
+python3 prepare_data_jsonl.py \
+    --input ../data_json/lichess_db_eval.jsonl.zst \
+    --out-dir ../data \
+    --append \
+    --dedup \
+    --n-val 0
 ```
 
 ### Workflow C: Train an NNUE Network from Scratch or Fine-Tune

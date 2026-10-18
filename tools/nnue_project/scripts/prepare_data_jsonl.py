@@ -48,6 +48,12 @@ import chess
 from fen_utils import pack_record, RECORD_SIZE
 
 try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
+
+try:
     from tqdm import tqdm
     HAVE_TQDM = True
 except ImportError:
@@ -309,6 +315,21 @@ def main():
         help="Append to existing train/val files instead of overwriting.",
     )
     parser.add_argument(
+        "--dedup",
+        action="store_true",
+        help="Deduplicate positions against existing dataset and within the stream using 64-bit position hashes.",
+    )
+    parser.add_argument(
+        "--reindex",
+        action="store_true",
+        help="Force re-indexing the existing dataset from scratch for deduplication.",
+    )
+    parser.add_argument(
+        "--no-cache-index",
+        action="store_true",
+        help="Do not save or load hash index cache file.",
+    )
+    parser.add_argument(
         "--skip-lines",
         type=int,
         default=0,
@@ -362,6 +383,28 @@ def main():
     existing_train = (os.path.getsize(train_path) // RECORD_SIZE) if (args.append and os.path.exists(train_path)) else 0
     existing_val = (os.path.getsize(val_path) // RECORD_SIZE) if (args.append and os.path.exists(val_path)) else 0
 
+    existing_hashes = None
+    stream_hashes = set()
+    newly_added_hashes = []
+    n_dup_existing = 0
+    n_dup_stream = 0
+
+    if args.dedup:
+        if not HAVE_NUMPY:
+            raise RuntimeError("Deduplication requires numpy. Please run using tools/.venv/bin/python3.")
+        from append_data import load_or_build_hash_index, compute_record_hash, save_hash_index
+
+        if existing_train > 0 or existing_val > 0:
+            existing_hashes = load_or_build_hash_index(
+                train_path=train_path,
+                val_path=val_path,
+                cache_dir=out_dir,
+                use_cache=not args.no_cache_index,
+                reindex=args.reindex,
+            )
+        else:
+            existing_hashes = np.empty(0, dtype=np.uint64)
+
     val_target_str = f"{args.n_val:,} records" if (args.n_val and args.n_val > 0) else "0 (disabled)"
     train_target_str = f"{args.n_train:,} records" if (args.n_train and args.n_train > 0) else "All remaining to end of file"
 
@@ -376,6 +419,8 @@ def main():
     print(f"Quiet only      : {quiet_only} (no checks, no captures, no promotions)")
     print(f"Filters         : min_depth={args.min_depth}, max_abs_cp={args.max_abs_cp}, keep_mate={args.keep_mate}")
     print(f"Parallelism     : {args.workers} workers, batch_size={args.batch_size:,}, in_flight={args.max_in_flight}")
+    if args.dedup:
+        print(f"Deduplication   : Enabled ({len(existing_hashes):,} existing hashes indexed)")
     if args.append and (existing_train > 0 or existing_val > 0):
         print(f"Existing records: {existing_train:,} train, {existing_val:,} val")
     print("=" * 70, flush=True)
@@ -440,9 +485,39 @@ def main():
                 n_lines_scanned += parsed_n
                 n_records_valid += valid_n
 
-                # Route records: first n_val records go to val, remainder stream to train
+                # Route records: deduplicate if enabled, first n_val records go to val, remainder stream to train
+                n_recs = len(blob) // RECORD_SIZE
+                in_existing = None
+                b_hashes = None
+                if args.dedup and n_recs > 0:
+                    b_hashes = np.fromiter(
+                        (compute_record_hash(blob[k : k + RECORD_SIZE]) for k in range(0, len(blob), RECORD_SIZE)),
+                        dtype=np.uint64,
+                        count=n_recs,
+                    )
+                    if existing_hashes is not None and len(existing_hashes) > 0:
+                        idx = np.searchsorted(existing_hashes, b_hashes)
+                        idx = np.minimum(idx, len(existing_hashes) - 1)
+                        in_existing = (existing_hashes[idx] == b_hashes)
+                    else:
+                        in_existing = np.zeros(n_recs, dtype=bool)
+
+                rec_idx = 0
                 for i in range(0, len(blob), RECORD_SIZE):
                     rec = blob[i : i + RECORD_SIZE]
+
+                    if args.dedup:
+                        if in_existing[rec_idx]:
+                            n_dup_existing += 1
+                            rec_idx += 1
+                            continue
+                        h = int(b_hashes[rec_idx])
+                        rec_idx += 1
+                        if h in stream_hashes:
+                            n_dup_stream += 1
+                            continue
+                        stream_hashes.add(h)
+                        newly_added_hashes.append(h)
 
                     if args.n_val and args.n_val > 0 and n_val_written < args.n_val:
                         val_buf += rec
@@ -473,24 +548,29 @@ def main():
                 if pbar is not None:
                     if tot % 1000 == 0 or done:
                         val_str = f"{n_val_written:,}/{args.n_val:,}" if (args.n_val and n_val_written < args.n_val) else f"{n_val_written:,} (done)"
-                        pbar.set_postfix(
-                            train=f"{n_train_written:,}",
-                            val=val_str,
-                            scanned=f"{n_lines_scanned:,}",
-                            refresh=False,
-                        )
+                        postfix = {
+                            "train": f"{n_train_written:,}",
+                            "val": val_str,
+                            "scanned": f"{n_lines_scanned:,}",
+                        }
+                        if args.dedup:
+                            postfix["dup_exist"] = f"{n_dup_existing:,}"
+                            postfix["dup_stream"] = f"{n_dup_stream:,}"
+                        pbar.set_postfix(postfix, refresh=False)
                 elif n_lines_scanned % args.progress_every < args.batch_size:
                     elapsed = time.time() - start_time
                     rate = tot / elapsed if elapsed > 0 else 0
                     val_str = f"{n_val_written:,}/{args.n_val:,}" if (args.n_val and n_val_written < args.n_val) else f"{n_val_written:,} (done)"
-                    print(
+                    msg = (
                         f"scanned={n_lines_scanned:,} | "
                         f"quiet={n_records_valid:,} | "
                         f"train={n_train_written:,} | "
                         f"val={val_str} | "
-                        f"rate={rate:,.0f} rec/s",
-                        flush=True,
                     )
+                    if args.dedup:
+                        msg += f"dup_exist={n_dup_existing:,} | dup_stream={n_dup_stream:,} | "
+                    msg += f"rate={rate:,.0f} rec/s"
+                    print(msg, flush=True)
 
                 if not done:
                     submit_next()
@@ -532,6 +612,16 @@ def main():
         if pbar is not None:
             pbar.close()
 
+        # Update cached hash index if deduplication was active and new records were added
+        if args.dedup and newly_added_hashes and not args.no_cache_index:
+            try:
+                print(f"[Hash Index] Updating index cache with {len(newly_added_hashes):,} newly added positions...")
+                all_updated = np.concatenate([existing_hashes, np.array(newly_added_hashes, dtype=np.uint64)])
+                sorted_updated = np.unique(all_updated)
+                save_hash_index(out_dir, sorted_updated, train_path, val_path)
+            except Exception as e:
+                print(f"[Hash Index] Warning: failed to update hash cache ({e})")
+
     elapsed = time.time() - start_time
     total_train = (os.path.getsize(train_path) // RECORD_SIZE) if os.path.exists(train_path) else 0
     total_val = (os.path.getsize(val_path) // RECORD_SIZE) if os.path.exists(val_path) else 0
@@ -545,6 +635,8 @@ def main():
     print(f"Val records written  : {n_val_written:,} (total in file: {total_val:,}) -> {val_path}")
     print(f"Train records written: {n_train_written:,} (total in file: {total_train:,}) -> {train_path}")
     print(f"Record layout        : {RECORD_SIZE} bytes per position")
+    if args.dedup:
+        print(f"Duplicates skipped   : existing={n_dup_existing:,}, stream={n_dup_stream:,}")
     print(f"Elapsed time         : {elapsed:.2f}s ({elapsed/60:.2f} min)")
     if elapsed > 0:
         print(f"Overall throughput   : {n_lines_scanned/elapsed:,.0f} lines/s ({tot_written/elapsed:,.0f} valid rec/s)")

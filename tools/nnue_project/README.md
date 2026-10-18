@@ -64,6 +64,8 @@ keep is overwritten.
 ```bash
 # 1. data (either source)
 python prepare_data_jsonl.py --input ../data_json/lichess_db_eval.jsonl.zst --out-dir ../data
+# Or append new unique positions from an updated dump without duplicates:
+python prepare_data_jsonl.py --input ../data_json/lichess_db_eval.jsonl.zst --out-dir ../data --append --dedup --n-val 0
 python prepare_data.py --n-train 8000000 --n-val 50000 --out-dir ../data
 
 # 2. train (add --init <checkpoint> to fine-tune, or --init-from-unbucketed <1bkt_ckpt> to warm-start 4 buckets)
