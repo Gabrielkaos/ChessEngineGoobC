@@ -17,6 +17,7 @@ This directory contains the complete offline training, data generation, tuning, 
    * [Workflow F: Trace & Benchmark Search Heuristics](#workflow-f-trace--benchmark-search-heuristics)
    * [Workflow G: Classical Evaluation Tuning (historical note)](#workflow-g-classical-evaluation-tuning-historical-note)
    * [Workflow H: Tune Search Constants with SPSA](#workflow-h-tune-search-constants-with-spsa)
+   * [Workflow I: Estimate Engine Elo Strength via EPD Test Suites](#workflow-i-estimate-engine-elo-strength-via-epd-test-suites)
 5. [Data Formats & Specifications](#data-formats--specifications)
 
 ---
@@ -29,6 +30,7 @@ The tooling is divided into three primary operational domains:
 2. **Self-Play & Dataset Generation:** Native C generator ([`datagen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.c)) and Python scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that harvest evaluated self-play positions with game outcomes.
 3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)).
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
+5. **EPD Benchmarks & Matchless Elo Estimation:** Centered in [`suites/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/suites) and [`epd_test.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/epd_test.py), this provides standard match-free strength and Elo estimation using canonical test suites (BT-2630, STS 1–15, Bratko-Kopec, Win At Chess).
 
 ---
 
@@ -138,6 +140,29 @@ The tooling is divided into three primary operational domains:
   python3 tools/spsa/spsa.py run pruning1 --tc 5+0.05 --workers 6
   python3 tools/spsa/spsa.py show pruning1     # tuned values
   python3 tools/spsa/spsa.py apply pruning1    # write them into `src/tune.h`
+  ```
+
+### 9. Matchless Elo Estimator & EPD Benchmarks ([`tools/epd_test.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/epd_test.py))
+* **Purpose:** Runs standard Extended Position Description (EPD) benchmark suites against the engine over UCI to measure tactical solving accuracy, strategic positional play, and estimate playing strength / Elo without needing engine-vs-engine tournament matches.
+* **Included Suites ([`tools/suites/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/suites)):**
+  * `bt2630.epd`: Bednorz-Teschner 2630 classic 30-position benchmark with Bednorz-Teschner Elo rating formula.
+  * `sts1.epd`: Strategic Test Suite Volume 1 (Undermining, 100 positions) for rapid strategic profiling.
+  * `sts1-15.epd`: Complete 1500-position Strategic Test Suite across all 15 strategic themes by Dann Corbit & Swaminathan Natarajan, with Ferdinand Mosca's calibrated CCRL 40/4 linear regression formula (`Elo = 44.523 * Score% - 242.85`).
+  * `bratko-kopec.epd`: Canonical 24-position Bratko-Kopec Test with separate tactical vs positional balance breakdowns and Elo estimation (`Elo = 1300 + 55 * Solved`).
+  * `wac.epd`: Win At Chess 300-position tactical puzzle suite.
+* **Usage:**
+  ```bash
+  # Quick test on BT-2630 (500ms per position):
+  python3 tools/epd_test.py --suite bt2630 --movetime 500
+
+  # Strategic Test Suite (STS-1) at fixed depth 10:
+  python3 tools/epd_test.py --suite sts1 --depth 10
+
+  # Bratko-Kopec Test (tactical vs positional balance):
+  python3 tools/epd_test.py --suite bk --movetime 1000
+
+  # Full 1500-position Strategic Test Suite (CCRL 40/4 Elo estimate):
+  python3 tools/epd_test.py --suite sts1-15 --movetime 100 --save-json sts_results.json
   ```
 
 ---
@@ -308,6 +333,33 @@ GOOB previously used Texel tuning for hand-crafted evaluation terms (PSTs, piece
    make -C src native && cp src/bin/linux/GOOB-2.2-BETA-native tools/sprt/bin/GOOB-tuned
    tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-tuned tools/sprt/bin/GOOB-base spsa-pruning1 6+0.06 6
    ```
+
+### Workflow I: Estimate Engine Elo Strength via EPD Test Suites
+Test engine revisions quickly without waiting for hundreds of game matches:
+
+1. **Tactical Strength (BT-2630):**
+   ```bash
+   python3 tools/epd_test.py --suite bt2630 --movetime 1000
+   ```
+   Outputs classic Bednorz-Teschner Elo rating and solved-scale Elo estimate.
+
+2. **Rapid Strategic Profiling (STS-1):**
+   ```bash
+   python3 tools/epd_test.py --suite sts1 --depth 10
+   ```
+   Evaluates 100 strategic positions with move point scoring (1–10 points) and CCRL 40/4 Elo mapping.
+
+3. **Full Matchless Elo Rating (STS 1–15, 1500 positions):**
+   ```bash
+   python3 tools/epd_test.py --suite sts1-15 --movetime 100 --save-json sts_profile.json
+   ```
+   Calculates CCRL 40/4 Elo estimate (`Elo = 44.523 * Score% - 242.85`) across all 15 strategic themes with category breakdown.
+
+4. **Tactical vs Positional Balance (Bratko-Kopec):**
+   ```bash
+   python3 tools/epd_test.py --suite bk --movetime 500
+   ```
+   Reports separate Tactical vs Positional accuracy percentages and estimated Elo (`1300 + 55 * Solved`).
 
 ---
 
