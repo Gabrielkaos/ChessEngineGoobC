@@ -7,7 +7,7 @@ quantized `quantised.bin` format. The engine side is `src/nnue_loader.h`;
 
 ## Network
 
-Schoenemann-0.5.0 / bullet style, `(768xK -> 1024)x2 -> 1x8` (`K = 1` or `4` king buckets):
+Schoenemann-0.5.0 / bullet style, `(768xK -> 1024)x2 -> 1x8` (`K = 4` factorized king buckets in production, or `1`):
 
 - 768 base inputs per perspective: `colour * 384 + piece_type * 64 + (square ^ flip)`,
   with colours swapped and squares flipped vertically (`sq ^ 56`) for Black's
@@ -66,8 +66,8 @@ keep is overwritten.
 python prepare_data_jsonl.py --input ../data_json/lichess_db_eval.jsonl.zst --out-dir ../data
 python prepare_data.py --n-train 8000000 --n-val 50000 --out-dir ../data
 
-# 2. train (add --init <checkpoint> to fine-tune, --mirror for king mirroring, --king-buckets 4 for factorized king buckets)
-python train.py --train ../data/train.bin --val ../data/val.bin --epochs 20 --batch-size 8192 --mirror
+# 2. train (add --init <checkpoint> to fine-tune, or --init-from-unbucketed <1bkt_ckpt> to warm-start 4 buckets)
+python train.py --train ../data/train.bin --val ../data/val.bin --epochs 20 --batch-size 8192 --mirror --king-buckets 4 --optimizer adamw --bucket-decay 1e-4
 
 # 3. export and check
 python export_weights.py --checkpoint ../checkpoints/nnue.pt --out ../checkpoints/quantised.bin

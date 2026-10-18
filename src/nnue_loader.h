@@ -11,26 +11,32 @@
  * Adaptations for GOOB:
  *   - Adapted data structures, integration hooks, and accumulator management
  *     for GOOB's board representation and search by Gabriel Montes.
- *   - Added perspective horizontal king mirroring (NNUE_MIRROR), per-perspective
- *     lazy accumulator refresh on d/e file crossings, and GOOBNNUE v2 format
+ *   - Added perspective horizontal king mirroring (NNUE_MIRROR), 4 factorized
+ *     perspective king buckets (NNUE_KING_BUCKETS), per-thread Finny table
+ *     accumulator caching (pos->search->nnue_cache), and GOOBNNUE v2 format
  *     trailer verification.
  *   - Network weights and training data independently generated and trained
  *     by Gabriel Montes.
  *
- * NNUE Details — Schoenemann-0.5.0 Architecture + Horizontal King Mirroring:
+ * NNUE Details — Schoenemann-0.5.0 Architecture + King Mirroring + 4 King Buckets:
  *
- *   - 768 perspective-aware input features (2 colors x 6 piece types x 64 squares).
+ *   - 768 * NNUE_KING_BUCKETS perspective-aware input features
+ *     (4 king buckets x 2 colors x 6 piece types x 64 squares = 3,072 features).
  *   - Perspective Horizontal King Mirroring (NNUE_MIRROR, default 1):
  *     When a perspective's own king is on files e..h ((king_sq & 7) >= 4), all
  *     piece squares for that perspective are horizontally mirrored (flip = 7,
  *     sq ^= flip), folding king files into a..d (so e.g. g1 and c1 both map to c1).
- *     King moves that stay within the same half (a..d or e..h) are ordinary O(1)
- *     1-add/1-sub incremental updates. Only moves where a king crosses the d/e
- *     file boundary (d<->e or O-O-O) set dp->refresh[side] and trigger a lazy
- *     single-perspective accumulator rebuild.
+ *   - Perspective King Buckets (NNUE_KING_BUCKETS, default 4):
+ *     Each perspective selects a bucket in 0..3 from its own king's relative
+ *     square (NNUE_KingBucket[rel_ksq]: 0=castled corner a1,b1,g1,h1;
+ *     1=back-rank center c1..f1; 2=2nd rank a2..h2; 3=ranks 3..8).
+ *     King moves that stay within the same (flip, bucket) pair are ordinary O(1)
+ *     1-add/1-sub incremental updates. Moves where a king crosses a mirror or
+ *     bucket boundary set dp->refresh[side] and trigger a single-perspective
+ *     Finny-table differential refresh against pos->search->nnue_cache.
  *   - Dual accumulators per position:
- *       acc[WHITE]: color * 384 + piece * 64 + (sq ^ flip_w)
- *       acc[BLACK]: (color ^ 1) * 384 + piece * 64 + ((sq ^ 56) ^ flip_b)
+ *       acc[WHITE]: bucket_w * 768 + color * 384 + piece * 64 + (sq ^ flip_w)
+ *       acc[BLACK]: bucket_b * 768 + (color ^ 1) * 384 + piece * 64 + ((sq ^ 56) ^ flip_b)
  *     Width: 1024 (int16_t)
  *   - Activation: Squared Clipped ReLU (SCReLU):
  *       clamp(x, 0, QA)^2 where QA = 255
@@ -41,8 +47,9 @@
  *   - Fully quantized integer forward pass (AVX2 / AVX-512 SIMD):
  *       eval = sum(screlu * weight) / QA + bias
  *       eval = eval * scale / (QA * QB)   [scale=400, QA=255, QB=64]
- *   - Memory footprint: ~1.6 MB (803,848 int16 values = 1,607,696 bytes +
- *     48-byte GOOBNNUE v2 architecture trailer = 1,607,744 bytes).
+ *   - Memory footprint (NNUE_KING_BUCKETS=4): ~6.03 MB (3,163,144 int16 values =
+ *     6,326,288 bytes + 48-byte GOOBNNUE v2 architecture trailer = 6,326,336 bytes;
+ *     1,607,744 bytes when NNUE_KING_BUCKETS=1).
  *   - Architecture trailer validation: nnue_init() verifies the 48-byte trailer
  *     (mirror flag, king_buckets, hidden_size, output_buckets) against compiled
  *     constants and refuses mismatched networks.
@@ -209,7 +216,7 @@ static inline int cpu_supports_avx2(void) {
 #define NNUE_MIRROR            1
 #endif
 #ifndef NNUE_KING_BUCKETS
-#define NNUE_KING_BUCKETS      1
+#define NNUE_KING_BUCKETS      4
 #endif
 
 #define NNUE_FT_SIZE           (NNUE_KING_BUCKETS * NNUE_INPUT_SIZE)

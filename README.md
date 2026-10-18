@@ -25,9 +25,10 @@ Just trying to see how far I can make GOOB stronger by watching, reading, and re
 
 
 ## NNUE Evaluation
-GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation function based on the **Schoenemann-0.5.0** architecture with **perspective horizontal king mirroring**:
-* **Architecture:** Perspective-aware dual-accumulator topology `(768 -> 1024)x2 -> 1x8` with Squared Clipped ReLU (SCReLU) activation and 8 material buckets.
-* **Horizontal King Mirroring:** When a perspective's own king stands on files `e..h`, all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d`. King moves within the same half (`a..d` or `e..h`) remain $\mathcal{O}(1)$ incremental updates; crossing the `d/e` file boundary triggers a single-perspective lazy accumulator refresh.
+GOOB uses a modern NNUE (Efficiently Updatable Neural Network) evaluation function based on the **Schoenemann-0.5.0** architecture with **perspective horizontal king mirroring**, **4 factorized king buckets**, and a **Finny table accumulator cache**:
+* **Architecture:** Perspective-aware dual-accumulator topology `(768x4 -> 1024)x2 -> 1x8` with Squared Clipped ReLU (SCReLU) activation and 8 material buckets.
+* **Horizontal King Mirroring & 4 King Buckets:** When a perspective's own king stands on files `e..h`, all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d`. Each perspective also selects one of 4 king buckets based on its king's relative square (`0`=castled corner `a1,b1,g1,h1`; `1`=back-rank center `c1..f1`; `2`=2nd rank `a2..h2`; `3`=ranks `3..8`), trained with factorized virtual features (`ft_shared + ft_buckets`) that fold into a flat `3072 x 1024` table at export time.
+* **Finny Table Accumulator Cache:** King moves within the same `(flip, bucket)` pair remain $\mathcal{O}(1)$ incremental updates; crossing a mirror or bucket boundary triggers a single-perspective differential refresh against the per-thread Finny cache (`pos->search->nnue_cache[color][flip][bucket]`).
 * **Inference Code:** SIMD-accelerated inference (AVX-512, AVX2, scalar) adapted from [Schoenemann](https://github.com/Jochengehtab/Schoenemann) by Jochen Gehtab (licensed under GNU AGPL-3.0), extended with `GOOBNNUE` v2 architecture trailer verification.
 * **Data & Training:** Network weights (`quantised.bin`) and datasets were independently produced and trained by Gabriel Montes using custom data and training pipelines (`tools/nnue_project/`).
 

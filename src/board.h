@@ -18,7 +18,7 @@
 #define NNUE_MIRROR 1
 #endif
 #ifndef NNUE_KING_BUCKETS
-#define NNUE_KING_BUCKETS 1
+#define NNUE_KING_BUCKETS 4
 #endif
 
 typedef struct {

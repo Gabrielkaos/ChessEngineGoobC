@@ -97,8 +97,7 @@ The tooling is divided into three primary operational domains:
 * **Compilation & Execution:**
   ```bash
   # from the repository root; builds into /tmp so the committed tools/test_incremental is left alone
-  # (pass -DNNUE_KING_BUCKETS=4 when testing a 4-bucket network)
-  gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=1 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
+  gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
       tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o /tmp/test_incremental
   /tmp/test_incremental [optional_net.bin]
   ```
@@ -172,7 +171,7 @@ tools/nnue_project/
 ### Script Reference
 
 * **[`model.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/model.py):**
-  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` ($K \in \{1, 4\}$), carrying `arch = {"mirror": bool, "king_buckets": int}` metadata (`DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}`).
+  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` ($K \in \{1, 4\}$, production default $K=4$), carrying `arch = {"mirror": bool, "king_buckets": int}` metadata (`DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}`).
   * Feature transformer: Shared weights for both perspectives ($K \times 768$ inputs $\to 1024$ hidden outputs). When `king_buckets > 1`, uses factorized virtual features (`ft_buckets[K, 768, 1024] + ft_shared[768, 1024]`) folded into a flat `(K * 768, 1024)` table at export time.
   * Activation: Squared Clipped ReLU ($\text{clamp}(x, 0, 1)^2$).
   * Buckets: 8 material buckets selected by piece count:
@@ -226,11 +225,14 @@ python3 prepare_data_jsonl.py \
 ```bash
 cd tools/nnue_project/scripts
 
-# Train from scratch (with horizontal king mirroring):
+# Train from scratch (with horizontal king mirroring and 4 factorized king buckets):
 python3 train.py \
     --train ../data/train.bin \
     --val ../data/val.bin \
     --mirror \
+    --king-buckets 4 \
+    --optimizer adamw \
+    --bucket-decay 1e-4 \
     --epochs 20 \
     --batch-size 8192 \
     --lr 1e-3 \
@@ -238,15 +240,18 @@ python3 train.py \
     --out-best ../checkpoints/nnue_best.pt \
     --out-last ../checkpoints/last.pt
 
-# Fine-tune an existing network:
+# Fine-tune an existing 4-bucket network:
 python3 train.py \
     --train ../data/train.bin \
     --val ../data/val.bin \
     --init ../checkpoints/nnue_best.pt \
     --mirror \
+    --king-buckets 4 \
+    --optimizer adamw \
+    --bucket-decay 1e-4 \
     --epochs 10 \
     --batch-size 8192 \
-    --lr 3e-4 \
+    --lr 2e-4 \
     --clip 1.98 \
     --out-best ../checkpoints/nnue_ft.pt \
     --out-last ../checkpoints/last_ft.pt

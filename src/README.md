@@ -21,9 +21,9 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   The game history lives in `stateTable[MAXGAMESMOVES]` (550 states). When a `position ... moves` list outgrows it, [`compactStateHistory()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c) keeps the newest 275 states (repetition detection never looks further back than the fifty-move counter) and `gamePlyOffset` keeps `hisPly + gamePlyOffset` equal to the real game ply for time management, WDL output and FENs.
 * **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158-L229) using pin and king-ray masks without making/unmaking moves.
 * **Evaluation:** Schoenemann-0.5.0 style NNUE architecture:
-  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` (`K = NNUE_KING_BUCKETS`, default `1`, or `4` factorized king buckets) with Squared Clipped ReLU (SCReLU) activation.
+  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` (`K = NNUE_KING_BUCKETS`, default `4` factorized king buckets, or `1`) with Squared Clipped ReLU (SCReLU) activation.
   * Perspective horizontal king mirroring (`NNUE_MIRROR`, default `1`): when a perspective's own king is on files `e..h` (`(king_sq & 7) >= 4`), all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d` (`c1`/`g1` both map to `c1`).
-  * Perspective king buckets (`NNUE_KING_BUCKETS`, `1` or `4`): when `NNUE_KING_BUCKETS=4`, each perspective's feature table is indexed by `bucket * 768 + feat768` using `NNUE_KingBucket[rel_ksq]` (`0`=castled corner `a1,b1,g1,h1`; `1`=back-rank center `c1..f1`; `2`=2nd rank `a2..h2`; `3`=ranks `3..8`). Ordinary king moves within the same `(flip, bucket)` pair remain $\mathcal{O}(1)$ incremental updates; crossing a mirror or king-bucket boundary triggers a single-perspective Finny table accumulator refresh (`dp->refresh[side]`).
+  * Perspective king buckets (`NNUE_KING_BUCKETS`, default `4`, supports `1` or `4`): when `NNUE_KING_BUCKETS=4`, each perspective's feature table is indexed by `bucket * 768 + feat768` using `NNUE_KingBucket[rel_ksq]` (`0`=castled corner `a1,b1,g1,h1`; `1`=back-rank center `c1..f1`; `2`=2nd rank `a2..h2`; `3`=ranks `3..8`). Ordinary king moves within the same `(flip, bucket)` pair remain $\mathcal{O}(1)$ incremental updates; crossing a mirror or king-bucket boundary triggers a single-perspective Finny table accumulator refresh (`dp->refresh[side]`).
   * Finny table accumulator cache (`pos->search->nnue_cache[color][flip][bucket]`): per-thread cache storing the last refreshed accumulator and piece bitboards for each `(color, flip, bucket)` slot so boundary refreshes apply only the bitboard diff (`cur ^ prev`) instead of summing all pieces on the board.
   * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks) with `GOOBNNUE` v2 architecture trailer verification.
 * **Correction History:** Multi-table evaluation error correction indexed by pawn-king hash, minor-piece hash, dual non-pawn material hashes, and 2-ply / 4-ply continuation moves.
@@ -83,7 +83,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
-  * Schoenemann 0.5.0 NNUE architecture inference engine (`768 * NNUE_KING_BUCKETS` input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`) and perspective king buckets (`NNUE_KING_BUCKETS`, default `1` or `4`).
+  * Schoenemann 0.5.0 NNUE architecture inference engine (`768 * NNUE_KING_BUCKETS` input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`) and perspective king buckets (`NNUE_KING_BUCKETS`, default `4`, or `1`).
   * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
   * Dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h): uses the synchronized dual-perspective fast path when no king crossed a mirror or bucket boundary along the ancestor chain, and falls back to per-perspective Finny-table cached refresh (`nnue_refresh_perspective`) only for the perspective whose king crossed a boundary or when beyond `NNUE_REFRESH_THRESHOLD` (32 plies).
   * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`), using cached `acc->flip[p]` (`0` or `7`) and `acc->bucket[p]` (`0..NNUE_KING_BUCKETS-1`).
@@ -143,9 +143,10 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
 * **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
-  * `quantised.bin`: Production network (`GOOBNNUE` v2, horizontal king mirroring enabled), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
-  * `quantised_phase1_control.bin`: Previous Phase 1 control fine-tuned unmirrored network (`NNUE_MIRROR=0`).
-  * `quantised_228_old.bin`: Original unmirrored 228M Lichess network (`NNUE_MIRROR=0`).
+  * `quantised.bin`: Production network (`GOOBNNUE` v2, 6,326,336 bytes, horizontal king mirroring `NNUE_MIRROR=1` + 4 factorized king buckets `NNUE_KING_BUCKETS=4`), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
+  * `quantised_mirror_1bkt_old.bin`: Previous Phase 3 accepted network (`NNUE_MIRROR=1, NNUE_KING_BUCKETS=1`, 1,607,744 bytes).
+  * `quantised_phase1_control.bin`: Previous Phase 1 control fine-tuned unmirrored network (`NNUE_MIRROR=0, NNUE_KING_BUCKETS=1`).
+  * `quantised_228_old.bin`: Original unmirrored 228M Lichess network (`NNUE_MIRROR=0, NNUE_KING_BUCKETS=1`).
 * **`models/`:** An older release binary kept for comparison (untracked).
 * **[`others/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/others/):** Commit history logs and development test outputs.
 
@@ -153,7 +154,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 ## Compilation & Multi-ISA Build System
 
-The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures (with `NNUE_MIRROR ?= 1`, `NNUE_KING_BUCKETS ?= 1` configurable via `make NNUE_MIRROR=0/1 NNUE_KING_BUCKETS=1/4`, and `EVALFILE ?= weights/quantised.bin`):
+The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures (with `NNUE_MIRROR ?= 1`, `NNUE_KING_BUCKETS ?= 4` configurable via `make NNUE_MIRROR=0/1 NNUE_KING_BUCKETS=1/4`, and `EVALFILE ?= weights/quantised.bin`):
 
 | Target | Description | Recommended Usage |
 | :--- | :--- | :--- |
@@ -168,14 +169,14 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 
 ### Compilation Examples
 ```bash
-# Build native binary for local testing:
+# Build native binary for local testing (default: NNUE_MIRROR=1, NNUE_KING_BUCKETS=4):
 make -C src native
 
-# Build native binary with 4 king buckets:
-make -C src native NNUE_MIRROR=1 NNUE_KING_BUCKETS=4 EVALFILE=../tools/nnue_project/checkpoints/exp_buckets4/quantised.bin
+# Build native binary with a 1-bucket mirrored network:
+make -C src native NNUE_MIRROR=1 NNUE_KING_BUCKETS=1 EVALFILE=weights/quantised_mirror_1bkt_old.bin
 
-# Build native binary with unmirrored NNUE net:
-make -C src native NNUE_MIRROR=0 NNUE_KING_BUCKETS=1
+# Build native binary with an unmirrored 1-bucket network:
+make -C src native NNUE_MIRROR=0 NNUE_KING_BUCKETS=1 EVALFILE=weights/quantised_phase1_control.bin
 
 # Build universal binary for distribution:
 make -C src universal
