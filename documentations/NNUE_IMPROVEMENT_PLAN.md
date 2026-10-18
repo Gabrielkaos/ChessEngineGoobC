@@ -6,8 +6,7 @@ trained on roughly 300M Lichess positions).
 
 > **Implementation Progress (Updated Oct 2026):**
 > - **Phase 0 (Baseline, Safety & Verification):** Completed (`dequantize_net.py`, fatal startup on failed embedded-net load in `src/main.c`).
-> - **Phase 1 (Control Fine-Tune):** Completed and **accepted** (passed both STC `6+0.06` and LTC `12+0.1`; archived at `src/weights/quantised_phase1_control.bin`).
-> - **Phase 2 (Native Self-Play Data Generation):** Skipped by user due to generation time.
+> - **Phase 2 (Native Self-Play Data Generation):** Code implementation completed (native C generator `tools/datagen.c`, multi-process runner `tools/run_datagen.py`, dataset mixer `tools/nnue_project/scripts/mix_data.py`, and test suite `tools/test_datagen.py`). Ready for execution.
 > - **Phase 3 (Horizontal King Mirroring) & Section 12 (`GOOBNNUE` v2 Format Versioning):** Implemented across `src/` and `tools/nnue_project/scripts/`, trained (`exp_mirror`), **accepted** at STC & LTC, and archived at `src/weights/quantised_mirror_1bkt_old.bin`.
 > - **Phase 4 (Factorized King Buckets + Finny Table Accumulator Cache):** Implemented across `src/` and `tools/nnue_project/scripts/` (`NNUE_KING_BUCKETS=4`, per-thread `nnue_cache[color][flip][bucket]`, factorized `ft_shared + ft_buckets` with AdamW `--bucket-decay`), trained (`exp_4bkt`), **accepted** in SPRT, and promoted to production `src/weights/quantised.bin` (`NNUE_MIRROR=1, NNUE_KING_BUCKETS=4` defaults).
 

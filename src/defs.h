@@ -274,6 +274,11 @@ typedef struct {
     int depthOneComplete;
     int showWDL;
 
+    //programmatic / datagen control
+    int silent;
+    int bestMove;
+    int bestScore;
+
 } S_SEARCHINFO;
 
 //Engine options

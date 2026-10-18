@@ -44,7 +44,9 @@ scripts/
   check_net.py          checks an exported net and prints bit-exact reference & mirror evals
   test_net.py           evaluates FENs with a saved checkpoint
   scale_test.py         quantization headroom of a checkpoint
+  mix_data.py           mixes native self-play generated data with base Lichess data
 data_selfplay/          self-play records from tools/selfplay_nnue.py (tracked)
+data_gen/               self-play records from tools/datagen.c / run_datagen.py
 data/, data_json/, checkpoints/   created by the scripts (not tracked)
 ```
 

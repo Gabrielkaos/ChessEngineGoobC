@@ -45,15 +45,30 @@ The tooling is divided into three primary operational domains:
   * Refuses to open or overwrite any existing output file (`O_CREAT | O_EXCL`).
 * **Build & Usage:**
   ```bash
-  gcc -O3 -march=native -pthread -DUSE_PEXT \
-      -DEVALFILE='"tools/nnue_project/checkpoints/exp_control/quantised.bin"' \
-      -Isrc tools/datagen.c $(ls src/*.c | grep -v -E 'src/(main|search)\.c') \
+  gcc -O3 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 \
+      -DEVALFILE='"src/weights/quantised.bin"' \
+      -Isrc tools/datagen.c $(ls src/*.c | grep -v src/main.c) \
       -lm -o tools/datagen
 
   ./tools/datagen --out tools/nnue_project/data_gen/gen_s1.bin --nodes 5000 --positions 1000000 --seed 1
   ```
 
-### 2. [`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py)
+### 2. [`run_datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/run_datagen.py)
+* **Purpose:** Multi-process coordinator that launches one `tools/datagen` process per CPU core, manages unique seeds and non-conflicting output files, and reports aggregate throughput and progress.
+* **Usage:**
+  ```bash
+  # Generate 1,000,000 quiet positions across 8 workers at 5,000 nodes/move:
+  python3 tools/run_datagen.py --workers 8 --positions 1000000 --nodes 5000 --out-dir tools/nnue_project/data_gen
+  ```
+
+### 3. [`test_datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_datagen.py)
+* **Purpose:** Automated unit and regression test suite verifying Phase 2 datagen determinism (identical binary files from same seed), quietness and in-check filtering via `python-chess`, WDL flag integrity, and NNUE protection guards.
+* **Usage:**
+  ```bash
+  python3 tools/test_datagen.py
+  ```
+
+### 4. [`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py)
 * **Purpose:** Multi-threaded self-play game generator that runs GOOB directly via UCI and writes positions into the 68-byte packed binary format consumed by [`train.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py).
 * **Key Features:**
   * Runs multiple engine processes concurrently.
@@ -190,7 +205,8 @@ tools/nnue_project/
     ├── clear_cache.py    # Repairs caches from the original prepare_data.py (one label per position, no val leakage, optional shuffle)
     ├── check_net.py      # Checks an exported net: trailer, size, int16 limits, bit-exact reference & mirror evals
     ├── test_net.py       # Evaluates FENs with a saved PyTorch checkpoint
-    └── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
+    ├── scale_test.py     # Quantization headroom of a checkpoint (largest safe QA / QB)
+    └── mix_data.py       # Mixes native self-play generated data with base Lichess data for D1/D2/D3 ratios
 ```
 
 ### Script Reference
@@ -219,21 +235,72 @@ tools/nnue_project/
   * Validates whether any output weight exceeds `FAST_OUT_W_LIMIT` ($\pm 128$) so the engine can safely run its fast SCReLU SIMD kernel.
 * **[`fen_utils.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/fen_utils.py):**
   * Packs and unpacks 68-byte binary records containing 64 board squares, side to move, 16-bit signed eval, and flags.
+* **[`mix_data.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/mix_data.py):**
+  * Concatenates native self-play generated binary datasets (`data_gen/`) with base Lichess data (`train.bin`) at configured ratios (`--gen-share 0.25` for D1, `0.50` for D2), extracts held-out validation sets (`val_gen.bin`), and shuffles positions uniformly.
 
 ---
 
 ## Step-by-Step Workflows
 
-### Workflow A: Generate Training Data via Self-Play
-To generate fresh training data using the current engine binary:
+### Workflow A: Generate Native Self-Play Training Data & Train with Mixed Sets (Phase 2)
+
+#### 1. Compile Native Datagen Binary
 ```bash
-python3 tools/selfplay_nnue.py \
-    --n-train 500000 \
-    --n-val 25000 \
-    --depth 20 \
-    --workers 8 \
-    --book path/to/openings.epd \
-    --out-dir tools/nnue_project/data
+gcc -O3 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 \
+    -DEVALFILE='"src/weights/quantised.bin"' \
+    -Isrc tools/datagen.c $(ls src/*.c | grep -v src/main.c) \
+    -lm -o tools/datagen
+```
+
+#### 2. Run Multi-Core Data Generation
+Generate self-play positions with WDL outcomes directly via native in-process search:
+```bash
+# Run across all CPU cores generating e.g. 10,000,000 positions at 5000 nodes/move:
+python3 tools/run_datagen.py --workers $(nproc) --positions 10000000 --nodes 5000 --out-dir tools/nnue_project/data_gen
+```
+
+#### 3. Mix Generated Self-Play Data with Base Lichess Data
+```bash
+# D1 Mix (25% generated share) + held-out 50k generated validation set:
+python3 tools/nnue_project/scripts/mix_data.py \
+    --gen-data tools/nnue_project/data_gen \
+    --base-data tools/nnue_project/data/train.bin \
+    --gen-share 0.25 \
+    --val-out tools/nnue_project/checkpoints/exp_datagen/val_gen.bin \
+    --val-count 50000 \
+    --out tools/nnue_project/checkpoints/exp_datagen/d1_train.bin
+
+# D2 Mix (50% generated share):
+python3 tools/nnue_project/scripts/mix_data.py \
+    --gen-data tools/nnue_project/data_gen \
+    --base-data tools/nnue_project/data/train.bin \
+    --gen-share 0.50 \
+    --out tools/nnue_project/checkpoints/exp_datagen/d2_train.bin
+```
+
+#### 4. Fine-Tune with WDL Blending
+```bash
+cd tools/nnue_project/scripts
+
+# Train D1 (25% mix, --wdl-lambda 0.75):
+python3 train.py \
+    --train ../checkpoints/exp_datagen/d1_train.bin \
+    --val ../data/val.bin \
+    --init ../checkpoints/exp_4bkt/nnue.pt \
+    --mirror --king-buckets 4 --optimizer adamw --bucket-decay 1e-4 \
+    --lr 1e-4 --epochs 8 --wdl-lambda 0.75 \
+    --out-best ../checkpoints/exp_datagen/d1/nnue.pt \
+    --out-last ../checkpoints/exp_datagen/d1/last.pt
+
+# Train D3 (D2 mix, --wdl-lambda 0.50):
+python3 train.py \
+    --train ../checkpoints/exp_datagen/d2_train.bin \
+    --val ../data/val.bin \
+    --init ../checkpoints/exp_4bkt/nnue.pt \
+    --mirror --king-buckets 4 --optimizer adamw --bucket-decay 1e-4 \
+    --lr 1e-4 --epochs 8 --wdl-lambda 0.50 \
+    --out-best ../checkpoints/exp_datagen/d3/nnue.pt \
+    --out-last ../checkpoints/exp_datagen/d3/last.pt
 ```
 
 ### Workflow B: Stream & Prepare Lichess Evaluated Positions

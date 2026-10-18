@@ -691,7 +691,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         Legal++;
 
         //uci report the current move
-        if(threadNum==0)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
+        if(threadNum==0 && !info->silent)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
 
 
         //Singular Extensions and Multi Cut
@@ -1271,6 +1271,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
 
                 //report a fail-low/fail-high bound if it's taking a while (single PV mode only)
                 if(threadNum==0 && multiPV==1
+                    && !info->silent
                     && (bestScore<=alpha || bestScore>=beta)
                     && (getTimeMs()-info->starttime)>BoundReportTime){
                         for (int i = 0; i < rootPv.count; i++) {
@@ -1364,7 +1365,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
 
         //reporting to interface (Thread 0 only)
-        if (threadNum==0){
+        if (threadNum==0 && !info->silent){
             for(int i = 0; i < completedLinesCount; i++){
                 int pCount = depthLines[i].pv.count;
                 if(pCount > MAXDEPTH) pCount = MAXDEPTH;
@@ -1697,7 +1698,7 @@ static int workerLoop(void *data) {
                     }
                     worker->originalPos->seldepth = threadPool[bestIdx].originalPos->seldepth;
 
-                    if(pvCount > 0){
+                    if(pvCount > 0 && !worker->workerData.info->silent){
                         UciReport(worker->workerData.info, worker->workerData.ttable, worker->originalPos,
                                   -INFINITE_BOUND, INFINITE_BOUND,
                                   threadPool[bestIdx].workerData.voteScore,
@@ -1725,28 +1726,33 @@ static int workerLoop(void *data) {
                 }
             }
 
-            if (worker->workerData.info->setOptionPonder && worker->workerData.bestMove != NOMOVE) {
-                if (worker->workerData.ponderMove == NOMOVE) {
-                    StateInfo st;
-                    if (legal(worker->originalPos, worker->workerData.bestMove)) {
-                        makeMove(worker->originalPos, worker->workerData.bestMove, &st);
-                        int pMove = ProbePvTable(worker->originalPos, worker->workerData.ttable);
-                        if (pMove != NOMOVE && MoveExists(worker->originalPos, pMove) && legal(worker->originalPos, pMove)) {
-                            worker->workerData.ponderMove = pMove;
+            if (!worker->workerData.info->silent) {
+                if (worker->workerData.info->setOptionPonder && worker->workerData.bestMove != NOMOVE) {
+                    if (worker->workerData.ponderMove == NOMOVE) {
+                        StateInfo st;
+                        if (legal(worker->originalPos, worker->workerData.bestMove)) {
+                            makeMove(worker->originalPos, worker->workerData.bestMove, &st);
+                            int pMove = ProbePvTable(worker->originalPos, worker->workerData.ttable);
+                            if (pMove != NOMOVE && MoveExists(worker->originalPos, pMove) && legal(worker->originalPos, pMove)) {
+                                worker->workerData.ponderMove = pMove;
+                            }
+                            takeMove(worker->originalPos);
                         }
-                        takeMove(worker->originalPos);
                     }
-                }
-                if (worker->workerData.ponderMove != NOMOVE) {
-                    printf("bestmove %s ", PrMove(worker->workerData.bestMove));
-                    printf("ponder %s\n", PrMove(worker->workerData.ponderMove));
+                    if (worker->workerData.ponderMove != NOMOVE) {
+                        printf("bestmove %s ", PrMove(worker->workerData.bestMove));
+                        printf("ponder %s\n", PrMove(worker->workerData.ponderMove));
+                    } else {
+                        printf("bestmove %s\n", PrMove(worker->workerData.bestMove));
+                    }
                 } else {
                     printf("bestmove %s\n", PrMove(worker->workerData.bestMove));
                 }
-            } else {
-                printf("bestmove %s\n", PrMove(worker->workerData.bestMove));
+                fflush(stdout);
             }
-            fflush(stdout);
+
+            worker->workerData.info->bestMove = worker->workerData.bestMove;
+            worker->workerData.info->bestScore = worker->workerData.voteScore;
         }
 
         mtx_lock(&worker->mutex);
