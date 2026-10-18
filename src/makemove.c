@@ -162,7 +162,7 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
     dp->refresh[BLACK] = 0;
     if (pt == KING) {
         dp->king_moved[side] = 1;
-        if (((from & 7) >= 4) != ((to & 7) >= 4)) {
+        if (nnue_king_needs_refresh(side, from, to)) {
             dp->refresh[side] = 1;
         }
     }

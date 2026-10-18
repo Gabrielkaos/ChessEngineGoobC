@@ -29,7 +29,7 @@ import torch
 from torch.utils.data import Dataset
 
 from fen_utils import RECORD_SIZE
-from model import CP_SCALE
+from model import CP_SCALE, KING_BUCKET
 
 
 def _build_tables():
@@ -45,6 +45,7 @@ def _build_tables():
 
 _WHITE_FEAT, _BLACK_FEAT = _build_tables()
 _BUCKET_OF_COUNT = np.clip((np.arange(65) - 2) // 4, 0, 7).astype(np.int64)
+_KING_BUCKET = np.array(KING_BUCKET, dtype=np.int64)
 
 
 class NNUEDataset(Dataset):
@@ -95,10 +96,11 @@ def nnue_collate(
     batch,
     wdl_lambda: float = 0.75,
     mirror: bool = False,
+    king_buckets: int = 1,
     flip_augment: bool = False,
     rng: np.random.Generator = None,
 ):
-    """Vectorized batch collate for 768 Schoenemann NNUE features.
+    """Vectorized batch collate for Schoenemann NNUE features.
 
     Accepts either a (B, 68) uint8 array (from __getitems__) or a list of
     per-sample (68,) tensors (from __getitem__).
@@ -106,6 +108,8 @@ def nnue_collate(
     Args:
       mirror       : If True, horizontally flip each perspective's squares
                      (sq ^ 7) when that perspective's own king is on files e..h.
+      king_buckets : Number of perspective king buckets (1 or 4). When > 1,
+                     adds bkt * 768 to each perspective's feature index.
       flip_augment : If True (and mirror is False), randomly flip both
                      perspectives' squares horizontally (sq ^ 7) with p=0.5 per
                      sample as a symmetry regularization control.
@@ -132,9 +136,10 @@ def nnue_collate(
     black_idx = _BLACK_FEAT[key]
 
     sample = nz >> 6
-    if mirror:
+    if mirror or king_buckets > 1:
         wk = np.argmax(b2d == 6, axis=1)
         bk = np.argmax(b2d == 12, axis=1)
+    if mirror:
         w_mirror = (wk & 7) >= 4
         b_mirror = (bk & 7) >= 4
         white_idx = white_idx ^ np.where(w_mirror[sample], 7, 0)
@@ -145,6 +150,12 @@ def nnue_collate(
         f = do_flip[sample]
         white_idx = white_idx ^ f
         black_idx = black_idx ^ f
+
+    if king_buckets > 1:
+        w_bkt = _KING_BUCKET[wk]
+        b_bkt = _KING_BUCKET[bk ^ 56]
+        white_idx = white_idx + w_bkt[sample] * 768
+        black_idx = black_idx + b_bkt[sample] * 768
 
     counts = np.bincount(sample, minlength=B)
     offsets = np.zeros(B, dtype=np.int64)

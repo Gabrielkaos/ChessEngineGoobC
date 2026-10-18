@@ -44,14 +44,22 @@ def _to_device(features, device):
 
 @torch.no_grad()
 def clip_weights(model, limit):
-    """Keep every parameter inside [-limit, limit], as bullet does (1.98).
+    """Keep every effective parameter inside [-limit, limit], as bullet does (1.98).
 
     The engine depends on this: its fast SCReLU kernel computes w * v in
     int16 with v <= 255, so quantized output weights (w * 64) must stay
     within +/-128, and the int16 accumulator (w * 255, summed over up to 32
-    pieces plus the bias) must not overflow. Without clipping, nothing in
-    training stops weights from drifting past those limits."""
-    for p in (model.ft.weight, model.ft_bias, model.output_weights, model.output_biases):
+    pieces plus the bias) must not overflow. For factorized king buckets,
+    the exported weight is ft_shared + ft_buckets[b], so ft_buckets[b] is
+    clamped to [-limit - ft_shared, limit - ft_shared]."""
+    if getattr(model, "factorized", False):
+        model.ft_shared.clamp_(-limit, limit)
+        model.ft_buckets.copy_(
+            torch.clamp(model.ft_buckets, -limit - model.ft_shared, limit - model.ft_shared)
+        )
+    else:
+        model.ft.weight.clamp_(-limit, limit)
+    for p in (model.ft_bias, model.output_weights, model.output_biases):
         p.clamp_(-limit, limit)
 
 
@@ -222,10 +230,41 @@ def main():
              "Use this to fine-tune an existing network on new data. Ignored with --resume.",
     )
     ap.add_argument(
+        "--init-from-unbucketed",
+        default=None,
+        help="Warm-start a factorized bucketed model (king_buckets > 1) from a 1-bucket checkpoint: "
+             "copies ft.weight -> ft_shared, zeros ft_buckets, and copies ft_bias, output_weights, output_biases.",
+    )
+    ap.add_argument(
         "--wdl-lambda",
         type=float,
         default=0.75,
         help="Weight on eval sigmoid vs WDL game result in [0, 1] (default: 0.75; 1.0 = pure eval)",
+    )
+    ap.add_argument(
+        "--king-buckets",
+        type=int,
+        default=1,
+        choices=[1, 4],
+        help="Number of perspective king buckets (default: 1; use 4 for Phase 4 factorized king buckets)",
+    )
+    ap.add_argument(
+        "--optimizer",
+        choices=["adam", "adamw"],
+        default="adam",
+        help="Optimizer (default: adam; use adamw with --bucket-decay for factorized king buckets)",
+    )
+    ap.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.0,
+        help="Weight decay for shared/output parameters (default: 0.0)",
+    )
+    ap.add_argument(
+        "--bucket-decay",
+        type=float,
+        default=0.01,
+        help="Weight decay applied to ft_buckets when --optimizer adamw is used (default: 0.01)",
     )
     arch_group = ap.add_mutually_exclusive_group()
     arch_group.add_argument(
@@ -255,12 +294,14 @@ def main():
         nnue_collate,
         wdl_lambda=args.wdl_lambda,
         mirror=args.mirror,
+        king_buckets=args.king_buckets,
         flip_augment=args.flip_augment,
     )
     val_collate = functools.partial(
         nnue_collate,
         wdl_lambda=args.wdl_lambda,
         mirror=args.mirror,
+        king_buckets=args.king_buckets,
         flip_augment=False,
     )
 
@@ -288,13 +329,26 @@ def main():
         persistent_workers=(args.workers > 0),
     )
 
-    model = NNUE(mirror=args.mirror).to(device)
+    model = NNUE(mirror=args.mirror, king_buckets=args.king_buckets).to(device)
     print(
-        f"Model architecture: {model.num_features} -> ({model.l1_size}x2) -> 1x{model.num_buckets} "
+        f"Model architecture: {model.num_features}x{model.king_buckets} -> ({model.l1_size}x2) -> 1x{model.num_buckets} "
         f"| arch={model.arch}"
         + (" [flip_augment=True]" if args.flip_augment else "")
     )
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.optimizer == "adamw":
+        if model.factorized:
+            other_params = [model.ft_shared, model.ft_bias, model.output_weights, model.output_biases]
+            opt = torch.optim.AdamW(
+                [
+                    {"params": [model.ft_buckets], "weight_decay": args.bucket_decay},
+                    {"params": other_params, "weight_decay": args.weight_decay},
+                ],
+                lr=args.lr,
+            )
+        else:
+            opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=args.epochs, eta_min=1e-5
     )
@@ -337,6 +391,21 @@ def main():
             )
         else:
             print(f"Warning: Checkpoint '{args.resume}' not found. Starting from scratch.")
+    elif args.init_from_unbucketed:
+        if not model.factorized:
+            raise SystemExit("--init-from-unbucketed requires --king-buckets > 1 (factorized model).")
+        checkpoint = torch.load(args.init_from_unbucketed, map_location=device)
+        sd = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+        with torch.no_grad():
+            model.ft_shared.copy_(sd["ft.weight"])
+            model.ft_buckets.zero_()
+            model.ft_bias.copy_(sd["ft_bias"])
+            model.output_weights.copy_(sd["output_weights"])
+            model.output_biases.copy_(sd["output_biases"])
+        print(
+            f"--> Warm-started factorized {model.king_buckets}-bucket model from 1-bucket checkpoint "
+            f"{args.init_from_unbucketed} (ft_shared=ft.weight, ft_buckets=0)"
+        )
     elif args.init:
         checkpoint = torch.load(args.init, map_location=device)
         model.load_state_dict(checkpoint.get("model_state_dict", checkpoint))

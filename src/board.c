@@ -29,6 +29,8 @@ void initStacks(S_BOARD *pos){
         pos->search->nnue_accumulators[index].computed[BLACK]=0;
         pos->search->nnue_accumulators[index].flip[WHITE]=0;
         pos->search->nnue_accumulators[index].flip[BLACK]=0;
+        pos->search->nnue_accumulators[index].bucket[WHITE]=0;
+        pos->search->nnue_accumulators[index].bucket[BLACK]=0;
     }
     pos->search->ttMoveHistory = 0;
 }

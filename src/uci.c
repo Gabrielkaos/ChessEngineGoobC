@@ -669,6 +669,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
         else if(strEquals(str,"ucinewgame")){
             if (searchThreadValid) joinSearchThread(info);
+            nnue_clear_caches();
             parsePosition("position startpos\n",pos);
             clearPvTable(pvTable);
             resetContinuationTable(pos);

@@ -36,11 +36,21 @@ import numpy as np
 INPUTS, HIDDEN, BUCKETS = 768, 1024, 8
 QA, QB, SCALE = 255, 64, 400
 FAST_OUT_W_LIMIT = 128
-N_SHORTS = INPUTS * HIDDEN + HIDDEN + BUCKETS * 2 * HIDDEN + BUCKETS
 PADDING = 48
 PIECE_CHARS = "PNBRQK"
 TRAILER_STRUCT = struct.Struct("<8sIIIII20s")
 TRAILER_MAGIC = b"GOOBNNUE"
+
+KING_BUCKET = [
+    0, 0, 1, 1, 1, 1, 0, 0,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+]
 
 DEFAULT_FENS = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
@@ -52,6 +62,7 @@ DEFAULT_FENS = [
     "7r/1p3k2/p1bPR3/5p2/2B2P1p/8/PP4P1/3K4 b - -",
     "r7/2k3p1/3RPb1p/2p5/p1P2B2/8/1P4PP/4K3 b - -",
     "8/4r3/2R2pk1/6pp/3P4/6P1/5K1P/8 b - -",
+    "8/1k6/8/3p4/3P4/8/2K5/8 w - -",
     "8/8/8/p4k1p/P6P/5PK1/8/8 w - -",
     "6k1/6p1/8/4K3/4NN2/8/8/8 w - -",
     "4k3/8/8/8/8/8/8/4K2Q w - -",
@@ -123,15 +134,20 @@ def hmirror_fen(fen):
     return f"{board} {stm} - {ep}"
 
 
-def feature_indices(pieces, perspective, mirror=False):
+def feature_indices(pieces, perspective, mirror=False, king_buckets=1):
     flip = 0
-    if mirror:
+    bkt = 0
+    if mirror or king_buckets > 1:
         ksq = next(sq for c, pt, sq in pieces if c == perspective and pt == 5)
-        if (ksq & 7) >= 4:
+        if mirror and (ksq & 7) >= 4:
             flip = 7
+        if king_buckets > 1:
+            rel_ksq = ksq if perspective == 0 else (ksq ^ 56)
+            bkt = KING_BUCKET[rel_ksq]
+    base = bkt * INPUTS
     if perspective == 0:
-        return [c * 384 + pt * 64 + (sq ^ flip) for c, pt, sq in pieces]
-    return [(c ^ 1) * 384 + pt * 64 + ((sq ^ 56) ^ flip) for c, pt, sq in pieces]
+        return [base + c * 384 + pt * 64 + (sq ^ flip) for c, pt, sq in pieces]
+    return [base + (c ^ 1) * 384 + pt * 64 + ((sq ^ 56) ^ flip) for c, pt, sq in pieces]
 
 
 def output_bucket(pieces):
@@ -142,27 +158,18 @@ def output_bucket(pieces):
 
 class QuantNet:
     def __init__(self, path):
-        raw = np.fromfile(path, dtype="<i2")
         size = os.path.getsize(path)
-        self.size_ok = size in (2 * N_SHORTS, 2 * N_SHORTS + PADDING)
         self.size = size
-        if raw.size < N_SHORTS:
-            raise SystemExit(f"{path}: {size} bytes is too small (need {2 * N_SHORTS}).")
-        o = 0
-        self.ft_w = raw[o:o + INPUTS * HIDDEN].reshape(INPUTS, HIDDEN).astype(np.int64); o += INPUTS * HIDDEN
-        self.ft_b = raw[o:o + HIDDEN].astype(np.int64); o += HIDDEN
-        self.out_w = raw[o:o + BUCKETS * 2 * HIDDEN].reshape(BUCKETS, 2 * HIDDEN).astype(np.int64); o += BUCKETS * 2 * HIDDEN
-        self.out_b = raw[o:o + BUCKETS].astype(np.int64)
-
         self.tagged = False
         self.version = 1
         self.mirror = False
         self.king_buckets = 1
         self.hidden_size = HIDDEN
         self.output_buckets = BUCKETS
-        if size >= 2 * N_SHORTS + PADDING:
+
+        if size >= PADDING:
             with open(path, "rb") as f:
-                f.seek(2 * N_SHORTS)
+                f.seek(size - PADDING)
                 trailer = f.read(PADDING)
             if len(trailer) == PADDING and trailer[:8] == TRAILER_MAGIC:
                 _, ver, flags, kb, hs, ob, _ = TRAILER_STRUCT.unpack(trailer)
@@ -172,6 +179,19 @@ class QuantNet:
                 self.king_buckets = int(kb)
                 self.hidden_size = int(hs)
                 self.output_buckets = int(ob)
+
+        n_ft = self.king_buckets * INPUTS
+        n_shorts = n_ft * HIDDEN + HIDDEN + BUCKETS * 2 * HIDDEN + BUCKETS
+        self.size_ok = size in (2 * n_shorts, 2 * n_shorts + PADDING)
+
+        raw = np.fromfile(path, dtype="<i2")
+        if raw.size < n_shorts:
+            raise SystemExit(f"{path}: {size} bytes is too small (need {2 * n_shorts}).")
+        o = 0
+        self.ft_w = raw[o:o + n_ft * HIDDEN].reshape(n_ft, HIDDEN).astype(np.int64); o += n_ft * HIDDEN
+        self.ft_b = raw[o:o + HIDDEN].astype(np.int64); o += HIDDEN
+        self.out_w = raw[o:o + BUCKETS * 2 * HIDDEN].reshape(BUCKETS, 2 * HIDDEN).astype(np.int64); o += BUCKETS * 2 * HIDDEN
+        self.out_b = raw[o:o + BUCKETS].astype(np.int64)
 
 
 def wrap_i16(x):
@@ -193,7 +213,13 @@ def quantized_eval(net, fen, emulate_fast_kernel_overflow=False):
     emulate_fast_kernel_overflow=True reproduces the original loader's AVX2
     kernel, which silently wraps w * v to int16."""
     pieces, stm = parse_fen(fen)
-    acc = [accumulator(net, feature_indices(pieces, p, mirror=net.mirror)) for p in (0, 1)]
+    acc = [
+        accumulator(
+            net,
+            feature_indices(pieces, p, mirror=net.mirror, king_buckets=net.king_buckets),
+        )
+        for p in (0, 1)
+    ]
     bucket = output_bucket(pieces)
     x = np.concatenate([acc[stm], acc[stm ^ 1]])
     c = np.clip(x, 0, QA)
@@ -208,29 +234,41 @@ def quantized_eval(net, fen, emulate_fast_kernel_overflow=False):
     return ev, bucket, overflow
 
 
-def accumulator_bound(ft_w, ft_b):
-    """Conservative worst-case accumulator range over legal-ish material
-    (per side: exactly one king, at most 15 other pieces, no pawns on the
-    first/last rank). ft_w: (768, 1024), ft_b: (1024,) quantized.
-    Returns (max_upper, min_lower) in int16 units."""
-    ft_w = np.asarray(ft_w, dtype=np.int64)
+def _accumulator_bound_single(ft_w_768, ft_b):
     upper = np.asarray(ft_b, dtype=np.float64).copy()
     lower = upper.copy()
     for block in (0, 1):
         base = block * 384
-        king = ft_w[base + 5 * 64: base + 6 * 64]
+        king = ft_w_768[base + 5 * 64: base + 6 * 64]
         others = []
         for pt in range(5):
             for sq in range(64):
                 if pt == 0 and (sq < 8 or sq >= 56):
                     continue
                 others.append(base + pt * 64 + sq)
-        o = np.sort(ft_w[others], axis=0)          # (n, HIDDEN), ascending
+        o = np.sort(ft_w_768[others], axis=0)      # (n, HIDDEN), ascending
         top = np.clip(o[-15:], 0, None).sum(axis=0)
         bot = np.clip(o[:15], None, 0).sum(axis=0)
         upper += king.max(axis=0) + top
         lower += king.min(axis=0) + bot
-    return upper.max(), lower.min()
+    return float(upper.max()), float(lower.min())
+
+
+def accumulator_bound(ft_w, ft_b):
+    """Conservative worst-case accumulator range over legal-ish material
+    (per side: exactly one king, at most 15 other pieces, no pawns on the
+    first/last rank). ft_w: (K*768, 1024), ft_b: (1024,) quantized.
+    Returns (max_upper, min_lower) in int16 units across all K king buckets."""
+    ft_w = np.asarray(ft_w, dtype=np.int64)
+    kb = max(1, ft_w.shape[0] // INPUTS)
+    best_hi, best_lo = -float("inf"), float("inf")
+    for b in range(kb):
+        hi, lo = _accumulator_bound_single(ft_w[b * INPUTS:(b + 1) * INPUTS], ft_b)
+        if hi > best_hi:
+            best_hi = hi
+        if lo < best_lo:
+            best_lo = lo
+    return best_hi, best_lo
 
 
 # ── Float model (for quantization error) ───────────────────────────────────
@@ -243,14 +281,31 @@ def load_float_params(path):
         ckpt = torch.load(path, map_location="cpu")
     sd = ckpt.get("model_state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
     arch = ckpt.get("arch", {"mirror": False, "king_buckets": 1}) if isinstance(ckpt, dict) else {"mirror": False, "king_buckets": 1}
-    params = {k: sd[k].float().numpy() for k in ("ft.weight", "ft_bias", "output_weights", "output_biases")}
-    params["arch"] = arch
+    if "ft_shared" in sd and "ft_buckets" in sd:
+        ft_shared = sd["ft_shared"].float().numpy()
+        ft_buckets = sd["ft_buckets"].float().numpy()
+        ft_w = (ft_buckets + ft_shared[None, :, :]).reshape(-1, ft_shared.shape[-1])
+    else:
+        ft_w = sd["ft.weight"].float().numpy()
+    params = {
+        "ft.weight": ft_w,
+        "ft_bias": sd["ft_bias"].float().numpy(),
+        "output_weights": sd["output_weights"].float().numpy(),
+        "output_biases": sd["output_biases"].float().numpy(),
+        "arch": arch,
+    }
     return params
 
 
-def float_eval(params, fen, mirror=False):
+def float_eval(params, fen, mirror=False, king_buckets=1):
     pieces, stm = parse_fen(fen)
-    acc = [params["ft_bias"] + params["ft.weight"][feature_indices(pieces, p, mirror=mirror)].sum(axis=0) for p in (0, 1)]
+    acc = [
+        params["ft_bias"]
+        + params["ft.weight"][
+            feature_indices(pieces, p, mirror=mirror, king_buckets=king_buckets)
+        ].sum(axis=0)
+        for p in (0, 1)
+    ]
     act = [np.clip(a, 0.0, 1.0) ** 2 for a in acc]
     b = output_bucket(pieces)
     w = params["output_weights"][b]
@@ -260,7 +315,7 @@ def float_eval(params, fen, mirror=False):
 
 # ── Training-pipeline consistency ──────────────────────────────────────────
 
-def check_pipeline(fens, cp_white=100, mirror=False):
+def check_pipeline(fens, cp_white=100, mirror=False, king_buckets=1):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     try:
         from fen_utils import pack_record
@@ -274,19 +329,28 @@ def check_pipeline(fens, cp_white=100, mirror=False):
         for fen in fens:
             f.write(pack_record(fen, cp_white, None))
     ds = NNUEDataset(path)
-    feats, y = nnue_collate([ds[i] for i in range(len(ds))], mirror=mirror)
+    feats, y = nnue_collate(
+        [ds[i] for i in range(len(ds))], mirror=mirror, king_buckets=king_buckets
+    )
     white_idx, black_idx, offsets, stm, buckets = (t.cpu().numpy() for t in feats)
     y = y.cpu().numpy().reshape(-1)
     ends = list(offsets[1:]) + [len(white_idx)]
 
     problems = 0
-    print(f"  Each FEN was packed with cp = {cp_white:+d} (white's point of view, as in the dataset), mirror={mirror}.")
+    print(
+        f"  Each FEN was packed with cp = {cp_white:+d} (white's point of view, as in the dataset), "
+        f"mirror={mirror}, king_buckets={king_buckets}."
+    )
     print(f"  {'#':>2}  stm  feats  bucket  target  implied cp (stm POV)")
     for i, fen in enumerate(fens):
         pieces, ref_stm = parse_fen(fen)
         s, e = int(offsets[i]), int(ends[i])
-        ok_w = sorted(white_idx[s:e].tolist()) == sorted(feature_indices(pieces, 0, mirror=mirror))
-        ok_b = sorted(black_idx[s:e].tolist()) == sorted(feature_indices(pieces, 1, mirror=mirror))
+        ok_w = sorted(white_idx[s:e].tolist()) == sorted(
+            feature_indices(pieces, 0, mirror=mirror, king_buckets=king_buckets)
+        )
+        ok_b = sorted(black_idx[s:e].tolist()) == sorted(
+            feature_indices(pieces, 1, mirror=mirror, king_buckets=king_buckets)
+        )
         ok_stm = int(stm[i]) == ref_stm
         ok_bucket = int(buckets[i]) == output_bucket(pieces)
         yi = float(np.clip(y[i], 1e-9, 1 - 1e-9))
@@ -353,7 +417,10 @@ def main():
 
     params = load_float_params(args.checkpoint) if args.checkpoint else None
 
-    print(f"== Evaluations (side-to-move centipawns, bit-exact with nnue_loader.h, mirror={net.mirror})")
+    print(
+        f"== Evaluations (side-to-move centipawns, bit-exact with nnue_loader.h, "
+        f"mirror={net.mirror}, king_buckets={net.king_buckets})"
+    )
     header = f"  {'bucket':>6}  {'engine':>7}"
     if params is not None:
         header += f"  {'float':>8}  {'diff':>5}"
@@ -370,7 +437,7 @@ def main():
         hasym += ev != ev_h
         line = f"  {bucket:>6}  {ev:>7}"
         if params is not None:
-            fe = float_eval(params, fen, mirror=net.mirror)
+            fe = float_eval(params, fen, mirror=net.mirror, king_buckets=net.king_buckets)
             line += f"  {fe:>8.1f}  {ev - fe:>+5.1f}"
         if not fast_ok:
             old, _, _ = quantized_eval(net, fen, emulate_fast_kernel_overflow=True)
@@ -386,7 +453,7 @@ def main():
 
     if args.pipeline:
         print("== Training pipeline")
-        check_pipeline(fens, mirror=net.mirror)
+        check_pipeline(fens, mirror=net.mirror, king_buckets=net.king_buckets)
 
 
 if __name__ == "__main__":

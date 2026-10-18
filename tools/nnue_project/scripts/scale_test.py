@@ -26,10 +26,15 @@ def main():
     arch = ckpt.get("arch", {"mirror": False, "king_buckets": 1}) if isinstance(ckpt, dict) else {"mirror": False, "king_buckets": 1}
     print(f"Checkpoint arch: {arch}")
 
-    for name, scale, limit in (("ft.weight", QA, 32767),
-                               ("ft_bias", QA, 32767),
-                               ("output_weights", QB, 128)):
-        max_abs = sd[name].abs().max().item()
+    if "ft_shared" in sd and "ft_buckets" in sd:
+        ft_w = sd["ft_buckets"] + sd["ft_shared"].unsqueeze(0)
+    else:
+        ft_w = sd["ft.weight"]
+
+    for name, tensor, scale, limit in (("ft.weight", ft_w, QA, 32767),
+                                       ("ft_bias", sd["ft_bias"], QA, 32767),
+                                       ("output_weights", sd["output_weights"], QB, 128)):
+        max_abs = tensor.abs().max().item()
         safe = limit / max_abs if max_abs > 0 else float("inf")
         print(f"{name:15s} max |w| = {max_abs:.4f}  x{scale:.0f} = {max_abs * scale:8.1f}"
               f"  (limit {limit})  largest safe scale {safe:.1f}")

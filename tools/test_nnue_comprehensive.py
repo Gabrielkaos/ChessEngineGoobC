@@ -6,21 +6,41 @@ import torch
 import torch.nn as nn
 
 # 1. Load PyTorch model with GOOB NNUE weights (supports GOOBNNUE v2 trailer)
-with open("src/weights/quantised.bin", "rb") as f:
-    feat_w_raw = np.frombuffer(f.read(768 * 1024 * 2), dtype=np.int16).reshape(768, 1024)
+NET_PATH = os.environ.get("GOOB_NET", "src/weights/quantised.bin")
+BIN_PATH = os.environ.get("GOOB_BIN", "./src/bin/linux/GOOB-2.2-BETA-native")
+
+file_size = os.path.getsize(NET_PATH)
+MIRROR = False
+KING_BUCKETS = 1
+if file_size >= 48:
+    with open(NET_PATH, "rb") as f:
+        f.seek(file_size - 48)
+        trailer = f.read(48)
+    if len(trailer) == 48 and trailer[:8] == b"GOOBNNUE":
+        _, ver, flags, kb, hs, ob, _ = struct.unpack("<8sIIIII20s", trailer)
+        MIRROR = bool(flags & 1)
+        KING_BUCKETS = int(kb)
+
+with open(NET_PATH, "rb") as f:
+    feat_w_raw = np.frombuffer(f.read(KING_BUCKETS * 768 * 1024 * 2), dtype=np.int16).reshape(KING_BUCKETS * 768, 1024)
     feat_b_raw = np.frombuffer(f.read(1024 * 2), dtype=np.int16)
     out_w_raw = np.frombuffer(f.read(8 * 2048 * 2), dtype=np.int16).reshape(8, 2048)
     out_b_raw = np.frombuffer(f.read(8 * 2), dtype=np.int16)
-    trailer = f.read(48)
-
-MIRROR = False
-if len(trailer) == 48 and trailer[:8] == b"GOOBNNUE":
-    _, ver, flags, kb, hs, ob, _ = struct.unpack("<8sIIIII20s", trailer)
-    MIRROR = bool(flags & 1)
 
 QA = 255
 QB = 64
 scale = 400
+
+KING_BUCKET = [
+    0, 0, 1, 1, 1, 1, 0, 0,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+]
 
 PIECE_MAP = {
     'P': (0, 0), 'N': (0, 1), 'B': (0, 2), 'R': (0, 3), 'Q': (0, 4), 'K': (0, 5),
@@ -49,21 +69,23 @@ def parse_fen(fen):
             
     return pieces, stm
 
-def perspective_flips(pieces):
-    if not MIRROR:
-        return 0, 0
+def perspective_state(pieces):
     wk = next(sq for c, pt, sq in pieces if c == 0 and pt == 5)
     bk = next(sq for c, pt, sq in pieces if c == 1 and pt == 5)
-    return (7 if (wk & 7) >= 4 else 0), (7 if (bk & 7) >= 4 else 0)
+    flip_w = (7 if (wk & 7) >= 4 else 0) if MIRROR else 0
+    flip_b = (7 if (bk & 7) >= 4 else 0) if MIRROR else 0
+    bkt_w = KING_BUCKET[wk] if KING_BUCKETS > 1 else 0
+    bkt_b = KING_BUCKET[bk ^ 56] if KING_BUCKETS > 1 else 0
+    return flip_w, bkt_w, flip_b, bkt_b
 
 def py_eval_integer(fen):
     pieces, stm = parse_fen(fen)
-    flip_w, flip_b = perspective_flips(pieces)
+    flip_w, bkt_w, flip_b, bkt_b = perspective_state(pieces)
     w_acc = feat_b_raw.astype(np.int32).copy()
     b_acc = feat_b_raw.astype(np.int32).copy()
     for color, ptype, sq in pieces:
-        w_idx = color * 384 + ptype * 64 + (sq ^ flip_w)
-        b_idx = (color ^ 1) * 384 + ptype * 64 + ((sq ^ 56) ^ flip_b)
+        w_idx = bkt_w * 768 + color * 384 + ptype * 64 + (sq ^ flip_w)
+        b_idx = bkt_b * 768 + (color ^ 1) * 384 + ptype * 64 + ((sq ^ 56) ^ flip_b)
         w_acc += feat_w_raw[w_idx]
         b_acc += feat_w_raw[b_idx]
 
@@ -87,9 +109,9 @@ def py_eval_integer(fen):
     return val
 
 class SchoenemannNNUE(nn.Module):
-    def __init__(self):
+    def __init__(self, king_buckets=1):
         super().__init__()
-        self.ft = nn.EmbeddingBag(768, 1024, mode='sum')
+        self.ft = nn.EmbeddingBag(king_buckets * 768, 1024, mode='sum')
         self.ft_bias = nn.Parameter(torch.zeros(1024))
         self.out_w = nn.Parameter(torch.zeros(8, 2048))
         self.out_b = nn.Parameter(torch.zeros(8))
@@ -106,7 +128,7 @@ class SchoenemannNNUE(nn.Module):
         out = (x * self.out_w[buckets]).sum(dim=1) + self.out_b[buckets]
         return out
 
-py_model = SchoenemannNNUE()
+py_model = SchoenemannNNUE(king_buckets=KING_BUCKETS)
 with torch.no_grad():
     py_model.ft.weight.copy_(torch.from_numpy(feat_w_raw.astype(np.float32) / QA))
     py_model.ft_bias.copy_(torch.from_numpy(feat_b_raw.astype(np.float32) / QA))
@@ -115,9 +137,9 @@ with torch.no_grad():
 
 def py_eval_float(fen):
     pieces, stm = parse_fen(fen)
-    flip_w, flip_b = perspective_flips(pieces)
-    w_feat = [c * 384 + pt * 64 + (sq ^ flip_w) for c, pt, sq in pieces]
-    b_feat = [(c ^ 1) * 384 + pt * 64 + ((sq ^ 56) ^ flip_b) for c, pt, sq in pieces]
+    flip_w, bkt_w, flip_b, bkt_b = perspective_state(pieces)
+    w_feat = [bkt_w * 768 + c * 384 + pt * 64 + (sq ^ flip_w) for c, pt, sq in pieces]
+    b_feat = [bkt_b * 768 + (c ^ 1) * 384 + pt * 64 + ((sq ^ 56) ^ flip_b) for c, pt, sq in pieces]
 
     w_idx = torch.tensor(w_feat, dtype=torch.long)
     b_idx = torch.tensor(b_feat, dtype=torch.long)
@@ -133,7 +155,7 @@ def py_eval_float(fen):
 
 def goob_eval(fen):
     proc = subprocess.Popen(
-        ["./src/bin/linux/GOOB-2.2-BETA-native"],
+        [BIN_PATH],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -147,9 +169,9 @@ def goob_eval(fen):
     raise RuntimeError(f"Could not parse eval from GOOB output: {out}")
 
 # optional cross-check against the Schoenemann binary the inference code was
-# adapted from; skipped when it is not built at this path or when MIRROR=True
+# adapted from; skipped when it is not built at this path or when MIRROR=True or KING_BUCKETS > 1
 SCHOENEMANN = "./Schoenemann-0.5.0/src/null"
-HAVE_SCHOENEMANN = os.access(SCHOENEMANN, os.X_OK) and not MIRROR
+HAVE_SCHOENEMANN = os.access(SCHOENEMANN, os.X_OK) and not MIRROR and KING_BUCKETS == 1
 
 def schoenemann_raw_eval(fen):
     proc = subprocess.Popen(

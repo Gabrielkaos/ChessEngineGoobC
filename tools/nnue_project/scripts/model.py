@@ -1,15 +1,16 @@
 """
-NNUE Architecture: Schoenemann-0.5.0 / Bullet style + Horizontal King Mirroring.
-Topology: (768 -> 1024)x2 -> 1x8
+NNUE Architecture: Schoenemann-0.5.0 / Bullet style + Horizontal King Mirroring + Factorized King Buckets.
+Topology: (768xK -> 1024)x2 -> 1x8  (K = 1 or 4 king buckets)
 
 Features:
-  - 768 sparse perspective-aware inputs (2 colors x 6 piece types x 64 squares).
+  - 768 sparse perspective-aware base inputs (2 colors x 6 piece types x 64 squares).
   - Perspective horizontal king mirroring (when mirror=True): if a perspective's
     own king is on files e..h ((king_sq & 7) >= 4), all piece squares for that
     perspective are horizontally flipped (sq ^= 7), folding king files into a..d.
-    King moves within the same half remain O(1) incremental updates; crossing the
-    d/e file boundary triggers a single-perspective accumulator refresh.
-  - Shared feature transformer: 768 -> 1024.
+  - Perspective king buckets (when king_buckets=4): 4 buckets indexed by
+    KING_BUCKET[rel_ksq] (0=castled corner, 1=back-rank center, 2=2nd rank, 3=ranks 3..8).
+    Trained with factorized weights (ft_shared[768, 1024] + ft_buckets[4, 768, 1024])
+    that fold into a single (4*768, 1024) table at export time.
   - Activation: SCReLU (clamp(x, 0, 1) ** 2).
   - Output: 8 material buckets based on remaining piece count:
       bucket = clamp((pieces - 2) // 4, 0, 7)
@@ -18,6 +19,7 @@ Features:
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 NUM_FEATURES = 768
 L1_SIZE = 1024
@@ -26,6 +28,22 @@ QA = 255.0
 QB = 64.0
 CP_SCALE = 400.0
 
+# Indexed by perspective-relative king square (ksq for White, ksq ^ 56 for Black).
+# Symmetric across the d/e file line:
+#   Bucket 0: back-rank corner / castled (a1, b1, g1, h1)
+#   Bucket 1: back-rank center / uncastled (c1, d1, e1, f1)
+#   Bucket 2: 2nd rank (a2..h2)
+#   Bucket 3: ranks 3..8 (a3..h8)
+KING_BUCKET = [
+    0, 0, 1, 1, 1, 1, 0, 0,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+]
 
 DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}
 
@@ -38,24 +56,49 @@ class NNUE(nn.Module):
         num_buckets=NUM_BUCKETS,
         mirror=False,
         king_buckets=1,
+        factorized=None,
     ):
         super().__init__()
         self.num_features = num_features
         self.l1_size = l1
         self.num_buckets = num_buckets
-        self.arch = {"mirror": bool(mirror), "king_buckets": int(king_buckets)}
+        self.king_buckets = int(king_buckets)
+        if factorized is None:
+            factorized = self.king_buckets > 1
+        self.factorized = bool(factorized and self.king_buckets > 1)
+        self.arch = {
+            "mirror": bool(mirror),
+            "king_buckets": self.king_buckets,
+            **({"factorized": True} if self.factorized else {}),
+        }
 
-        self.ft = nn.EmbeddingBag(num_features, l1, mode="sum")
+        if self.factorized:
+            self.ft_buckets = nn.Parameter(torch.zeros(self.king_buckets, num_features, l1))
+            self.ft_shared = nn.Parameter(torch.empty(num_features, l1))
+        else:
+            self.ft = nn.EmbeddingBag(self.king_buckets * num_features, l1, mode="sum")
         self.ft_bias = nn.Parameter(torch.zeros(l1))
         self.output_weights = nn.Parameter(torch.empty(num_buckets, 2 * l1))
         self.output_biases = nn.Parameter(torch.zeros(num_buckets))
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.ft.weight, a=1.0)
+        if self.factorized:
+            nn.init.zeros_(self.ft_buckets)
+            nn.init.kaiming_uniform_(self.ft_shared, a=1.0)
+        else:
+            nn.init.kaiming_uniform_(self.ft.weight, a=1.0)
         nn.init.zeros_(self.ft_bias)
         nn.init.kaiming_uniform_(self.output_weights, a=1.0)
         nn.init.zeros_(self.output_biases)
+
+    def ft_weight(self):
+        """Effective feature transformer weight table of shape (king_buckets * num_features, l1)."""
+        if self.factorized:
+            return (self.ft_buckets + self.ft_shared.unsqueeze(0)).view(
+                self.king_buckets * self.num_features, self.l1_size
+            )
+        return self.ft.weight
 
     def forward(self, white_idx, black_idx, offsets, stm, buckets):
         """
@@ -64,8 +107,13 @@ class NNUE(nn.Module):
         stm: (B,) long tensor (0 = white to move, 1 = black to move).
         buckets: (B,) long tensor in [0, 7].
         """
-        acc_w = self.ft(white_idx, offsets) + self.ft_bias
-        acc_b = self.ft(black_idx, offsets) + self.ft_bias
+        if self.factorized:
+            w = self.ft_weight()
+            acc_w = F.embedding_bag(white_idx, w, offsets, mode="sum") + self.ft_bias
+            acc_b = F.embedding_bag(black_idx, w, offsets, mode="sum") + self.ft_bias
+        else:
+            acc_w = self.ft(white_idx, offsets) + self.ft_bias
+            acc_b = self.ft(black_idx, offsets) + self.ft_bias
 
         # Place side-to-move's perspective first
         is_black = stm.bool().unsqueeze(1)

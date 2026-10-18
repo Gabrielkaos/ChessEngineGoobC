@@ -12,26 +12,47 @@
 #include "../src/movegen.h"
 #include "../src/nnue_loader.h"
 
+static S_SEARCH_THREAD *g_fresh_thread = NULL;
+
 static int verify_acc_matches_fresh(S_BOARD *pos, const char *ctx) {
     int inc_eval = nnue_eval(pos);
     int ply = pos->ply;
     int16_t inc_w[NNUE_ACC_SIZE], inc_b[NNUE_ACC_SIZE];
     uint8_t flip_w = pos->search->nnue_accumulators[ply].flip[WHITE];
     uint8_t flip_b = pos->search->nnue_accumulators[ply].flip[BLACK];
+    uint8_t bkt_w  = pos->search->nnue_accumulators[ply].bucket[WHITE];
+    uint8_t bkt_b  = pos->search->nnue_accumulators[ply].bucket[BLACK];
     memcpy(inc_w, pos->search->nnue_accumulators[ply].accumulation[WHITE], sizeof(inc_w));
     memcpy(inc_b, pos->search->nnue_accumulators[ply].accumulation[BLACK], sizeof(inc_b));
 
+    /* 1. Force a Finny-cache refresh on the warm search thread */
     nnue_refresh_accumulator(pos);
-    int fresh_eval = nnue_eval(pos);
+    int cache_eval = nnue_eval(pos);
 
-    int diff_w = memcmp(inc_w, pos->search->nnue_accumulators[ply].accumulation[WHITE], sizeof(inc_w));
-    int diff_b = memcmp(inc_b, pos->search->nnue_accumulators[ply].accumulation[BLACK], sizeof(inc_b));
+    int diff_cw = memcmp(inc_w, pos->search->nnue_accumulators[ply].accumulation[WHITE], sizeof(inc_w));
+    int diff_cb = memcmp(inc_b, pos->search->nnue_accumulators[ply].accumulation[BLACK], sizeof(inc_b));
     int diff_fw = (flip_w != pos->search->nnue_accumulators[ply].flip[WHITE]);
     int diff_fb = (flip_b != pos->search->nnue_accumulators[ply].flip[BLACK]);
+    int diff_bw = (bkt_w  != pos->search->nnue_accumulators[ply].bucket[WHITE]);
+    int diff_bb = (bkt_b  != pos->search->nnue_accumulators[ply].bucket[BLACK]);
 
-    if (diff_w != 0 || diff_b != 0 || diff_fw || diff_fb || inc_eval != fresh_eval) {
-        printf("FAIL (%s): inc_eval=%d fresh_eval=%d diff_w=%d diff_b=%d diff_fw=%d diff_fb=%d\n",
-               ctx, inc_eval, fresh_eval, diff_w, diff_b, diff_fw, diff_fb);
+    /* 2. Compute a true from-scratch refresh on an uncached thread */
+    S_SEARCH_THREAD *saved = pos->search;
+    memset(g_fresh_thread->nnue_cache, 0, sizeof(g_fresh_thread->nnue_cache));
+    pos->search = g_fresh_thread;
+    nnue_refresh_accumulator(pos);
+    int fresh_eval = nnue_eval(pos);
+    int diff_fw_true = memcmp(inc_w, g_fresh_thread->nnue_accumulators[ply].accumulation[WHITE], sizeof(inc_w));
+    int diff_fb_true = memcmp(inc_b, g_fresh_thread->nnue_accumulators[ply].accumulation[BLACK], sizeof(inc_b));
+    pos->search = saved;
+
+    if (diff_cw != 0 || diff_cb != 0 || diff_fw || diff_fb || diff_bw || diff_bb ||
+        diff_fw_true != 0 || diff_fb_true != 0 ||
+        inc_eval != cache_eval || inc_eval != fresh_eval) {
+        printf("FAIL (%s): inc=%d cache=%d fresh=%d diff_cw=%d diff_cb=%d diff_true_w=%d diff_true_b=%d "
+               "diff_fw=%d diff_fb=%d diff_bw=%d diff_bb=%d\n",
+               ctx, inc_eval, cache_eval, fresh_eval, diff_cw, diff_cb, diff_fw_true, diff_fb_true,
+               diff_fw, diff_fb, diff_bw, diff_bb);
         return 0;
     }
     return 1;
@@ -58,7 +79,7 @@ static int test_position_moves(S_BOARD *pos, const char *fen, const char *move_s
         if (!verify_acc_matches_fresh(pos, mstr)) {
             return 0;
         }
-        printf("  Move %2d: %-6s -> Eval: %5d (inc==fresh OK)\n", i + 1, mstr, inc_eval);
+        printf("  Move %2d: %-6s -> Eval: %5d (inc==cache==fresh OK)\n", i + 1, mstr, inc_eval);
     }
 
     for (int i = num_moves - 1; i >= 0; i--) {
@@ -80,6 +101,7 @@ int main(int argc, char **argv) {
 
     S_BOARD pos[1];
     pos->search = alloc_search_thread();
+    g_fresh_thread = alloc_search_thread();
 
     const char *net_path = (argc > 1) ? argv[1] : "src/weights/quantised.bin";
     if (!nnue_init(net_path)) {
@@ -179,7 +201,31 @@ int main(int argc, char **argv) {
         if (test_position_moves(pos, fen, moves, 4)) passed_tests++;
     }
 
-    // Test 8: Multi-ply lazy catchup + deep stack moves after a king crossing (ancestor reuse)
+    // Test 8: King walks across all 4 king bucket boundaries (0 <-> 1 <-> 2 <-> 3) for both colors
+    {
+        total_tests++;
+        const char *fen = "2k5/8/8/3p4/3P4/8/8/2K5 w - - 0 1";
+        const char *moves[] = {
+            "c1b1", "c8b8",   // bucket 1 -> bucket 0
+            "b1a1", "b8a8",   // bucket 0 -> bucket 0 (same bucket, incremental!)
+            "a1a2", "a8a7",   // bucket 0 -> bucket 2
+            "a2a3", "a7a6",   // bucket 2 -> bucket 3
+            "a3b2", "a6b7",   // bucket 3 -> bucket 2
+            "b2c1", "b7c8",   // bucket 2 -> bucket 1
+            "c1c2", "c8c7",   // bucket 1 -> bucket 2
+            "c2d1", "c7d8",   // bucket 2 -> bucket 1
+            "d1e1", "d8e8",   // bucket 1 -> bucket 1 (crosses d/e flip line!)
+            "e1f1", "e8f8",   // bucket 1 -> bucket 1 (same bucket, incremental!)
+            "f1g1", "f8g8",   // bucket 1 -> bucket 0
+            "g1h1", "g8h8",   // bucket 0 -> bucket 0 (same bucket, incremental!)
+            "h1g2", "h8g7",   // bucket 0 -> bucket 2
+            "g2g1", "g7g8",   // bucket 2 -> bucket 0
+            "g1h2", "g8h7"    // bucket 0 -> bucket 2
+        };
+        if (test_position_moves(pos, fen, moves, 30)) passed_tests++;
+    }
+
+    // Test 9: Multi-ply lazy catchup + deep stack moves after a king crossing (ancestor reuse)
     {
         total_tests++;
         printf("Testing Multi-ply lazy catchup with king crossing & ancestor reuse:\n");
@@ -187,13 +233,12 @@ int main(int argc, char **argv) {
         ParseFEN((char *)fen, pos);
         nnue_refresh_accumulator(pos);
 
-        // Make 4 plies without calling nnue_eval (includes White O-O-O crossing e1->c1)
+        // Make 4 plies without calling nnue_eval (includes White O-O-O crossing e1->c1 and Black O-O crossing bucket 1->0)
         const char *lazy_moves1[] = { "e1c1", "e8g8", "c3d5", "c6e5" };
         for (int i = 0; i < 4; i++) {
             int move = ParseMove((char *)lazy_moves1[i], pos);
             makeMove(pos, move, &pos->stateTable[pos->hisPly + 1]);
         }
-        // Evaluate at ply 4 (White crossed at ply 1, Black did not cross)
         int ok = verify_acc_matches_fresh(pos, "lazy_crossing_ply4");
 
         // Now play 4 more moves without crossing, evaluating only at ply 8 (reuses ply 4 ancestor!)
@@ -209,10 +254,10 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Test 9: 50 Random games (up to 80 plies each) with mixed lazy and eager evaluations
+    // Test 10: 50 Random games (up to 60 plies each) with mixed lazy and eager evaluations
     {
         total_tests++;
-        printf("Testing 50 random games (incremental + lazy vs fresh):\n");
+        printf("Testing 50 random games (incremental + Finny cache + lazy vs true fresh):\n");
         uint64_t rng = 0x123456789ABCDEF0ULL;
         int random_ok = 1;
         int total_plies = 0;
@@ -254,7 +299,25 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Test 11: Cache invalidation on nnue_init (EvalFile reload)
+    if (argc > 2) {
+        total_tests++;
+        const char *net_b = argv[2];
+        printf("Testing Finny cache invalidation after nnue_init('%s'):\n", net_b);
+        if (!nnue_init(net_b)) {
+            printf("FAIL: Could not load second net '%s'\n", net_b);
+        } else {
+            ParseFEN("r1bq1rk1/ppp2pbp/2np1np1/4p3/2PPP3/2N1BP2/PP2N1PP/R2QKB1R w KQ - 1 7", pos);
+            nnue_refresh_accumulator(pos);
+            if (verify_acc_matches_fresh(pos, "evalfile_reload")) {
+                printf("  Cache invalidation after nnue_init matched fresh net B bit-for-bit!\n\n");
+                passed_tests++;
+            }
+        }
+    }
+
     free_search_thread(pos->search);
+    free_search_thread(g_fresh_thread);
 
     printf("==================================================\n");
     printf("Results: %d / %d tests passed successfully!\n", passed_tests, total_tests);

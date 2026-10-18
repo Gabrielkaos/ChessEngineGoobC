@@ -93,11 +93,12 @@ The tooling is divided into three primary operational domains:
   ```
 
 ### 4. [`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)
-* **Purpose:** C unit test verifying that incremental accumulator updates match complete accumulator refreshes bit-for-bit across complex game sequences (castling including `O-O-O`, king d/e boundary walks and captures, promotions, en-passant, captures, multi-ply lazy crossings, and 50 random games) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position. Accepts an optional `.bin` network path on the command line.
+* **Purpose:** C unit test verifying that incremental accumulator updates, Finny table cache refreshes, and true from-scratch refreshes match bit-for-bit across complex game sequences (castling including `O-O-O`, king d/e boundary walks and captures, 4-bucket boundary transitions, promotions, en-passant, captures, multi-ply lazy crossings, `EvalFile` reload cache invalidation, and 50 random games) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position. Accepts an optional `.bin` network path on the command line.
 * **Compilation & Execution:**
   ```bash
   # from the repository root; builds into /tmp so the committed tools/test_incremental is left alone
-  gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
+  # (pass -DNNUE_KING_BUCKETS=4 when testing a 4-bucket network)
+  gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=1 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
       tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o /tmp/test_incremental
   /tmp/test_incremental [optional_net.bin]
   ```
@@ -154,10 +155,10 @@ tools/nnue_project/
 ├── data/                 # Created by data prep: binary training datasets (train.bin, val.bin)
 ├── data_json/            # Raw JSONL datasets (e.g. lichess_db_eval.jsonl.zst)
 └── scripts/
-    ├── model.py          # PyTorch Schoenemann NNUE topology + DEFAULT_ARCH metadata
-    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator (WDL blending, king mirroring, flip augmentation)
-    ├── train.py          # Training loop with Adam, LR scheduling, weight clipping, --wdl-lambda, --mirror, --flip-augment
-    ├── export_weights.py # Quantizer exporting .pt to quantised.bin with GOOBNNUE v2 trailer
+    ├── model.py          # PyTorch Schoenemann NNUE topology + factorized king buckets + DEFAULT_ARCH metadata
+    ├── nnue_dataset.py   # Memmap 68-byte dataset loader & collator (WDL blending, king mirroring, king buckets, flip augmentation)
+    ├── train.py          # Training loop with Adam/AdamW, LR scheduling, weight clipping, --wdl-lambda, --mirror, --king-buckets, --init-from-unbucketed
+    ├── export_weights.py # Quantizer folding factorized buckets & exporting .pt to quantised.bin with GOOBNNUE v2 trailer
     ├── fen_utils.py      # FEN to 68-byte record encoder/decoder
     ├── prepare_data.py   # Streams the Hugging Face Lichess evaluations to binary
     ├── prepare_data_jsonl.py # Streams a local Lichess JSONL(.zst) to binary, quiet positions only
@@ -171,22 +172,22 @@ tools/nnue_project/
 ### Script Reference
 
 * **[`model.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/model.py):**
-  * Topology: `(768 -> 1024)x2 -> 1x8 buckets`, carrying `arch = {"mirror": bool, "king_buckets": int}` metadata (`DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}`).
-  * Feature transformer: Shared weights for both perspectives ($2 \times 6 \times 64 = 768$ inputs $\to 1024$ hidden outputs).
+  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` ($K \in \{1, 4\}$), carrying `arch = {"mirror": bool, "king_buckets": int}` metadata (`DEFAULT_ARCH = {"mirror": False, "king_buckets": 1}`).
+  * Feature transformer: Shared weights for both perspectives ($K \times 768$ inputs $\to 1024$ hidden outputs). When `king_buckets > 1`, uses factorized virtual features (`ft_buckets[K, 768, 1024] + ft_shared[768, 1024]`) folded into a flat `(K * 768, 1024)` table at export time.
   * Activation: Squared Clipped ReLU ($\text{clamp}(x, 0, 1)^2$).
   * Buckets: 8 material buckets selected by piece count:
     $$\text{bucket} = \text{clamp}\left(\frac{\text{pieces} - 2}{4}, 0, 7\right)$$
   * Forward pass uses a single batched matrix multiplication (`x @ output_weights.t()`) followed by sample bucket gathering.
 * **[`nnue_dataset.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/nnue_dataset.py):**
   * Memory-mapped dataset handler reading 68-byte records via `np.memmap`.
-  * Implements `__getitems__` for zero-copy batched array reading and vectorized collation directly into feature indices, supporting perspective horizontal king mirroring (`mirror=True`) and 50% horizontal flip augmentation (`flip_augment=True`).
+  * Implements `__getitems__` for zero-copy batched array reading and vectorized collation directly into feature indices, supporting perspective horizontal king mirroring (`mirror=True`), 4 king buckets (`king_buckets=4`), and 50% horizontal flip augmentation (`flip_augment=True`).
 * **[`train.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py):**
-  * Supports training from scratch or fine-tuning existing checkpoints (`--init`), with mutually exclusive `--mirror` and `--flip-augment` options.
+  * Supports training from scratch, fine-tuning existing checkpoints (`--init`), or warm-starting a 4-bucket network from a 1-bucket checkpoint (`--init-from-unbucketed`, `--king-buckets 4`, `--optimizer adamw`, `--bucket-decay`), with mutually exclusive `--mirror` and `--flip-augment` options.
   * Saves `arch` metadata inside checkpoints and refuses `--resume` if the checkpoint architecture differs from the command-line flags.
-  * Uses [`ResumableBatchSampler`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L57-L100) for deterministic, mid-epoch checkpoint resumption.
-  * Enforces weight clipping ([`clip_weights(model, limit=1.98)`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L45-L55)) to guarantee that output weights and accumulators do not overflow 16-bit integer boundaries in C SIMD kernels.
+  * Uses [`ResumableBatchSampler`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L64-L107) for deterministic, mid-epoch checkpoint resumption.
+  * Enforces weight clipping ([`clip_weights(model, limit=1.98)`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/train.py#L45-L61)) so that combined feature weights (`ft_shared + ft_buckets[b]`) and output weights never overflow 16-bit integer boundaries in C SIMD kernels.
 * **[`export_weights.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project/scripts/export_weights.py):**
-  * Quantizes floating-point weights into `int16` binary format:
+  * Folds factorized virtual features (`ft_buckets + ft_shared[None, :, :]`) into a flat `(K * 768, 1024)` weight table, logs bucket residual statistics (`max |delta|`, `% |delta| < 1/QA`), and quantizes floating-point weights into `int16` binary format:
     * Feature weights and bias: $\times 255$ (`QA`)
     * Output weights: $\times 64$ (`QB`)
     * Output bias: $\times (255 \times 64 = 16320)$ (`QA * QB`)

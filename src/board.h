@@ -5,6 +5,7 @@
 #include "defs.h"
 #include "trace.h"
 #include "correction_types.h"
+#include <stddef.h>
 #include <string.h>
 
 /* Must match the l1_size (per-perspective accumulator width) of the
@@ -13,7 +14,12 @@
    (see nnue_loader.h). */
 #define NNUE_ACC_SIZE 1024
 
-
+#ifndef NNUE_MIRROR
+#define NNUE_MIRROR 1
+#endif
+#ifndef NNUE_KING_BUCKETS
+#define NNUE_KING_BUCKETS 1
+#endif
 
 typedef struct {
     int piece_remove[2];
@@ -23,14 +29,22 @@ typedef struct {
     int remove_count;
     int add_count;
     int king_moved[COLOR_NB];
-    uint8_t refresh[COLOR_NB];  /* 1 when side's king crossed the d/e mirror boundary */
+    uint8_t refresh[COLOR_NB];  /* 1 when side's king crossed a mirror or king-bucket boundary */
 } DirtyPiece;
 
 typedef struct {
     ALIGN64 int16_t accumulation[COLOR_NB][NNUE_ACC_SIZE];
     uint8_t computed[COLOR_NB];
     uint8_t flip[COLOR_NB];     /* 0 or 7: horizontal square XOR mask for perspective */
+    uint8_t bucket[COLOR_NB];   /* 0..NNUE_KING_BUCKETS-1: own-king bucket for perspective */
 } NNUE_Accumulator;
+
+/* Finny table entry: caches accumulator and piece bitboards per (perspective, flip, bucket) */
+typedef struct {
+    ALIGN64 int16_t acc[NNUE_ACC_SIZE];
+    U64 pieceBB[COLOR_NB][PIECE_TYPE_NB];
+    uint32_t gen;
+} NNUE_CacheEntry;
 
 typedef struct {
     //per-thread counters, written only by the owning thread and summed by
@@ -57,6 +71,7 @@ typedef struct {
 #ifdef TRACE
     SearchTrace trace;
 #endif
+    ALIGN64 NNUE_CacheEntry nnue_cache[COLOR_NB][2][NNUE_KING_BUCKETS];
 } S_SEARCH_THREAD;
 
 static inline S_SEARCH_THREAD* alloc_search_thread(void) {

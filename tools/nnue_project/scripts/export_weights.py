@@ -2,14 +2,16 @@
 Export a trained Schoenemann NNUE checkpoint to a binary weight file (quantised.bin).
 Compatible with GOOB engine (48-byte GOOBNNUE v2 format trailer).
 
-Format:
-  int16[768 * 1024]   feature transformer weights (quantized with QA=255)
-  int16[1024]         feature transformer biases  (quantized with QA=255)
-  int16[8 * 2048]     output layer weights        (quantized with QB=64)
-  int16[8]            output layer biases         (quantized with QA*QB=16320)
-  bytes[48]           GOOBNNUE v2 format trailer  (magic, version, flags, king_buckets, hidden_size, output_buckets, zeros)
+Format (K = king_buckets, 1 or 4):
+  int16[K * 768 * 1024] feature transformer weights (quantized with QA=255)
+  int16[1024]           feature transformer biases  (quantized with QA=255)
+  int16[8 * 2048]       output layer weights        (quantized with QB=64)
+  int16[8]              output layer biases         (quantized with QA*QB=16320)
+  bytes[48]             GOOBNNUE v2 format trailer  (magic, version, flags, king_buckets, hidden_size, output_buckets, zeros)
 
-Total: 803,848 int16 values (1,607,696 bytes) + 48 bytes trailer = 1,607,744 bytes (~1.53 MB).
+Sizes:
+  K=1:   803,848 int16 values (1,607,696 bytes) + 48B trailer = 1,607,744 bytes (~1.53 MB)
+  K=4: 3,163,144 int16 values (6,326,288 bytes) + 48B trailer = 6,326,336 bytes (~6.03 MB)
 """
 
 import argparse
@@ -54,17 +56,31 @@ def export_checkpoint(checkpoint_path: str, out_path: str):
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         sd = checkpoint["model_state_dict"]
-        arch = checkpoint.get("arch", dict(DEFAULT_ARCH))
+        arch = dict(checkpoint.get("arch", DEFAULT_ARCH))
     else:
         sd = checkpoint
         arch = dict(DEFAULT_ARCH)
 
-    ft_w = sd["ft.weight"].cpu().numpy()            # (768, 1024)
-    ft_b = sd["ft_bias"].cpu().numpy()              # (1024,)
-    out_w = sd["output_weights"].cpu().numpy()      # (8, 2048)
-    out_b = sd["output_biases"].cpu().numpy()       # (8,)
+    if "ft_shared" in sd and "ft_buckets" in sd:
+        ft_shared = sd["ft_shared"].cpu().numpy()       # (768, 1024)
+        ft_buckets = sd["ft_buckets"].cpu().numpy()     # (K, 768, 1024)
+        kb = int(ft_buckets.shape[0])
+        arch["king_buckets"] = kb
+        ft_w = (ft_buckets + ft_shared[None, :, :]).reshape(kb * ft_shared.shape[0], ft_shared.shape[1])
+        small_pct = 100.0 * float(np.mean(np.abs(ft_buckets) < (1.0 / QA)))
+        max_delta = float(np.abs(ft_buckets).max())
+    else:
+        ft_w = sd["ft.weight"].cpu().numpy()            # (K*768, 1024)
+        small_pct = None
+        max_delta = None
+
+    ft_b = sd["ft_bias"].cpu().numpy()                  # (1024,)
+    out_w = sd["output_weights"].cpu().numpy()          # (8, 2048)
+    out_b = sd["output_biases"].cpu().numpy()           # (8,)
 
     print(f"Architecture:    {arch}")
+    if small_pct is not None:
+        print(f"Bucket deltas:   max |delta|={max_delta:.4f}, |delta| < 1/QA: {small_pct:.1f}%")
     print(f"Feature weights: {ft_w.shape}, range [{ft_w.min():.4f}, {ft_w.max():.4f}]")
     print(f"Feature bias:    {ft_b.shape}, range [{ft_b.min():.4f}, {ft_b.max():.4f}]")
     print(f"Output weights:  {out_w.shape}, range [{out_w.min():.4f}, {out_w.max():.4f}]")

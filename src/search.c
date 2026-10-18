@@ -1803,7 +1803,7 @@ static void setupWorkerData(int threadNum, S_BOARD *pos, S_SEARCHINFO *info, S_P
     }
     w->originalPos->st = &w->originalPos->stateTable[pos->hisPly];
 
-    memcpy(w->originalPos->search, pos->search, sizeof(S_SEARCH_THREAD));
+    memcpy(w->originalPos->search, pos->search, offsetof(S_SEARCH_THREAD, nnue_cache));
 
     w->workerData.originalPos  = w->originalPos;
     w->workerData.info         = info;

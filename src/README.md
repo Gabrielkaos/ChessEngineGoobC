@@ -21,8 +21,10 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   The game history lives in `stateTable[MAXGAMESMOVES]` (550 states). When a `position ... moves` list outgrows it, [`compactStateHistory()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.c) keeps the newest 275 states (repetition detection never looks further back than the fifty-move counter) and `gamePlyOffset` keeps `hisPly + gamePlyOffset` equal to the real game ply for time management, WDL output and FENs.
 * **Move Generation & Legality:** Pseudo-legal bulk bitboard generation with hardware PEXT (BMI2) attack lookups (and fallback to magic bitboards). Legality is tested dynamically on-the-fly via [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L158-L229) using pin and king-ray masks without making/unmaking moves.
 * **Evaluation:** Schoenemann-0.5.0 style NNUE architecture:
-  * Topology: `(768 -> 1024)x2 -> 1x8 buckets` with Squared Clipped ReLU (SCReLU) activation.
-  * Perspective horizontal king mirroring (`NNUE_MIRROR`, default `1`): when a perspective's own king is on files `e..h` (`(king_sq & 7) >= 4`), all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d` (`c1`/`g1` both map to `c1`). Ordinary king moves within the same half remain $\mathcal{O}(1)$ incremental updates; crossing the d/e file boundary (`d<->e` or `O-O-O`) triggers a single-perspective accumulator refresh (`dp->refresh[side]`).
+  * Topology: `(768xK -> 1024)x2 -> 1x8 buckets` (`K = NNUE_KING_BUCKETS`, default `1`, or `4` factorized king buckets) with Squared Clipped ReLU (SCReLU) activation.
+  * Perspective horizontal king mirroring (`NNUE_MIRROR`, default `1`): when a perspective's own king is on files `e..h` (`(king_sq & 7) >= 4`), all piece squares for that perspective are horizontally mirrored (`sq ^= 7`), folding king files into `a..d` (`c1`/`g1` both map to `c1`).
+  * Perspective king buckets (`NNUE_KING_BUCKETS`, `1` or `4`): when `NNUE_KING_BUCKETS=4`, each perspective's feature table is indexed by `bucket * 768 + feat768` using `NNUE_KingBucket[rel_ksq]` (`0`=castled corner `a1,b1,g1,h1`; `1`=back-rank center `c1..f1`; `2`=2nd rank `a2..h2`; `3`=ranks `3..8`). Ordinary king moves within the same `(flip, bucket)` pair remain $\mathcal{O}(1)$ incremental updates; crossing a mirror or king-bucket boundary triggers a single-perspective Finny table accumulator refresh (`dp->refresh[side]`).
+  * Finny table accumulator cache (`pos->search->nnue_cache[color][flip][bucket]`): per-thread cache storing the last refreshed accumulator and piece bitboards for each `(color, flip, bucket)` slot so boundary refreshes apply only the bitboard diff (`cur ^ prev`) instead of summing all pieces on the board.
   * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks) with `GOOBNNUE` v2 architecture trailer verification.
 * **Correction History:** Multi-table evaluation error correction indexed by pawn-king hash, minor-piece hash, dual non-pawn material hashes, and 2-ply / 4-ply continuation moves.
 * **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double extensions and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, SEE pruning, and **Surprise-SRD** (dynamic LMR responding to sibling fail highs and evaluation expectation).
@@ -40,7 +42,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`bitboards.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.h) / [`bitboards.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bitboards.c):** Bitboard lookup tables (`FileBBMask`, `RankBBMask`, `BetweenBB`, `LineBB`) and manipulation utilities (LSB extraction, clearing least significant bits, bitboard printing).
 * **[`hashkeys.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.h) / [`hashkeys.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/hashkeys.c):** 64-bit Zobrist keys for positions (`posKey`), pawn-king structures (`pkHash`), non-pawn material keys per color (`npHash`), and minor pieces (`minorHash`).
 * **[`makemove.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h) / [`makemove.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c):** Core board transition functions:
-  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L27) for NNUE (including `dp->refresh[side]` when a king crosses the d/e file boundary), updates Zobrist hashes incrementally, and checks repetitions.
+  * [`makeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L243): Clones `StateInfo`, applies moves, tracks [`DirtyPiece`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/board.h#L18-L27) for NNUE (including `dp->refresh[side]` via `nnue_king_needs_refresh` when a king crosses a mirror or king-bucket boundary), updates Zobrist hashes incrementally, and checks repetitions.
   * [`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L443): Reverses piece positions and restores `pos->st = pos->st->previous`.
   * [`makeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L487) / [`takeNullMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L524): Null-move transitions for Null Move Pruning.
   * [`legal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.h): Fast inlined on-the-fly pseudo-legal move validator featuring an ultra-fast non-pinned fast path (3 bitwise tests for ordinary non-king moves when not in check).
@@ -81,12 +83,12 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Evaluation & NNUE
 * **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
-  * Schoenemann 0.5.0 NNUE architecture inference engine (768 input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`).
+  * Schoenemann 0.5.0 NNUE architecture inference engine (`768 * NNUE_KING_BUCKETS` input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`) and perspective king buckets (`NNUE_KING_BUCKETS`, default `1` or `4`).
   * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
-  * Dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h): uses the synchronized dual-perspective fast path when no king crossed the d/e file boundary along the ancestor chain, and falls back to per-perspective refresh (`nnue_refresh_perspective`) only for the perspective whose king crossed the d/e boundary or when beyond `NNUE_REFRESH_THRESHOLD` (32 plies).
-  * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`), using cached `acc->flip[p]` (`0` or `7`).
+  * Dual-perspective lazy accumulator updates through [`nnue_update_accumulators_to_ply()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h): uses the synchronized dual-perspective fast path when no king crossed a mirror or bucket boundary along the ancestor chain, and falls back to per-perspective Finny-table cached refresh (`nnue_refresh_perspective`) only for the perspective whose king crossed a boundary or when beyond `NNUE_REFRESH_THRESHOLD` (32 plies).
+  * Specialized SIMD update kernels for quiet moves (`1add_1sub`, unrolled across 8 256-bit AVX2 registers) and captures (`1add_2sub`), using cached `acc->flip[p]` (`0` or `7`) and `acc->bucket[p]` (`0..NNUE_KING_BUCKETS-1`).
   * Precomputed 64-byte `s_piece_offset` table and bit-shift feature row addressing (`<< 10`).
-  * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option), verifying the 48-byte `GOOBNNUE` v2 architecture trailer (`mirror`, `king_buckets`, `hidden_size`, `output_buckets`) against the compiled engine flags before replacing active weights.
+  * Weight loading from embedded binary via [`incbin.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/incbin.h) or external file (`EvalFile` UCI option), verifying the 48-byte `GOOBNNUE` v2 architecture trailer (`mirror`, `king_buckets`, `hidden_size`, `output_buckets`) against the compiled engine flags and invalidating all threads' Finny caches (`nnue_clear_caches()`) before replacing active weights.
 * **[`correction_types.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction_types.h), [`correction.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.h) / [`correction.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/correction.c):** Four-table correction history blending pawn structure, minor pieces, non-pawn material per color, and 2-ply / 4-ply continuation corrections into static evaluations.
 
 ### Search & Transposition Table
@@ -151,7 +153,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 ## Compilation & Multi-ISA Build System
 
-The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures (with `NNUE_MIRROR ?= 1` configurable via `make NNUE_MIRROR=0/1` and `EVALFILE ?= weights/quantised.bin`):
+The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makefile), which provides dedicated ISA targets for different CPU microarchitectures (with `NNUE_MIRROR ?= 1`, `NNUE_KING_BUCKETS ?= 1` configurable via `make NNUE_MIRROR=0/1 NNUE_KING_BUCKETS=1/4`, and `EVALFILE ?= weights/quantised.bin`):
 
 | Target | Description | Recommended Usage |
 | :--- | :--- | :--- |
@@ -169,8 +171,11 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 # Build native binary for local testing:
 make -C src native
 
+# Build native binary with 4 king buckets:
+make -C src native NNUE_MIRROR=1 NNUE_KING_BUCKETS=4 EVALFILE=../tools/nnue_project/checkpoints/exp_buckets4/quantised.bin
+
 # Build native binary with unmirrored NNUE net:
-make -C src native NNUE_MIRROR=0
+make -C src native NNUE_MIRROR=0 NNUE_KING_BUCKETS=1
 
 # Build universal binary for distribution:
 make -C src universal
@@ -230,11 +235,11 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 
 ## Design Details & Key Invariants
 
-1. **Perspective Horizontal King Mirroring & Incremental Updates:**
-   In GOOB, features are indexed by `(color * 384 + piece_type * 64 + (square ^ flip))`, where `flip = 7` when `NNUE_MIRROR=1` and that perspective's own king is on files `e..h` (`0` otherwise). Ordinary king moves that stay on the same half of the board (`a..d` or `e..h`) are treated as simple 1-remove/1-add piece movements ($\mathcal{O}(1)$). Only moves where a king crosses the d/e file boundary (`d<->e` or `O-O-O`) trigger a single-perspective accumulator rebuild (`dp->refresh[side]`).
+1. **Perspective Horizontal King Mirroring, King Buckets & Finny Table Cache:**
+   In GOOB, features are indexed by `bucket * 768 + (color * 384 + piece_type * 64 + (square ^ flip))`, where `flip = 7` when `NNUE_MIRROR=1` and that perspective's own king is on files `e..h` (`0` otherwise), and `bucket = NNUE_KingBucket[rel_ksq]` when `NNUE_KING_BUCKETS=4` (`0` otherwise). Ordinary king moves that stay within the same `(flip, bucket)` pair are treated as simple 1-remove/1-add piece movements ($\mathcal{O}(1)$). Moves where a king crosses a mirror or bucket boundary trigger a single-perspective Finny table refresh (`dp->refresh[side]`) against `pos->search->nnue_cache[color][flip != 0][bucket]`.
 2. **64-Byte Cache Alignment:**
    * Every Transposition Table bucket contains 4 entries of 16 bytes each ($4 \times 16 = 64$ bytes), matching the L1 cache line size of x86 processors.
-   * `S_SEARCH_THREAD` and `NNUE_Accumulator` structures use `ALIGN64` to avoid false sharing across multiple CPU cores in Lazy SMP.
+   * `S_SEARCH_THREAD`, `NNUE_Accumulator`, and `NNUE_CacheEntry` structures use `ALIGN64` to avoid false sharing across multiple CPU cores in Lazy SMP.
 3. **Lockless Transposition Table:**
    Rather than using mutexes or spinlocks across threads, GOOB stores a 32-bit checksum combining both 32-bit halves of the board's `posKey` with the packed 64-bit entry data (`smp_data`). If another thread partially overwrites the slot during reading, the test key check fails safely.
 4. **Surprise-SRD (Search Reduction Dynamics):**
