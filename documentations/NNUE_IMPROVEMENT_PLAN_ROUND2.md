@@ -11,6 +11,11 @@ how to weight it, how to make it better and how to keep the cycle running. One
 architecture step (8 king buckets) comes after the data work, because more
 data is what makes it pay off.
 
+Everything in this round answers to one design target, stated in full in the
+next section: **a net that reaches full strength on 200M–1B training positions,
+trained on one home CPU.** That is the reason GOOB uses a Schoenemann-style
+network rather than a Stockfish-style one that needs billions of positions.
+
 The rules from R1 still apply: every change gets an SPRT against the previous
 accepted engine, net changes get an LTC confirmation, and nothing existing in
 `data/`, `data_gen/`, `checkpoints/` or `src/weights/` is ever overwritten
@@ -29,8 +34,62 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 
 ---
 
+## Design Target: Strong at 200M–1B Positions
+
+### The target
+
+GOOB's net must reach full strength when trained on **200M to 1B unique
+positions in total**, Lichess and self-play together, on the home CPU. It must
+not depend on the multi-billion-position datasets that Stockfish-style nets
+are trained on. The budget counts **unique positions**. Several epochs over
+the pool, and warm starts that reuse it, are fine.
+
+### Why the current architecture fits it
+
+The net is Schoenemann-style, `(768xK -> 1024)x2 -> 1x8` with SCReLU. With
+about 300M Lichess positions it already produced a strong net. The reasons
+(R1 Section 1) are properties to protect, not accidents:
+
+- **One hidden layer, small input set.** The feature-transformer weight
+  `ft[f][j]` gets a gradient every time feature `f` is active. Nothing in the
+  net is so rare that it needs billions of positions to be estimated.
+- **Structure that shares statistics.** Mirroring folds kingside and queenside
+  into one set of features. Factorized king buckets learn a shared weight from
+  every position and only a small per-bucket correction. Both add knowledge
+  without dividing the data.
+- **Good labels.** Deep evals and, now, self-play scores with game results.
+  When data is limited, a better label is worth more than an extra row.
+- **Exact warm starts.** Each accepted change so far started at its parent's
+  strength, so the new net only had to learn the difference.
+
+### Rules for this round
+
+1. **Data quality before data volume.** Better labels (stronger generating
+   nets, the datagen v2 filters, calibration) and a better distribution
+   (self-play) come first. The training pool is capped at **1B unique
+   positions**, Lichess included (Phase 8).
+2. **Structure before capacity.** A change that shares statistics or adds a
+   factorized, warm-started refinement (like Phase 7) is in scope. A change
+   that only adds capacity (wider L1, extra layers, threat inputs) is out of
+   scope unless it comes with an argument that it pays off inside the budget
+   (Section 15).
+3. **Win inside the budget or not at all.** Every candidate trains on data
+   from the capped pool at the standard step budget. A change that would only
+   win with more data than this fails its SPRT here, and that is the intended
+   result.
+4. **Watch for saturation.** Learning curves from every training run
+   (Phase 2.1) show whether a run is limited by steps, by data or by the
+   architecture. Only the last case justifies an architecture change.
+5. **Stay trainable from zero.** A chain of warm starts can hide a net that
+   cannot be reproduced. Once per round, a from-scratch run on the pool
+   confirms the architecture still reaches its strength inside the budget
+   (Phase 8, budget check).
+
+---
+
 ## Table of Contents
 
+- [Design Target: Strong at 200M–1B Positions](#design-target-strong-at-200m1b-positions)
 1. [Assumptions to Verify First](#1-assumptions-to-verify-first)
 2. [What R1 Established, and What It Did Not](#2-what-r1-established-and-what-it-did-not)
 3. [Review of `tools/datagen.c`](#3-review-of-toolsdatagenc)
@@ -83,7 +142,7 @@ code change, so Round 2 branches start from the real state
 ### Accepted chain
 
 ```
-base (Lichess, 768 -> 1024 x2 -> 1 x8)
+base (~300M Lichess positions, Schoenemann-style 768 -> 1024 x2 -> 1 x8)
  -> R1 Phase 1 control fine-tune        accepted STC+LTC
  -> R1 Phase 3 mirroring                accepted STC+LTC
  -> R1 Phase 4 4 king buckets + cache   accepted
@@ -158,17 +217,22 @@ it is and the improvements go into datagen v2 (Phase 6).
 ### Goals
 
 - Elo by SPRT against the previous accepted net, confirmed at LTC.
+- Stay inside the design target: the net stays at full strength when trained
+  on 200M–1B unique positions.
 - Make self-play data the main source of improvement, with a cycle (Phase 8)
-  that keeps running without a redesign each round.
+  that improves label quality and does not just grow the pool.
 - Keep both R1 strengths: every new net warm-starts from the previous one, and
   a training run stays under about a day on the home CPU.
 
-### Hard constraints (same as R1, plus three new ones)
+### Hard constraints (same as R1, plus four new ones)
 
 - NNUE protection: new experiment directories only. Generated data goes into
   new `data_gen*/` directories. `src/weights/quantised.bin` is replaced only by
   promoting an accepted net (`cp` after a backup copy, as in the Phase 2 guide).
 - One logical change per experiment.
+- **New: data budget.** The training pool never holds more than 1B unique
+  positions (Lichess + all self-play generations). Architecture changes are
+  judged only on data from that pool (Design Target, rules 2–3).
 - **New: fixed step count.** Data experiments fix the number of training
   samples seen, not the number of epochs (Phase 2.3). R1's D runs show what
   happens otherwise.
@@ -312,6 +376,19 @@ next to the main `--val` MSE. For extra sets with results, log **two** numbers:
 MSE against the blended target (depends on λ) and MSE against the pure-eval
 target (comparable across λ).
 
+**Learning curves.** `--val-every N` (in batches, default off) also
+evaluates every validation set every N batches and appends one CSV row per
+evaluation (step, samples seen, train loss, each validation MSE) to a file
+beside `--out-last`. Use 20 to 50 evaluations per run on a 200k-record
+validation set; each costs seconds. This is the Design Target's saturation
+check (rule 4), and it costs nothing extra in CPU. How to read the curves:
+
+| Shape at the end of a run | Meaning | Next step |
+|---|---|---|
+| Validation MSE still falling while the LR is low | limited by steps | larger `--total-samples` |
+| Training loss keeps falling, `val_gen2` MSE flat or rising, rows repeated 4+ times | limited by data (the net memorizes) | more or fresher generations (Phase 8) |
+| Both flat early, rows seen only 1–2 times | limited by the architecture at this data size | a structural change (Phase 7) is justified |
+
 ### 8.2 Checkpoint selection
 
 `--select-by {val,last}`, default `val` (today's behaviour). Data experiments
@@ -391,7 +468,7 @@ everything else identical.
 All runs: warm start `--init exp_datagen_d1/nnue.pt`, `--mirror --king-buckets 4
 --optimizer adamw --weight-decay 0 --bucket-decay 1e-4 --batch-size 8192
 --lr 1e-4 --lr-schedule step-cosine --wdl-lambda 0.75 --seed 0
---select-by last`, and the **same `--total-samples`**. Suggested budget:
+--select-by last --val-every 2000`, and the **same `--total-samples`**. Suggested budget:
 480M (D1 used about 320M). Measure the speed first and shrink the budget if a
 run would take over a day.
 
@@ -426,6 +503,11 @@ Phase 4 and generates Gen-3.
 Everything in R1 Section 14, plus: total samples, generated share, the
 composition of the generated pool by generation, MSE on all three validation
 sets per epoch, and the Phase 1 statistics of the pool used.
+
+Also record the **learning-curve verdict** for A, B and C (step-, data- or
+architecture-limited, using the 8.1 table). These three curves are the first
+direct measurement of how much data this architecture can use. They decide
+whether the next CPU-days go to datagen (Phase 6/8) or to Phase 7.
 
 ---
 
@@ -522,11 +604,27 @@ the results log which of the two was done.
 
 ## 13. Phase 7 – 8 King Buckets with an Exact Warm Start
 
-### 13.1 Why now
+### 13.1 Why now, and why it fits the budget
 
 R1 deferred more buckets until Phase 4 passed and the data had grown. Both are
 now true. The factorizer already keeps the data cost low, and an exact warm
 start (13.4) means the new net starts at the old net's strength.
+
+This is the one architecture change in Round 2. It is a **structural** change
+(Design Target, rule 2), and its data cost can be counted:
+
+- `ft_shared` (768 x 1024) still learns from every position, as today.
+- Each bucket's correction `ft_buckets[b]` learns from the positions where
+  some perspective's king is in bucket `b`. With the layout in 13.3 and a
+  minimum share of about 1% per bucket (checked in Phase 1), a 200M pool gives
+  every bucket at least about 2M positions. That is enough for a correction
+  term that weight decay pulls toward zero.
+- The output layer and L1 width do not change, so capacity beyond the
+  bucket corrections does not grow.
+
+Prerequisite: the Phase 3 learning curves (9.4) do **not** say "limited by
+data". If they do, more data comes first. Splitting buckets further when the
+current net is starved of data spends the budget in the wrong place.
 
 ### 13.2 What it fixes
 
@@ -592,6 +690,11 @@ Same file and budget as the current accepted recipe:
 Primary SPRT: K8 vs K4, STC then **LTC**. NPS cost shows up most at STC, and
 knowledge gains most at LTC. Ship decision: K8 vs the accepted engine.
 
+If K8 does not beat K4, keep 4 buckets. Do not retry with a pool larger than
+the 1B cap: needing more data to win is a fail under the Design Target. One
+retry is allowed at the end of the round, with the larger pool still inside
+the cap, if the learning curves show the first attempt was limited by steps.
+
 Tests: everything in R1 8.8, with king walks across every new boundary for
 both colours.
 
@@ -609,34 +712,73 @@ Rules:
 
 1. **Data comes from the current accepted net**, built into the datagen binary
    with `EVALFILE=` (no copy into `src/weights/` needed).
-2. **Keep every generation, and cap old ones.** Down-weight earlier
-   generations with `mix_data.py` per-source caps once the pool passes about
-   200M. Their labels come from weaker nets. Drop Gen-1 first.
-3. **Taper Lichess.** Once self-play passes about 150M, test a self-play-only
-   file against the current mix at equal steps (one SPRT). Engines that train
-   on their own data usually end up dropping external data. Let the SPRT
-   decide when.
-4. **Fixed step budget per cycle**, raised only when the pool grows enough for
-   rows to repeat less than about 4 times.
-5. **Stop rule.** Two consecutive generations fail their SPRT: stop
+2. **The pool is capped at 1B unique positions** (Design Target), Lichess's
+   ~300M included. That leaves room for roughly 700M self-play positions,
+   about 7–14 generations of 50–100M. Below the cap, keep every generation, and
+   down-weight older ones with `mix_data.py` per-source caps (their labels come
+   from weaker nets). At the cap, a new generation **replaces** the oldest one
+   (Gen-1 first) instead of being added.
+3. **After the cap, improvement comes from label quality, not volume.** Each
+   new generation is labelled by a stronger net, so swapping old data for new
+   keeps improving the pool at a constant size. This is the steady state the
+   loop aims for. Spending CPU on better labels (for example a higher node
+   budget, rule 6) beats generating past the cap.
+4. **Taper Lichess.** Once self-play passes about 150M, test a self-play-only
+   file against the current mix at equal steps (one SPRT). If self-play-only
+   wins, Lichess leaves the pool, and its ~300M slots go to self-play under
+   the same 1B cap. Let the SPRT decide when.
+5. **Fixed step budget per cycle**, raised only when the pool grows enough for
+   rows to repeat less than about 4 times. At the cap, 1–2 epochs over 1B
+   would take about 1.5–3 days at 8k positions/s. Keep runs at about a day
+   by sampling the pool, not by making it smaller.
+6. **Stop rule.** Two consecutive generations fail their SPRT: stop
    generating and spend the CPU on Phase 7, the deferred work, or a larger node
    budget (5000 → 10000) for the next generation.
-6. **SPSA** every second accepted net (11.1).
-7. Each cycle gets a results block. The `data_stats.py` summary of the new
-   generation goes in its Notes.
+7. **SPSA** every second accepted net (11.1).
+8. Each cycle gets a results block. The `data_stats.py` summary of the new
+   generation and the learning-curve verdict go in its Notes.
+
+### Budget check (once per round, optional but recommended)
+
+Every accepted net in R1 and Round 2 is a warm start from its parent. Each run
+stays inside the pool, but the chain as a whole has seen far more samples than
+any single run. To confirm that the **current** architecture is still trainable
+to full strength from zero on at most 1B positions:
+
+1. Train one net from scratch on the round's final pool (no `--init`), with the
+   accepted architecture flags, cosine LR from 1e-3, and a sample budget large
+   enough that the learning curves flatten. That is about 2–4B samples, or
+   roughly 3–6 days at 4-bucket speed. Run it when the machine would otherwise
+   be idle.
+2. SPRT it against the accepted warm-start net.
+3. Reading the result:
+   - Equal or better: the architecture meets the Design Target, and the
+     from-scratch recipe goes into the README as the reproducible path.
+   - Clearly worse: the strength depends on the warm-start history. Record it.
+     Before the next round adds structure, find out whether more epochs, a
+     higher starting LR or warmup closes the gap.
+
+This check costs no Elo by itself. It protects the property the
+Schoenemann-style net was chosen for.
 
 ---
 
 ## 15. Deferred Work
 
-| Idea | Cost | Reopen when |
-|---|---|---|
-| Wider L1 (1536) | NPS: each accumulator update and the output layer grow 1.5x. Training 1.5x per step. Exact warm start is possible: the new neurons get zero output weights | the self-play pool passes about 300M, and Phase 7's NPS measurement shows the larger FT table was affordable |
-| Hidden layers (L1 → 16 → 32 → 1, pairwise activation) | rewrite of the `nnue_loader.h` forward pass, int8 path for L2, and a sparse-input L2 to keep evals fast. No exact warm start | self-play pool of 500M or more, and Phase 7 accepted |
-| Threat inputs | large engine and trainer change | after hidden layers |
-| From-scratch training on the full pool | about a week of CPU per run | the warm-start chain stalls (stop rule) |
-| Higher node budget in datagen | throughput halves per doubling | stop rule, or Phase 1 shows heavy label noise |
-| GPU training | n/a | a GPU becomes available: then from-scratch runs and bigger nets become cheap, and this plan's ordering should be revisited |
+Every row is judged against the Design Target first. "Fits" means it can be
+expected to pay off with at most 1B unique positions, on the home CPU, without
+breaking the warm-start chain.
+
+| Idea | Fits 200M–1B? | Cost | Status / reopen when |
+|---|---|---|---|
+| Higher node budget in datagen (5000 → 10000) | **Yes.** Better labels at a fixed pool size is exactly rule 1 | throughput halves per doubling | in scope. Reopen at the stop rule, or once the pool reaches the cap (Phase 8 rule 3) |
+| Wider L1 (1024 → 1536) | **Possibly.** Data per weight does not change (R1 Section 1), but capacity grows 1.5x with no new structure. Gains at this data size are expected to be small next to the NPS cost | NPS: each accumulator update and the output layer grow 1.5x. Training 1.5x per step. Exact warm start is possible (new neurons get zero output weights) | deferred. Reopen only if the Phase 3/7 learning curves say "limited by the architecture" **and** the paired NPS harness shows headroom |
+| More king buckets than 8 | **Only with the factorizer**, and only while every bucket keeps about 1% of the pool | FT table and refreshes grow again | after Phase 7 passes, if its curves leave room |
+| Many king buckets without a factorizer | **No.** Each bucket sees 1/N of the data, which is the data cost the factorizer exists to avoid | n/a | never (R1 Section 11) |
+| Hidden layers (L1 → 16 → 32 → 1, pairwise activation) | **Out of scope by design, not by data size.** R1 Section 11 notes that small L2/L3 heads have helped 768-input engines at a few hundred million positions, so data alone does not rule them out. They are left out because they break the exact warm-start chain, need a new int8 and sparse-L2 inference path in `nnue_loader.h`, and move the net away from the Schoenemann-style design this plan protects | large engine and trainer rewrite; a from-scratch training run | revisit only as a deliberate decision at the start of a later round, judged by a from-scratch run inside the budget |
+| Threat / attack inputs | **No.** The input space grows several-fold and data per weight drops: the data-hungry direction | large engine and trainer change, slower updates | out of scope under this Design Target |
+| From-scratch training on the full pool | yes | about 3–6 days of CPU per run | now the Phase 8 **budget check**, once per round |
+| GPU training | n/a | n/a | if a GPU becomes available, from-scratch runs get cheap. The Design Target stays: a GPU makes training faster, it does not raise the data budget |
 
 ---
 
@@ -655,6 +797,8 @@ measurements.
 | One SPRT at STC, 3000 games (concurrency 6, laptop rate) | up to about 11 h; many stop earlier |
 | Gen-3, 50–100M records | 1–2 days (Phase 1 gives the real rate) |
 | Phase 7 runs (K8, K4) | 35–60 h |
+| Budget check (from scratch, 2–4B samples) | 3–6 days, once per round |
+| Pool at the 1B cap | about 68 GB on disk at 68 bytes per record. Lichess `train.bin` is already about 20 GB |
 
 Data generation and training both saturate the CPU. Run them one after the
 other, never at the same time (R1 3).
@@ -670,6 +814,13 @@ R1 Section 13 applies to every phase. Round 2 adds:
 - [ ] Validation MSE logged on `val.bin`, `val_gen2.bin` and `val_gen.bin`
       (pure-eval column when λ differs).
 - [ ] No training file contains any record of a fixed hold-out set.
+- [ ] The pool the run drew from holds at most 1B unique positions (Lichess +
+      every generation), and the results log gives its size.
+- [ ] The learning-curve CSV (`--val-every`) is saved next to the
+      checkpoint, and its verdict (steps / data / architecture) is in the
+      results log.
+- [ ] Architecture changes: the Design Target rule they satisfy is named, and
+      the Section 15 "Fits" reasoning still holds after the run.
 - [ ] `data_stats.py` run on every new generation before training; numbers in
       the results log.
 - [ ] SPRTs use `BOOK=tools/book_test.epd`; datagen uses
@@ -695,6 +846,9 @@ R1 Section 13 applies to every phase. Round 2 adds:
 | Mixer runs out of RAM on 100M+ row files | chunked writer (Phase 2.4) |
 | 8 buckets cost more NPS than they gain | paired NPS harness, LTC confirmation, K4 control |
 | Overwriting data or nets | new directories only, `O_EXCL` in datagen, mixer refuses existing outputs, SHA-256 checks |
+| Drift toward a data-hungry design (capacity added because "more data will fix it") | Design Target rules; the Fits column in Section 15; learning curves must show the architecture is the limit before capacity is added |
+| Net strength depends on the warm-start history and cannot be reproduced inside the budget | Phase 8 budget check (from-scratch run) once per round |
+| Pool outgrows the disk or the budget | 1B cap, with replacement of the oldest generation (Phase 8 rule 2) |
 
 ---
 
@@ -705,11 +859,15 @@ R1 Section 13 applies to every phase. Round 2 adds:
 2. **What is GOOB's cp-to-outcome scale?** Phase 1's K. It decides how much λ
    matters and whether label scale is a problem between Lichess and self-play.
 3. **Best-by-validation or last?** The D1 best-vs-last SPRT (8.2).
-4. **When to drop Lichess?** Phase 8 rule 3.
+4. **When to drop Lichess?** Phase 8 rule 4.
 5. **Static eval in check: skip it, or train on it?** Phase 5.2 first; the data
    route only if that fails.
 6. **Is 5000 nodes still the right budget** as the net gets stronger? Revisit
-   at the stop rule, not before.
+   at the stop rule or at the pool cap, not before.
+7. **At what pool size does this architecture saturate?** The learning curves
+   from Phases 3, 4 and 7 answer it. If it saturates well below 1B, the
+   remaining budget goes into label quality (Design Target, rule 1). If it is still improving
+   at the cap, the budget check shows whether that holds from scratch too.
 
 ---
 
