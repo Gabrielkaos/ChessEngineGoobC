@@ -110,7 +110,9 @@ def main():
 
     if not os.path.isfile(datagen_bin) or not os.access(datagen_bin, os.X_OK):
         print(f"Error: datagen executable not found at '{datagen_bin}'.")
-        print("Build it first from repository root:")
+        print("Build it from repository root:")
+        print("  make -C src datagen")
+        print("Or compile manually:")
         print("  gcc -O3 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 \\")
         print("      -DEVALFILE='\"src/weights/quantised.bin\"' -Isrc \\")
         print("      tools/datagen.c $(ls src/*.c | grep -v src/main.c) -lm -o tools/datagen")
@@ -137,10 +139,10 @@ def main():
 
     def handle_sigint(signum, frame):
         print("\nTerminating worker processes...")
-        for p in processes:
+        for p, _, _ in processes:
             if p.poll() is None:
                 p.terminate()
-        for p in processes:
+        for p, _, _ in processes:
             p.wait()
         print("All processes terminated.")
         sys.exit(0)

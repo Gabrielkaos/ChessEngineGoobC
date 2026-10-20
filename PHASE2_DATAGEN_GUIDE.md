@@ -10,10 +10,7 @@ Compile the standalone native C generator linked directly with engine objects:
 
 ```bash
 # Compile datagen binary (matches src/makefile flags and embeds src/weights/quantised.bin)
-gcc -O3 -march=native -pthread -DUSE_PEXT -DPLATFORM_LINUX \
-    -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 \
-    -DEVALFILE='"src/weights/quantised.bin"' \
-    -Isrc tools/datagen.c $(ls src/*.c | grep -v 'src/main.c') -lm -o tools/datagen
+make -C src datagen
 
 # Run Phase 2 automated test suite (format, quietness, WDL flags, NNUE protection)
 tools/.venv/bin/python3 tools/test_datagen.py
@@ -110,9 +107,9 @@ tools/.venv/bin/python3 tools/nnue_project/scripts/train.py \
     --out-best tools/nnue_project/checkpoints/exp_datagen_d2/nnue.pt \
     --out-last tools/nnue_project/checkpoints/exp_datagen_d2/last.pt
 
-# Net-D3: 50% self-play, WDL lambda = 0.50 (higher game-outcome weight)
+# Net-D3: 25% self-play (D1 dataset), WDL lambda = 0.50 (isolates game-outcome weight)
 tools/.venv/bin/python3 tools/nnue_project/scripts/train.py \
-    --train tools/nnue_project/data_mixed/train_d2.bin \
+    --train tools/nnue_project/data_mixed/train_d1.bin \
     --val tools/nnue_project/data/val.bin \
     --init tools/nnue_project/checkpoints/exp_4bkt/nnue.pt \
     --mirror \

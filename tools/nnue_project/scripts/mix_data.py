@@ -28,8 +28,10 @@ import argparse
 import glob
 import os
 import random
+import shutil
 import struct
 import sys
+import tempfile
 import numpy as np
 
 RECORD_SIZE = 68
@@ -113,6 +115,9 @@ def verify_protection(out_path, base_path):
     base_abs = os.path.abspath(base_path)
     if out_abs == base_abs:
         raise ValueError(f"FATAL: Destination '{out_path}' matches base dataset! Never overwrite base data.")
+    for forbidden in ["quantised.bin", "nnue.pt", "data/train.bin", "data/val.bin", "data_selfplay"]:
+        if forbidden in out_abs:
+            raise ValueError(f"FATAL: Destination '{out_path}' violates NNUE protection rules ({forbidden}).")
     if os.path.exists(out_abs):
         raise ValueError(f"FATAL: Output file '{out_path}' already exists! NNUE protection refuses to overwrite.")
 
@@ -211,37 +216,98 @@ def main():
     # Sample base records
     print(f"Reading base dataset ({n_base_needed:,} records)...")
     base_mm = np.memmap(args.base_data, dtype=np.uint8, mode="r", shape=(total_base_records, RECORD_SIZE))
-    if n_base_needed == total_base_records:
-        sampled_base = base_mm
-    else:
+    base_indices = None
+    if n_base_needed < total_base_records:
         base_indices = rng.choice(total_base_records, size=n_base_needed, replace=False)
-        sampled_base = base_mm[base_indices]
-
-    # Combine and shuffle
-    print("Combining and shuffling records...")
-    combined = np.concatenate([sampled_gen, sampled_base], axis=0)
-    if not args.no_shuffle:
-        shuffle_perm = rng.permutation(len(combined))
-        combined = combined[shuffle_perm]
-
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     print(f"Writing mixed dataset to '{args.out}'...")
-    combined.tofile(args.out)
 
-    # Summary statistics on output
-    flags = combined[:, 67]
-    mate_count = np.sum(flags & 1)
-    res_codes = (flags >> 1) & 0x03
-    w_count = np.sum(res_codes == 1)
-    d_count = np.sum(res_codes == 2)
-    b_count = np.sum(res_codes == 3)
-    no_res_count = np.sum(res_codes == 0)
+    mate_count = 0
+    w_count = 0
+    d_count = 0
+    b_count = 0
+    no_res_count = 0
+
+    def update_stats(chunk):
+        nonlocal mate_count, w_count, d_count, b_count, no_res_count
+        flags = chunk[:, 67]
+        mate_count += int(np.sum(flags & 1))
+        res_codes = (flags >> 1) & 0x03
+        w_count += int(np.sum(res_codes == 1))
+        d_count += int(np.sum(res_codes == 2))
+        b_count += int(np.sum(res_codes == 3))
+        no_res_count += int(np.sum(res_codes == 0))
+
+    CHUNK = 500_000
+
+    if args.no_shuffle:
+        print("Streaming records directly to output file (no-shuffle)...")
+        with open(args.out, "wb") as out_fp:
+            for s in range(0, n_gen_needed, CHUNK):
+                chunk = sampled_gen[s:s + CHUNK]
+                update_stats(chunk)
+                out_fp.write(chunk.tobytes())
+            for s in range(0, n_base_needed, CHUNK):
+                e = min(n_base_needed, s + CHUNK)
+                chunk = base_mm[s:e] if base_indices is None else base_mm[base_indices[s:e]]
+                update_stats(chunk)
+                out_fp.write(chunk.tobytes())
+    elif total_output <= 5_000_000:
+        print("Combining and shuffling records in memory...")
+        sampled_base = base_mm[:n_base_needed] if base_indices is None else base_mm[base_indices]
+        combined = np.concatenate([sampled_gen, sampled_base], axis=0)
+        combined = combined[rng.permutation(len(combined))]
+        update_stats(combined)
+        combined.tofile(args.out)
+    else:
+        # Large dataset: use disk-bucketed shuffle to prevent OOM
+        n_buckets = max(8, min(64, int(np.ceil((total_output * RECORD_SIZE) / (256 * 1024 * 1024)))))
+        bucket_dir = tempfile.mkdtemp(prefix="mix_buckets_", dir=os.path.dirname(os.path.abspath(args.out)))
+        print(f"Distributing records across {n_buckets} temporary disk buckets ({bucket_dir})...")
+        bucket_fps = [open(os.path.join(bucket_dir, f"bucket_{b}.bin"), "wb") for b in range(n_buckets)]
+        try:
+            for s in range(0, n_gen_needed, CHUNK):
+                chunk = sampled_gen[s:s + CHUNK]
+                b_ids = rng.integers(0, n_buckets, size=len(chunk))
+                order = np.argsort(b_ids, kind="stable")
+                bounds = np.searchsorted(b_ids[order], np.arange(n_buckets + 1))
+                for b in range(n_buckets):
+                    if bounds[b + 1] > bounds[b]:
+                        bucket_fps[b].write(chunk[order[bounds[b]:bounds[b + 1]]].tobytes())
+
+            for s in range(0, n_base_needed, CHUNK):
+                e = min(n_base_needed, s + CHUNK)
+                chunk = base_mm[s:e] if base_indices is None else base_mm[base_indices[s:e]]
+                b_ids = rng.integers(0, n_buckets, size=len(chunk))
+                order = np.argsort(b_ids, kind="stable")
+                bounds = np.searchsorted(b_ids[order], np.arange(n_buckets + 1))
+                for b in range(n_buckets):
+                    if bounds[b + 1] > bounds[b]:
+                        bucket_fps[b].write(chunk[order[bounds[b]:bounds[b + 1]]].tobytes())
+
+            for fp in bucket_fps:
+                fp.close()
+
+            print(f"Compiling shuffled dataset from disk buckets into '{args.out}'...")
+            with open(args.out, "wb") as out_fp:
+                for b in range(n_buckets):
+                    b_path = os.path.join(bucket_dir, f"bucket_{b}.bin")
+                    if os.path.exists(b_path):
+                        b_data = np.fromfile(b_path, dtype=np.uint8).reshape(-1, RECORD_SIZE)
+                        if len(b_data) > 0:
+                            b_data = b_data[rng.permutation(len(b_data))]
+                            update_stats(b_data)
+                            out_fp.write(b_data.tobytes())
+                        del b_data
+                        os.remove(b_path)
+        finally:
+            shutil.rmtree(bucket_dir, ignore_errors=True)
 
     print("================================================================================")
     print("Mixed Dataset Created Successfully:")
-    print(f"  Total Records  : {len(combined):,}")
-    print(f"  Base Records   : {no_res_count:,} ({(no_res_count/len(combined))*100:.1f}%)")
-    print(f"  Gen Records    : {len(combined)-no_res_count:,} ({((len(combined)-no_res_count)/len(combined))*100:.1f}%)")
+    print(f"  Total Records  : {total_output:,}")
+    print(f"  Base Records   : {no_res_count:,} ({(no_res_count/total_output)*100:.1f}%)" if total_output > 0 else "  Base Records: 0")
+    print(f"  Gen Records    : {total_output-no_res_count:,} ({((total_output-no_res_count)/total_output)*100:.1f}%)" if total_output > 0 else "  Gen Records: 0")
     print(f"  W / D / L Gen  : {w_count:,} / {d_count:,} / {b_count:,}")
     print(f"  Mate Evaluated : {mate_count:,}")
     print(f"  Output Path    : {args.out}")

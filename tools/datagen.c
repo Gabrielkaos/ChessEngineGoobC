@@ -181,11 +181,6 @@ static void verify_path_safety(const char *path) {
                         "Never overwrite existing training sets, checkpoints, or weights.\n", path);
         exit(1);
     }
-    if (access(path, F_OK) == 0) {
-        fprintf(stderr, "FATAL: Output file '%s' already exists.\n"
-                        "NNUE protection refuses to overwrite existing data.\n", path);
-        exit(1);
-    }
 }
 
 static int is_threefold_repetition(const S_BOARD *pos) {
@@ -291,7 +286,12 @@ int main(int argc, char **argv) {
 
     int out_fd = open(out_path, O_WRONLY | O_CREAT | O_EXCL, 0644);
     if (out_fd < 0) {
-        fprintf(stderr, "FATAL: Could not create output file '%s': %s\n", out_path, strerror(errno));
+        if (errno == EEXIST) {
+            fprintf(stderr, "FATAL: Output file '%s' already exists.\n"
+                            "NNUE protection refuses to overwrite existing data.\n", out_path);
+        } else {
+            fprintf(stderr, "FATAL: Could not create output file '%s': %s\n", out_path, strerror(errno));
+        }
         return 1;
     }
     FILE *out_fp = fdopen(out_fd, "wb");

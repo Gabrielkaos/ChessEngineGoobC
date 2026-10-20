@@ -135,8 +135,46 @@ def main():
         assert "violates NNUE protection rules" in (res_protected.stdout + res_protected.stderr)
         print("  OK: Refused write to protected weights path.")
 
+        print("\n=== Test 5: Dataset Mixer & Safety (mix_data.py) ===")
+        mix_out = os.path.join(tmp_dir, "mixed.bin")
+        mix_val = os.path.join(tmp_dir, "val_gen.bin")
+        mix_script = os.path.join(repo_root, "tools", "nnue_project", "scripts", "mix_data.py")
+
+        # 1. Successful mixing with validation split
+        res_mix = subprocess.run(
+            [sys.executable, mix_script, "--gen-data", file1, "--base-data", file2, "--out", mix_out, "--val-out", mix_val, "--val-count", "10", "--gen-share", "0.5"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        assert res_mix.returncode == 0, f"mix_data.py failed: {res_mix.stderr}"
+        assert os.path.exists(mix_out), "mixed.bin not created"
+        assert os.path.exists(mix_val), "val_gen.bin not created"
+        assert os.path.getsize(mix_val) == 10 * RECORD_SIZE, "val_gen.bin size mismatch"
+        print(f"  OK: Successfully mixed datasets with held-out validation set ({os.path.getsize(mix_out) // RECORD_SIZE} records).")
+
+        # 2. Protection refusal on existing file
+        res_mix_exist = subprocess.run(
+            [sys.executable, mix_script, "--gen-data", file1, "--base-data", file2, "--out", mix_out],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        assert res_mix_exist.returncode != 0, "mix_data.py failed to refuse existing file"
+        print("  OK: Refused overwrite of existing mixed dataset.")
+
+        # 3. Protection refusal on protected destination
+        res_mix_prot = subprocess.run(
+            [sys.executable, mix_script, "--gen-data", file1, "--base-data", file2, "--out", "src/weights/quantised.bin"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        assert res_mix_prot.returncode != 0, "mix_data.py failed to reject protected weights path"
+        print("  OK: Refused write to protected weights path.")
+
         print("\n=======================================================")
-        print("ALL PHASE 2 DATAGEN TESTS PASSED SUCCESSFULLY!")
+        print("ALL PHASE 2 DATAGEN & MIX TESTS PASSED SUCCESSFULLY!")
         print("=======================================================")
 
     finally:

@@ -166,6 +166,7 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 | `make x86-64` | Baseline 64-bit x86 (SSE2) | Legacy compatibility fallback |
 | `make trace` | Builds `native` with `-DTRACE` for search telemetry | Use with `tools/trace_search.py` |
 | `make tune` | Builds `native` with `-DTUNE` (`GOOB-2.2-BETA-native-tune`): `tune.h` constants become UCI options | SPSA tuning with `tools/spsa/spsa.py` |
+| `make datagen` | Builds `tools/datagen` linked against native engine objects | Native self-play data generation (`tools/run_datagen.py`) |
 
 ### Compilation Examples
 ```bash

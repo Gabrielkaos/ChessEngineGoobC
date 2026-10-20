@@ -22,11 +22,15 @@ tools/*.bin
 tools/*.so
 tools/*.d
 tools/*.json
+tools/datagen
 tools/nnue_project/data_json/*
 tools/nnue_project/data/*
 tools/nnue_project/data_new/*
 tools/nnue_project/data_new_clean
 tools/nnue_project/data_new_backup
+tools/nnue_project/data_gen/*
+tools/nnue_project/data_gen_10m/*
+tools/nnue_project/data_mixed/*
 tools/nnue_project/checkpoints/*
 tools/nnue_project/scripts/__pycache__/
 

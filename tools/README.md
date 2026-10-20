@@ -45,6 +45,10 @@ The tooling is divided into three primary operational domains:
   * Refuses to open or overwrite any existing output file (`O_CREAT | O_EXCL`).
 * **Build & Usage:**
   ```bash
+  # Recommended build via makefile:
+  make -C src datagen
+
+  # Or compile manually:
   gcc -O3 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 \
       -DEVALFILE='"src/weights/quantised.bin"' \
       -Isrc tools/datagen.c $(ls src/*.c | grep -v src/main.c) \

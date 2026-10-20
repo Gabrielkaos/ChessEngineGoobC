@@ -385,7 +385,7 @@ def main():
 
     existing_hashes = None
     stream_hashes = set()
-    newly_added_hashes = []
+    n_newly_added = 0
     n_dup_existing = 0
     n_dup_stream = 0
 
@@ -517,7 +517,11 @@ def main():
                             n_dup_stream += 1
                             continue
                         stream_hashes.add(h)
-                        newly_added_hashes.append(h)
+                        n_newly_added += 1
+                        if len(stream_hashes) >= 2_000_000:
+                            new_arr = np.fromiter(stream_hashes, dtype=np.uint64, count=len(stream_hashes))
+                            existing_hashes = np.unique(np.concatenate([existing_hashes, new_arr])) if len(existing_hashes) > 0 else np.sort(new_arr)
+                            stream_hashes.clear()
 
                     if args.n_val and args.n_val > 0 and n_val_written < args.n_val:
                         val_buf += rec
@@ -613,12 +617,14 @@ def main():
             pbar.close()
 
         # Update cached hash index if deduplication was active and new records were added
-        if args.dedup and newly_added_hashes and not args.no_cache_index:
+        if args.dedup and n_newly_added > 0 and not args.no_cache_index:
             try:
-                print(f"[Hash Index] Updating index cache with {len(newly_added_hashes):,} newly added positions...")
-                all_updated = np.concatenate([existing_hashes, np.array(newly_added_hashes, dtype=np.uint64)])
-                sorted_updated = np.unique(all_updated)
-                save_hash_index(out_dir, sorted_updated, train_path, val_path)
+                if stream_hashes:
+                    new_arr = np.fromiter(stream_hashes, dtype=np.uint64, count=len(stream_hashes))
+                    existing_hashes = np.unique(np.concatenate([existing_hashes, new_arr])) if len(existing_hashes) > 0 else np.sort(new_arr)
+                    stream_hashes.clear()
+                print(f"[Hash Index] Updating index cache with {n_newly_added:,} newly added positions...")
+                save_hash_index(out_dir, existing_hashes, train_path, val_path)
             except Exception as e:
                 print(f"[Hash Index] Warning: failed to update hash cache ({e})")
 

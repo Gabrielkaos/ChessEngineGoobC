@@ -197,6 +197,11 @@ trace:
 tune:
 	$(MAKE) TUNE=1 native
 
+.PHONY: datagen
+datagen: native
+	$(CC) $(CFLAGS_native) -I. ../tools/datagen.c $(filter-out obj/native/main.o, $(OBJS_native)) -o ../tools/datagen $(LDFLAGS)
+	@echo "  LD  ../tools/datagen"
+
 # ---------------------------------------------------------------------------
 # Default target – build universal binary (or all with 'make all')
 # ---------------------------------------------------------------------------
