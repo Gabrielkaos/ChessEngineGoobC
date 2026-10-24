@@ -23,6 +23,7 @@ tools/*.so
 tools/*.d
 tools/*.json
 tools/datagen
+tools/test_incremental
 tools/nnue_project/data_json/*
 tools/nnue_project/data/*
 tools/nnue_project/data_new/*

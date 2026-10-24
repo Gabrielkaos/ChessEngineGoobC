@@ -83,41 +83,7 @@ int main(int argc, char *argv[])
     printf("\nUCI engine by Gabriel M. [%s]\n", g_cpu_tier_name);
     printf("type 'uci' then 'help' for commands\n\n");
 
-
-	char line[256];
-	while (TRUE) {
-		memset(&line[0], 0, sizeof(line));
-
-		fflush(stdout);
-		if (!fgets(line, 256, stdin))
-			break;
-		if (line[0] == '\n')
-			continue;
-		if (!strncmp(line, "uci",3)) {
-			UCILoop(pos, info);
-			if(info->quit == TRUE) break;
-			continue;
-		}else if (!strncmp(line, "compiler", 8)){
-			print_compiler_info();
-			continue;
-		}else if (!strncmp(line, "bb",2)){
-            TestHASH(QUEENG3);
-            continue;
-        }else if(!strncmp(line, "test",4)){
-            runTTReplacementTests();
-            continue;
-        }else if(!strncmp(line, "trace", 5)){
-            handle_trace_command(line, pos, info);
-            continue;
-        }else if(!strncmp(line, "bench", 5)){
-            int depth = 8;
-            sscanf(line, "bench %d", &depth);
-            run_bench(pos, info, pvTable, depth);
-            continue;
-        }else if(!strncmp(line, "quit",4)){
-			break;
-		}
-	}
+    UCILoop(pos, info);
 
 	if (pvTable->pTable) goob_aligned_free(pvTable->pTable);
 	FreeThreadPool();

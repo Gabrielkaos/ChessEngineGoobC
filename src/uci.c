@@ -641,9 +641,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
     char str[INPUTBUFFER];
 
-    uciPrint();
-    fflush(stdout);
-
     while(getInput(str)){
         if(strEquals(str,"uci")){
             uciPrint();
@@ -766,6 +763,26 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
 		}
 
+        else if (strStartsWith(str, "bench")) {
+            if (searchThreadValid) joinSearchThread(info);
+            int depth = 8;
+            sscanf(str, "bench %d", &depth);
+            if (depth < 1) depth = 8;
+            run_bench(pos, info, pvTable, depth);
+            fflush(stdout);
+        }
+
+        else if (strEquals(str, "test")) {
+            if (searchThreadValid) joinSearchThread(info);
+            runTTReplacementTests();
+            fflush(stdout);
+        }
+
+        else if (strEquals(str, "bb")) {
+            TestHASH(QUEENG3);
+            fflush(stdout);
+        }
+
 		else if(strEquals(str, "help")) {
             printf("commands:\n");
             printf("-uci\n");
@@ -778,6 +795,7 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             printf("-stop\n");
             printf("-print\n");
             printf("-evaluate\n");
+            printf("-bench [depth]\n");
             printf("-perft(useful for debugging) x\n");
             printf("-uperft(faster) x\n");
             printf("-perfttest(test on positions)\n");

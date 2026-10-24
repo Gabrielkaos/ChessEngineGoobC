@@ -66,10 +66,19 @@ void updateAge(S_PVTABLE *table){
 }
 
 void clearPvTable(S_PVTABLE *table){
+    if(!table->pTable) return;
     memset(table->pTable, 0, (size_t)table->numEntries * sizeof(S_PVBUCKET));
 }
 
 void InitPvTable(S_PVTABLE *table,const int mb,int noisy){
+    if(mb < 1){
+        if(table->pTable != NULL) goob_aligned_free(table->pTable);
+        table->pTable = NULL;
+        table->numEntries = 0;
+        table->hashMask = 0;
+        if(noisy) printf("info string PV HashTable Initialization failed (size < 1 MB)\n");
+        return;
+    }
     table->generation = 0;
     size_t PvSize = (size_t)mb * 1024 * 1024;
     size_t rawEntries = PvSize / sizeof(S_PVBUCKET);

@@ -291,6 +291,7 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     int fullmove=0;
     sscanf(fen, " %d %d", &pos->st->fiftyMove, &fullmove);
     if(pos->st->fiftyMove < 0) pos->st->fiftyMove=0;
+    pos->gamePlyOffset = (fullmove > 0) ? (fullmove - 1) * 2 + (pos->side == BLACK ? 1 : 0) : 0;
 
     updateListMaterial(pos);
 

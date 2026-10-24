@@ -117,10 +117,10 @@ The tooling is divided into three primary operational domains:
 * **Purpose:** C unit test verifying that incremental accumulator updates, Finny table cache refreshes, and true from-scratch refreshes match bit-for-bit across complex game sequences (castling including `O-O-O`, king d/e boundary walks and captures, 4-bucket boundary transitions, promotions, en-passant, captures, multi-ply lazy crossings, `EvalFile` reload cache invalidation, and 50 random games) and that move unmaking ([`takeMove()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/makemove.c#L438-L480)) cleanly returns accumulators to the initial position. Accepts an optional `.bin` network path on the command line.
 * **Compilation & Execution:**
   ```bash
-  # from the repository root; builds into /tmp so the committed tools/test_incremental is left alone
+  # from the repository root; builds tools/test_incremental (ignored by git, or output to /tmp)
   gcc -O2 -march=native -pthread -DUSE_PEXT -DNNUE_MIRROR=1 -DNNUE_KING_BUCKETS=4 -DEVALFILE='"src/weights/quantised.bin"' -Isrc \
-      tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o /tmp/test_incremental
-  /tmp/test_incremental [optional_net.bin]
+      tools/test_incremental.c $(ls src/*.c | grep -v src/main.c) -lm -o tools/test_incremental
+  ./tools/test_incremental [optional_net.bin]
   ```
 
 ### 5. [`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)
