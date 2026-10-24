@@ -1712,7 +1712,7 @@ static int workerLoop(void *data) {
             //safety net: verify the bestmove is actually legal before sending it
             //to the GUI — a TT collision or threading issue could leave a stale
             //move that passed makeMove in a different internal state
-            if (worker->workerData.bestMove != NOMOVE &&
+            if (worker->workerData.bestMove == NOMOVE ||
                 !MoveExists(worker->originalPos, worker->workerData.bestMove)) {
                 S_MOVELIST fallbackList[1];
                 GenerateAllMoves(worker->originalPos, fallbackList);

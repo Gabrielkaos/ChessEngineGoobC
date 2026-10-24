@@ -70,7 +70,10 @@ INLINE int legal(const S_BOARD *pos, int move) {
     if (move & MVFLAGEP) {
         int capsq = (us == WHITE) ? (to - 8) : (to + 8);
         if (pos->st->checkersBB) {
-            if (pos->st->checkersBB != (1ULL << capsq)) return FALSE;
+            if (pos->st->checkersBB & (pos->st->checkersBB - 1)) return FALSE;
+            int checkerSq = LSBINDEX(pos->st->checkersBB);
+            if (pos->st->checkersBB != (1ULL << capsq) && !((1ULL << to) & BetweenBB[ksq][checkerSq]))
+                return FALSE;
         }
         U64 occ = (pos->byTypeBB[ALL_PIECES] ^ (1ULL << from) ^ (1ULL << capsq)) | (1ULL << to);
         U64 enemySliders = pos->byColorBB[them];
