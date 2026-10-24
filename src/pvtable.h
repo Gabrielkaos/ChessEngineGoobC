@@ -19,7 +19,6 @@ extern int hashfullTT(S_PVTABLE *table);
 extern void updateAge(S_PVTABLE *table);
 extern void InitPvTable(S_PVTABLE *table, const int mb, int noisy);
 extern void clearPvTable(S_PVTABLE *table);
-extern void TestHASH(char *fen);
 extern int runTTReplacementTests(void);
 
 // Fast inlined mate / Syzygy score scaling
@@ -134,6 +133,7 @@ INLINE void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table, const int move, int s
     bucket->entries[replaceIdx].eval = eval;
     bucket->entries[replaceIdx].generation = table->generation;
     bucket->entries[replaceIdx].smp_data = new_data;
+    __atomic_thread_fence(__ATOMIC_RELEASE);
     bucket->entries[replaceIdx].smp_key = new_key;
 }
 

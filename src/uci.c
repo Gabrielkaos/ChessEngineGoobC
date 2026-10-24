@@ -778,11 +778,6 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
             fflush(stdout);
         }
 
-        else if (strEquals(str, "bb")) {
-            TestHASH(QUEENG3);
-            fflush(stdout);
-        }
-
 		else if(strEquals(str, "help")) {
             printf("commands:\n");
             printf("-uci\n");

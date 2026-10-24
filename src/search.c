@@ -123,20 +123,6 @@ static int isExcludedRootMove(const S_BOARD *pos,int move){
     return FALSE;
 }
 
-
-// static int isShuffling(S_BOARD *pos, int move){
-//     if(moveIsTactical(pos,move) || pos->st->fiftyMove < 10) return FALSE;
-//     if(pos->st->pliesFromNull < 6 || pos->ply < 20) return FALSE;
-//     if(pos->ply < 4) return FALSE;   // need moveStack[ply-2] and [ply-4] to exist
-
-//     int m2 = pos->search->moveStack[pos->ply-2];
-//     int m4 = pos->search->moveStack[pos->ply-4];
-//     if(m2==NOMOVE || m2==NULLMOVE || m4==NOMOVE || m4==NULLMOVE) return FALSE;
-
-//     return FROMSQ(move)==TOSQ(m2) && FROMSQ(m2)==TOSQ(m4);
-// }
-
-
 //Fifty-move-rule (FMR) eval deflation, from Berserk: as the fifty-move
 //counter climbs toward the draw limit, prune on increasingly pessimistic
 //evals. The corrected static eval (eval_stack) stays untouched so history

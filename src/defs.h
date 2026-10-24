@@ -79,7 +79,6 @@ typedef int16_t ContCorrectionTable[6][64][6][64];
 #define AUTHOR "Gabriel Montes"
 #define VER "2.2-BETA"
 
-#define QUEENG3 "5rk1/pp4pp/4p3/2R3Q1/3n4/2q4r/P1P2PPP/5RK1 b - - 0 1"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 #define MVFLAGEP 0x40000
 #define MVFLAGPS 0x80000

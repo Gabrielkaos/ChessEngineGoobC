@@ -3,47 +3,8 @@
 #include "pvtable.h"
 #include "stdio.h"
 #include "some_maths.h"
-#include "movegen.h"
 #include "board.h"
-#include "makemove.h"
-#include "io.h"
 #include "string.h"
-
-
-
-
-
-void DataCheck(int move){
-    int depth = rand() % MAXDEPTH;
-    int score = rand() % AB_BOUND;
-    int flags = rand() % 3;
-
-    U64 data = FOLD_DATA(score, depth, flags, move);
-    printf("Original - move:%s depth:%d score:%d flags:%d\n", PrMove(move),depth,score,flags);
-    printf("Created - move:%s depth:%d score:%d flags:%d\n\n", PrMove(EXTRACT_MOVE(data)),EXTRACT_DEPTH(data),EXTRACT_SCORE(data),EXTRACT_FLAGS(data));
-}
-
-void TestHASH(char *fen){
-    S_BOARD pos[1];
-    pos->search = alloc_search_thread();
-    ParseFEN(fen, pos);
-
-    S_MOVELIST list[1];
-    GenerateAllMoves(pos,list);
-
-    int moveNum;
-    for(moveNum=0;moveNum<list->count;++moveNum){
-        if(!legal(pos, list->moves[moveNum].move)){
-            continue;
-        }
-        StateInfo st;
-        makeMove(pos, list->moves[moveNum].move, &st);
-        takeMove(pos);
-        DataCheck(list->moves[moveNum].move);
-    }
-    if (pos->search) free_search_thread(pos->search);
-}
-
 
 S_PVTABLE pvTable[1];
 
