@@ -14,6 +14,18 @@
 /src/models/*
 tools/__pycache__/
 tools/*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Research Lab runtime database, logs, and match test files
+research_lab/data/*.db*
+research_lab/data/*.sqlite*
+research_lab/data/pgns/*
+!research_lab/data/pgns/.gitkeep
+research_lab/data/tournament_logs/*
+!research_lab/data/tournament_logs/.gitkeep
 tools/*.epd
 tools/.venv
 tools/vendor/

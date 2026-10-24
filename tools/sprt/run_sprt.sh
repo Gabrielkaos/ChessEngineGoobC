@@ -61,5 +61,5 @@ exec "$CUTECHESS" \
   -sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 \
   -draw movenumber=40 movecount=8 score=10 \
   -resign movecount=3 score=400 \
-  -ratinginterval 20 -recover \
+  -ratinginterval 10 -recover \
   2>&1 | tee "$LOG"

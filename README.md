@@ -10,6 +10,13 @@ positions, unlike stockfish architecture probably needing at least 1 billion row
 ## How to Use
 Compile the code in the src directory using the makefile.
 
+### Goob Research Laboratory
+Launch the interactive research, analysis, and tournament dashboard:
+```bash
+python3 run_lab.py
+```
+See [research_lab/README.md](file:///home/gabriel/Desktop/ChessEngineGoobC/research_lab/README.md) for full documentation.
+
 ## About
 Check src/others/goob_commits.txt(outdated, file was made before discovering git)
 Check README on /src and /tools

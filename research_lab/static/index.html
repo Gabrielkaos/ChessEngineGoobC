@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goob Chess Engine Research Laboratory</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="brand">
+            <div class="brand-logo">G</div>
+            <div>
+                <h1>GOOB Research Laboratory</h1>
+            </div>
+            <span>v2.2-BETA</span>
+        </div>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="tab-analysis">♟ Analysis & Explorer</button>
+            <button class="tab-btn" data-tab="tab-tree">🌲 Search Heuristics & Tree</button>
+            <button class="tab-btn" data-tab="tab-tournaments">⚔ Tournaments & SPRT</button>
+            <button class="tab-btn" data-tab="tab-spsa">🎛 SPSA Tuner</button>
+            <button class="tab-btn" data-tab="tab-experiments">📊 Experiments Database</button>
+        </nav>
+
+        <div class="engine-status-badge">
+            <span class="status-dot"></span>
+            <span id="engine-badge-text">Engine Ready</span>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main>
+
+        <!-- TAB 1: Position Analysis & Explorer -->
+        <section id="tab-analysis" class="tab-content active">
+            <div class="analysis-layout">
+
+                <!-- Left Column: Board & Navigation -->
+                <div class="board-container">
+                    <div class="chessboard-wrapper">
+                        <div id="chessboard"></div>
+                    </div>
+
+                    <!-- Evaluation Bar -->
+                    <div class="eval-bar-wrapper">
+                        <div id="eval-bar-fill" class="eval-bar-fill"></div>
+                    </div>
+
+                    <div class="board-controls">
+                        <button id="btn-flip-board" class="btn">⇄ Flip</button>
+                        <button id="btn-reset-board" class="btn">↺ Startpos</button>
+                        <button id="btn-save-analysis" class="btn btn-success">💾 Save Analysis</button>
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); margin-left: 0.5rem;">
+                            <input type="checkbox" id="chk-auto-analyze" checked> Auto Search
+                        </label>
+                    </div>
+
+                    <!-- FEN input -->
+                    <div class="form-group" style="margin-top: 0.5rem;">
+                        <label class="form-label">Position FEN</label>
+                        <div class="input-row">
+                            <input type="text" id="input-fen" class="form-input" value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+                            <button id="btn-set-fen" class="btn">Set FEN</button>
+                        </div>
+                    </div>
+
+                    <!-- PGN import & move history -->
+                    <div class="form-group">
+                        <label class="form-label">PGN Game Explorer</label>
+                        <textarea id="input-pgn" class="form-input" rows="2" placeholder="Paste PGN here to step through positions..."></textarea>
+                        <button id="btn-load-pgn" class="btn" style="margin-top: 0.35rem;">Load PGN</button>
+                    </div>
+
+                    <div id="move-history-container" class="move-history">
+                        <span style="color: var(--text-muted); font-size: 0.8rem; padding: 0.25rem;">No PGN loaded. Make moves on the board or paste PGN above.</span>
+                    </div>
+                </div>
+
+                <!-- Right Column: Engine Analysis & Telemetry -->
+                <div>
+                    <!-- Engine Controls -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">⚙ Engine Search Controls</span>
+                            <button id="btn-analyze-start" class="btn btn-primary">▶ Start Search</button>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(90px, 1fr)); gap: 0.75rem;">
+                            <div class="form-group">
+                                <label class="form-label">Engine Build</label>
+                                <select id="select-engine-analysis" class="form-select"></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Search Depth</label>
+                                <input type="number" id="input-depth" class="form-input" value="12" min="1" max="64">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Multi-PV</label>
+                                <input type="number" id="input-multipv" class="form-input" value="1" min="1" max="10">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Hash (MB)</label>
+                                <input type="number" id="input-hash" class="form-input" value="64" min="4" max="2048">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Threads</label>
+                                <input type="number" id="input-threads" class="form-input" value="1" min="1" max="64">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Telemetry -->
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <div class="metric-label">Depth / Seldepth</div>
+                            <div id="metric-depth" class="metric-value">—</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Evaluation</div>
+                            <div id="metric-score" class="metric-value">0.00</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Nodes Searched</div>
+                            <div id="metric-nodes" class="metric-value">—</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Speed (NPS)</div>
+                            <div id="metric-nps" class="metric-value">—</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Time</div>
+                            <div id="metric-time" class="metric-value">—</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Best Move</div>
+                            <div id="metric-bestmove" class="metric-value" style="color: var(--accent);">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Multi-PV Lines Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Principal Variation Lines</span>
+                        </div>
+                        <table class="pv-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;">Line</th>
+                                    <th style="width: 90px;">Score</th>
+                                    <th style="width: 80px;">Depth</th>
+                                    <th style="width: 100px;">Nodes</th>
+                                    <th>Principal Variation</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pv-table-body">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                        Start a search to view Principal Variation lines.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Iterative Deepening Evaluation Trajectory Chart -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Iterative Deepening Evaluation Progression</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="canvas-score-trajectory"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Saved Analyses List -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Saved Position Analyses</span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>FEN</th>
+                                    <th>Score</th>
+                                    <th>Depth</th>
+                                    <th>Saved At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="saved-analyses-body">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1rem;">
+                                        No saved analyses in database yet.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- TAB 2: Search Heuristics & Tree Visualizer -->
+        <section id="tab-tree" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                            <span class="card-title">🌲 Search Heuristics & Diagnostic Profiling</span>
+                            <span id="trace-target-badge" class="pill pill-info">Target: Current Board Position</span>
+                            <span class="pill pill-success">Engine: GOOB 2.2-BETA (Trace Diagnostics)</span>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            Inspect beta cutoffs distribution, move ordering efficiency, RFP, NMP, Razoring, ProbCut, LMP, SEE, and LMR pruning rates.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btn-run-trace" class="btn btn-primary" title="Profile the position currently displayed on the board">🔍 Profile Current Position</button>
+                        <button id="btn-run-trace-bench" class="btn btn-secondary" title="Run Goob's built-in 30-position benchmark suite to collect cumulative search metrics">📊 Profile Bench Suite (30 FENs)</button>
+                    </div>
+                </div>
+
+                <div id="trace-loading" class="loading-banner" style="display: none;">
+                    <div class="spinner"></div>
+                    <div>
+                        <div class="loading-text" id="trace-loading-title">Benchmarking 30 standard positions...</div>
+                        <div class="loading-subtext" id="trace-loading-subtitle">Searching openings, middlegames, and endgames with GOOB 2.2-BETA-native-trace • 0.0s elapsed</div>
+                    </div>
+                </div>
+
+                <div id="trace-warning" style="display: none; background-color: var(--warning-bg); border: 1px solid var(--warning); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; color: #fde68a;">
+                    Engine reported trace is disabled. Use <strong>GOOB 2.2-BETA (Trace Diagnostics)</strong> compiled with <code>make trace</code>.
+                </div>
+
+                <!-- Trace Node Allocation Summary -->
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <div class="metric-label">Alpha-Beta Nodes</div>
+                        <div id="trace-ab-nodes" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Quiescence Nodes</div>
+                        <div id="trace-qs-nodes" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Static Eval Calls</div>
+                        <div id="trace-evals" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">TT Probes / Hits</div>
+                        <div id="trace-tt-hits" class="metric-value">—</div>
+                    </div>
+                </div>
+
+                <!-- Cutoff Distribution & Heuristic Pruning Grid -->
+                <div style="display: grid; grid-template-columns: 420px 1fr; gap: 1.5rem; margin-top: 1rem;">
+                    <!-- Cutoffs Chart -->
+                    <div>
+                        <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Cutoff Distribution & Move Ordering</h4>
+                        <div class="chart-container" style="height: 280px; background-color: var(--bg-card); border-radius: 8px; padding: 0.5rem; border: 1px solid var(--border-color);">
+                            <canvas id="canvas-cutoffs"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Pruning Rates Table -->
+                    <div>
+                        <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Pruning & Reductions Health Checks</h4>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Heuristic</th>
+                                    <th>Considered</th>
+                                    <th>Triggered</th>
+                                    <th>Rate</th>
+                                    <th>Governing Constants</th>
+                                    <th>Diagnostic Assessment</th>
+                                </tr>
+                            </thead>
+                            <tbody id="heuristics-table-body">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                        Click <strong>Run Trace Diagnostic</strong> to profile search heuristics on the current position.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: Tournaments & SPRT -->
+        <section id="tab-tournaments" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <span class="card-title">⚔ Engine Match & SPRT Laboratory</span>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            Run automated head-to-head cutechess-cli matches and sequential probability ratio tests (SPRT) against reference baselines.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btn-open-import-modal" class="btn btn-secondary">📥 Import Engine</button>
+                        <button id="btn-open-match-modal" class="btn btn-primary">➕ Launch Match</button>
+                    </div>
+                </div>
+
+                <!-- Active Match Card -->
+                <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <span style="font-weight: 700; font-size: 1.05rem;" id="tourney-title">Active Match Monitor</span>
+                        <span id="tourney-games" class="pill pill-info">No match running</span>
+                    </div>
+
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <div class="metric-label">Wins</div>
+                            <div id="tourney-wins" class="metric-value" style="color: var(--success);">0</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Losses</div>
+                            <div id="tourney-losses" class="metric-value" style="color: var(--danger);">0</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Draws</div>
+                            <div id="tourney-draws" class="metric-value">0</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Score %</div>
+                            <div id="tourney-score-pct" class="metric-value">50.0%</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Elo Difference</div>
+                            <div id="tourney-elo" class="metric-value" style="color: var(--accent);">—</div>
+                        </div>
+                    </div>
+
+                    <div class="log-terminal" id="tournament-terminal">Waiting to launch match...</div>
+                </div>
+
+                <!-- Match History -->
+                <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Completed Matches & SPRTs</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Pairing</th>
+                            <th>Score (W-L-D)</th>
+                            <th>Score %</th>
+                            <th>Elo Diff</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tournaments-table-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                No matches recorded yet.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TAB 4: SPSA Parameter Tuner -->
+        <section id="tab-spsa" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <span class="card-title">🎛 SPSA Search Constant Tuner</span>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            Track, configure, and monitor Simultaneous Perturbation Stochastic Approximation (SPSA) runs for Goob's search heuristics.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btn-copy-spsa-opts" class="btn">📋 Copy Cutechess Options</button>
+                        <button id="btn-open-spsa-modal" class="btn btn-primary">➕ New SPSA Run</button>
+                    </div>
+                </div>
+
+                <div class="input-row" style="max-width: 400px; margin-bottom: 1.25rem;">
+                    <label class="form-label" style="align-self: center;">Select Run:</label>
+                    <select id="spsa-run-select" class="form-select"></select>
+                </div>
+
+                <!-- Run Overview Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <div class="metric-label">Iterations</div>
+                        <div id="spsa-stat-iters" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Games Played</div>
+                        <div id="spsa-stat-games" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Elapsed Time</div>
+                        <div id="spsa-stat-time" class="metric-value">—</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-label">Status</div>
+                        <div id="spsa-stat-status" class="metric-value" style="color: var(--accent);">—</div>
+                    </div>
+                </div>
+
+                <!-- Parameter Convergence Chart -->
+                <div class="card" style="margin-top: 1rem;">
+                    <div class="card-header">
+                        <span class="card-title">Parameter Trajectory Across Iterations</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="canvas-spsa-trajectory"></canvas>
+                    </div>
+                </div>
+
+                <!-- Parameter Table -->
+                <h3 style="font-size: 1rem; margin-bottom: 0.75rem; margin-top: 1rem;">Search Constants & Values</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter Name</th>
+                            <th>Default in tune.h</th>
+                            <th>Current Tuned</th>
+                            <th>Delta</th>
+                            <th>Range [Min, Max]</th>
+                        </tr>
+                    </thead>
+                    <tbody id="spsa-params-table-body">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                Select an SPSA run above to view parameter details.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TAB 5: Experiments Database -->
+        <section id="tab-experiments" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <span class="card-title">📊 Experiments Registry & Archive</span>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            Persistent SQLite records of all engine matches, SPRTs, tuning runs, and diagnostic benchmarks.
+                        </p>
+                    </div>
+                    <button id="btn-compare-exps" class="btn btn-primary">⚖ Compare Experiments</button>
+                </div>
+
+                <div class="input-row" style="margin-bottom: 1rem; align-items: center;">
+                    <label class="form-label" style="margin-bottom: 0;">Compare:</label>
+                    <select id="compare-exp1" class="form-select"></select>
+                    <span style="color: var(--text-muted);">vs</span>
+                    <select id="compare-exp2" class="form-select"></select>
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Experiment Title / ID</th>
+                            <th>Type</th>
+                            <th>Engine / Binary</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="experiments-table-body">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                No experiments logged yet.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal: Launch Match -->
+    <div id="match-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width: 660px;">
+            <div class="card-header" style="margin-bottom: 1.25rem;">
+                <div>
+                    <span class="card-title" style="font-size: 1.15rem; font-weight: 700;">⚔ Launch Match & SPRT Testing</span>
+                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.2rem;">
+                        Automated cutechess-cli match with sequential probability ratio testing.
+                    </p>
+                </div>
+                <button id="btn-close-match-modal" class="btn" style="padding: 0.25rem 0.6rem; font-size: 1.1rem; line-height: 1;">✕</button>
+            </div>
+
+            <!-- Experiment Label -->
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label class="form-label" for="match-name">Match Label / Run Identifier</label>
+                <input type="text" id="match-name" class="form-input" value="experiment_sprt" placeholder="e.g. goob2.2_vs_baseline_sprt">
+            </div>
+
+            <!-- Engine Pairing: 2 equal-width columns with unified selects -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="match-engine-new">
+                        <span>New Engine (Candidate)</span>
+                        <span class="pill pill-info" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;">NEW</span>
+                    </label>
+                    <select id="match-engine-new" class="form-select"></select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="match-engine-base">
+                        <span>Baseline Engine (Reference)</span>
+                        <span class="pill pill-secondary" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;">BASE</span>
+                    </label>
+                    <select id="match-engine-base" class="form-select"></select>
+                </div>
+            </div>
+
+            <!-- Time Control Section with Presets & Input -->
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                    <label class="form-label" for="match-tc" style="margin-bottom: 0;">Time Control</label>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">Quick Presets (seconds + inc):</span>
+                </div>
+                <div class="tc-presets" style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                    <button type="button" class="btn btn-sm tc-preset-btn active" data-tc="6+0.06">6+0.06</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="10+0.1">10+0.1</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="12+0.1">12+0.1</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="30+0">30+0</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="30+0.1">30+0.1</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="60+0">60+0</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="60+0.1">60+0.1</button>
+                    <button type="button" class="btn btn-sm tc-preset-btn" data-tc="1+0.01">1+0.01</button>
+                </div>
+                <input type="text" id="match-tc" class="form-input" value="6+0.06" placeholder="Custom TC (e.g. 10+0.1)">
+                <small style="color: var(--text-muted); font-size: 0.72rem; margin-top: 0.25rem;">Format: <code>&lt;base_seconds&gt;+&lt;increment_seconds&gt;</code></small>
+            </div>
+
+            <!-- Match Parameters: 3 unified columns with distinct labels -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="match-rounds">Rounds (x2 Games)</label>
+                    <input type="number" id="match-rounds" class="form-input" value="50" min="1" max="5000">
+                    <small style="color: var(--text-muted); font-size: 0.7rem;">e.g. 50 = 100 games</small>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="match-concurrency">Concurrency</label>
+                    <input type="number" id="match-concurrency" class="form-input" value="4" min="1" max="32">
+                    <small style="color: var(--text-muted); font-size: 0.7rem;">Parallel games</small>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="match-hash">Hash / Engine (MB)</label>
+                    <input type="number" id="match-hash" class="form-input" value="32" min="4" max="2048">
+                    <small style="color: var(--text-muted); font-size: 0.7rem;">TT memory size</small>
+                </div>
+            </div>
+
+            <!-- SPRT Configuration Box -->
+            <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.9rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                        <input type="checkbox" id="match-is-sprt" checked style="accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer;">
+                        <span>Enable SPRT (Sequential Probability Ratio Test)</span>
+                    </label>
+                    <span style="font-size: 0.72rem; color: var(--accent); font-weight: 600;">Reports every 10 games</span>
+                </div>
+                <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.35;">
+                    Cutechess halts the match early once statistical confidence is reached. Rating updates and SPRT bounds are emitted every 10 completed games.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="match-elo0">Elo 0 (H0: Null Bound)</label>
+                        <input type="number" id="match-elo0" class="form-input" value="0.0" step="0.5">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="match-elo1">Elo 1 (H1: Target Elo Gain)</label>
+                        <input type="number" id="match-elo1" class="form-input" value="5.0" step="0.5">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div style="display: flex; justify-content: flex-end; gap: 0.6rem;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('match-modal').classList.remove('active')">Cancel</button>
+                <button type="button" id="btn-start-match-submit" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-weight: 700;">⚔ Start Cutechess Match</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Launch SPSA Run -->
+    <div id="spsa-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="card-header">
+                <span class="card-title">Launch SPSA Parameter Tuning Run</span>
+                <button id="btn-close-spsa-modal" class="btn" style="padding: 0.2rem 0.5rem;">×</button>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Run Name (Directory in tools/spsa/runs/)</label>
+                <input type="text" id="spsa-run-name" class="form-input" placeholder="e.g. pruning6_test">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div class="form-group">
+                    <label class="form-label">Iterations</label>
+                    <input type="number" id="spsa-run-iters" class="form-input" value="5000" min="100" max="50000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Time Control</label>
+                    <input type="text" id="spsa-run-tc" class="form-input" value="5+0.05">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Parallel Workers (cutechess processes)</label>
+                <input type="number" id="spsa-run-workers" class="form-input" value="4" min="1" max="16">
+            </div>
+
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                * SPSA runs in the background using <code>tools/spsa/spsa.py</code>. You can monitor progress and stop it safely at any time.
+            </p>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn" onclick="document.getElementById('spsa-modal').classList.remove('active')">Cancel</button>
+                <button id="btn-start-spsa-submit" class="btn btn-primary">Start SPSA Tuning</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Compare Experiments -->
+    <div id="compare-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width: 850px;">
+            <div class="card-header">
+                <span class="card-title">⚖ Side-by-Side Experiment Comparison</span>
+                <button id="btn-close-compare-modal" class="btn" style="padding: 0.2rem 0.5rem;">×</button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="background-color: var(--bg-card); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 id="compare-card-1-title" style="margin-bottom: 0.5rem; color: var(--accent);">Experiment 1</h4>
+                    <pre id="compare-card-1-content" style="font-size: 0.75rem; max-height: 400px; overflow-y: auto; color: var(--text-secondary);"></pre>
+                </div>
+                <div style="background-color: var(--bg-card); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 id="compare-card-2-title" style="margin-bottom: 0.5rem; color: var(--success);">Experiment 2</h4>
+                    <pre id="compare-card-2-content" style="font-size: 0.75rem; max-height: 400px; overflow-y: auto; color: var(--text-secondary);"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Import Custom Engine -->
+    <div id="import-engine-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width: 550px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.1rem; font-weight: 700;">📥 Import Custom Engine</h3>
+                <button id="btn-close-import-modal" class="btn" style="padding: 0.2rem 0.5rem;">✕</button>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                Import any external UCI chess engine binary (e.g. an older Goob version, Stockfish, Ethereal, Berserk, or custom builds).
+            </p>
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label class="form-label">Engine Name (Optional)</label>
+                <input type="text" id="import-engine-name" class="form-input" placeholder="Leave blank to auto-detect from UCI id name">
+            </div>
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label class="form-label">Binary File Path</label>
+                <input type="text" id="import-engine-path" class="form-input" placeholder="/path/to/binary or relative path">
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 4px;">
+                    e.g. <code>bin/GOOB-2.1-linux-x64</code> or <code>/usr/games/stockfish</code>
+                </small>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button class="btn" onclick="document.getElementById('import-engine-modal').classList.remove('active')">Cancel</button>
+                <button id="btn-submit-import-engine" class="btn btn-primary">Import & Validate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/board.js"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
