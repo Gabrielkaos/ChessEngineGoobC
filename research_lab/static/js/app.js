@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Event listeners
     document.getElementById("btn-analyze-start").addEventListener("click", toggleAnalysis);
     document.getElementById("select-engine-analysis").addEventListener("change", () => {
+        updateEngineStatusBadge();
         if (isSearching) {
             stopLiveAnalysis();
             if (document.getElementById("chk-auto-analyze").checked) {
@@ -195,10 +196,15 @@ async function loadEngines() {
             selBase.selectedIndex = 1;
         }
 
-        const badge = document.getElementById("engine-badge-text");
-        if (currentEngines.length > 0) {
-            badge.innerText = `${currentEngines[0].name}`;
+        // Default Analysis engine to Goob Native if available
+        const goobNativeIdx = Array.from(selAnalysis.options).findIndex(
+            opt => opt.value === "goob-native" || opt.text.toLowerCase().includes("native")
+        );
+        if (goobNativeIdx >= 0) {
+            selAnalysis.selectedIndex = goobNativeIdx;
         }
+
+        updateEngineStatusBadge();
     } catch (e) {
         console.error("Failed to load engines:", e);
     }
@@ -210,8 +216,33 @@ async function loadEngines() {
 let isSearching = false;
 let restAbortController = null;
 
+function updateEngineStatusBadge() {
+    const badge = document.getElementById("engine-badge-text");
+    const statusDot = document.querySelector(".engine-status-badge .status-dot");
+    const selAnalysis = document.getElementById("select-engine-analysis");
+    if (!badge || !selAnalysis) return;
+
+    const selectedOption = selAnalysis.options[selAnalysis.selectedIndex];
+    const engineName = selectedOption ? selectedOption.text.split(" (")[0] : (currentEngines[0]?.name || "Engine");
+
+    if (isSearching) {
+        badge.textContent = `${engineName} (Searching...)`;
+        if (statusDot) {
+            statusDot.style.backgroundColor = "var(--accent)";
+            statusDot.style.boxShadow = "0 0 8px var(--accent)";
+        }
+    } else {
+        badge.textContent = `${engineName} (Ready)`;
+        if (statusDot) {
+            statusDot.style.backgroundColor = "var(--success)";
+            statusDot.style.boxShadow = "0 0 8px var(--success)";
+        }
+    }
+}
+
 function setSearchingState(searching) {
     isSearching = searching;
+    updateEngineStatusBadge();
     const btn = document.getElementById("btn-analyze-start");
     if (!btn) return;
     if (searching) {

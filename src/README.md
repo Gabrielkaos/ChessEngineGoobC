@@ -81,7 +81,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Move-count bonus scaling (`HistMoveCountBonusMul`) for cutoff moves found deep in the quiet search list (`quietsTried > HistMoveCountThreshold`).
 
 ### Evaluation & NNUE
-* **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) featuring null-move tempo estimation (`-pos->search->eval_stack[pos->ply - 1] + 40`) and dispatch to NNUE.
+* **[`evaluate.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) / [`evaluate.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c):** Inlined evaluation interface [`EvalPosition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.h) dispatching to [`nnue_eval()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h#L1099) and precomputed Chebyshev square-distance table [`DistanceBetween`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/evaluate.c#L10).
 * **[`nnue_loader.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.h) / [`nnue_loader.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/nnue_loader.c):**
   * Schoenemann 0.5.0 NNUE architecture inference engine (`768 * NNUE_KING_BUCKETS` input features, 1024 hidden, 8 material buckets) with compile-time horizontal king mirroring (`NNUE_MIRROR`, default `1`) and perspective king buckets (`NNUE_KING_BUCKETS`, default `4`, or `1`).
   * AVX-512, AVX2, and scalar forward passes featuring 4-chain unrolled accumulators and exact/fast int16 dot-product kernels.
