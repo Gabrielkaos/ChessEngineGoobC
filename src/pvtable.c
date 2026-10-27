@@ -72,6 +72,7 @@ int runTTReplacementTests(void){
     S_PVTABLE table[1];
     S_BOARD pos[1];
     memset(pos, 0, sizeof(S_BOARD));
+    memset(table, 0, sizeof(S_PVTABLE));
     pos->search = alloc_search_thread();
     pos->st = &pos->stateTable[0];
     pos->ply = 0;
@@ -133,6 +134,24 @@ int runTTReplacementTests(void){
     ok = ttProbe(pos, table, k0) && !ttProbe(pos, table, k1)
          && ttProbe(pos, table, k2) && ttProbe(pos, table, k3) && ttProbe(pos, table, k4);
     printf("Test 4 (stale evicted before fresh): %s\n", ok ? "PASS" : "FAIL");
+    fails += !ok;
+
+    //Test 5: after 65+ searches (generation wraps past 256), stale eviction and hashfull still work
+    clearPvTable(table);
+    for (int i = 0; i < 65; ++i) updateAge(table);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 100, 50, HFEXACT, 10, 40);
+    pos->st->posKey = k1; StoreHashEntry(pos, table, 101, 60, HFEXACT, 8, 45);
+    updateAge(table);
+    pos->st->posKey = k2; StoreHashEntry(pos, table, 102, 70, HFEXACT, 2, 55);
+    pos->st->posKey = k3; StoreHashEntry(pos, table, 103, 75, HFEXACT, 4, 60);
+    pos->st->posKey = k4; StoreHashEntry(pos, table, 104, 80, HFEXACT, 3, 65);
+    ok = ttProbe(pos, table, k0) && !ttProbe(pos, table, k1)
+         && ttProbe(pos, table, k2) && ttProbe(pos, table, k3) && ttProbe(pos, table, k4);
+    for (int i = 0; i < 1000; ++i) {
+        pos->st->posKey = (U64)i; StoreHashEntry(pos, table, 100, 0, HFEXACT, 5, 0);
+    }
+    ok = ok && (hashfullTT(table) == 1000 / TT_BUCKET_SIZE);
+    printf("Test 5 (after 65+ searches wrap, stale eviction + hashfull=%d): %s\n", hashfullTT(table), ok ? "PASS" : "FAIL");
     fails += !ok;
 
     printf(fails == 0 ? "\nAll TT tests PASSED\n\n" : "\nTT tests FAILED (%d)\n\n", fails);

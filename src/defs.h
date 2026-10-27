@@ -167,7 +167,7 @@ typedef struct{
 typedef struct{
     S_PVBUCKET *pTable;
     int numEntries;
-    int generation;
+    uint8_t generation;
     uint32_t hashMask;
 } S_PVTABLE;
 
