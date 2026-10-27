@@ -282,6 +282,20 @@ def save_experiment(exp_data: Dict[str, Any], db_path: str = DB_PATH) -> bool:
     return True
 
 
+def update_experiment_status(exp_id: str, status: str, finished_at: Optional[str],
+                             results: Dict[str, Any], db_path: str = DB_PATH) -> bool:
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE experiments SET status = ?, finished_at = ?, results_json = ? WHERE id = ?",
+        (status, finished_at, json.dumps(results), exp_id)
+    )
+    affected = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return affected
+
+
 def list_experiments(exp_type: Optional[str] = None, status: Optional[str] = None,
                      limit: int = 100, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
     conn = get_connection(db_path)

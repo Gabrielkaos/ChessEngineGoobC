@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 
 from .models import MatchConfig, MatchResult
-from .database import save_experiment, get_experiment
+from .database import save_experiment, update_experiment_status, get_experiment
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_BOOK = os.path.join(ROOT_DIR, "tools", "book.epd")
@@ -216,16 +216,9 @@ class TournamentRunner:
                         st.status = "completed" if returncode == 0 else "failed"
                     st.finished_at = datetime.now().isoformat()
 
-                    save_experiment({
-                        "id": match_id,
-                        "title": f"Match: {st.engine_new_name} vs {st.engine_base_name}",
-                        "exp_type": "sprt" if st.sprt_status else "match",
-                        "status": st.status,
-                        "finished_at": st.finished_at,
-                        "results": st.model_dump(),
-                        "log_path": log_path,
-                        "pgn_path": st.pgn_file
-                    })
+                    update_experiment_status(
+                        match_id, st.status, st.finished_at, st.model_dump()
+                    )
 
     def stop_match(self, match_id: str) -> bool:
         with self.lock:
@@ -241,12 +234,9 @@ class TournamentRunner:
                     proc.kill()
                 self.active_processes.pop(match_id, None)
 
-                save_experiment({
-                    "id": match_id,
-                    "status": "stopped",
-                    "finished_at": st.finished_at,
-                    "results": st.model_dump()
-                })
+                update_experiment_status(
+                    match_id, "stopped", st.finished_at, st.model_dump()
+                )
                 return True
         return False
 

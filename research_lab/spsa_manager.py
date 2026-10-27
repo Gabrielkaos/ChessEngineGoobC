@@ -16,7 +16,13 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
 from .models import SPSAParameter, SPSARunConfig, SPSARunSummary
-from .database import save_experiment, get_experiment
+from .database import save_experiment, update_experiment_status, get_experiment
+
+VALID_RUN_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _valid_run_name(name: str) -> bool:
+    return bool(VALID_RUN_NAME_RE.match(name)) and ".." not in name and name not in (".", "..")
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SPSA_PY = os.path.join(ROOT_DIR, "tools", "spsa", "spsa.py")
@@ -48,6 +54,8 @@ class SPSAManager:
 
     def get_run_summary(self, name: str, sample_history: int = 100) -> Optional[SPSARunSummary]:
         """Loads state.json and samples history.csv for an SPSA run."""
+        if not _valid_run_name(name):
+            return None
         run_path = os.path.join(RUNS_DIR, name)
         state_file = os.path.join(run_path, "state.json")
         if not os.path.exists(state_file):
@@ -139,6 +147,8 @@ class SPSAManager:
 
     def start_run(self, config: SPSARunConfig) -> bool:
         """Launches or resumes an SPSA tuning run in the background."""
+        if not _valid_run_name(config.name):
+            raise ValueError(f"Invalid SPSA run name: {config.name}")
         with self.lock:
             if config.name in self.active_processes:
                 return False
@@ -224,12 +234,10 @@ class SPSAManager:
         # Update experiment in db
         summary = self.get_run_summary(name)
         if summary:
-            save_experiment({
-                "id": f"spsa_{name}",
-                "status": "completed" if summary.iterations_completed >= summary.iterations_total else "stopped",
-                "finished_at": datetime.now().isoformat(),
-                "results": summary.model_dump()
-            })
+            status = "completed" if summary.iterations_completed >= summary.iterations_total else "stopped"
+            update_experiment_status(
+                f"spsa_{name}", status, datetime.now().isoformat(), summary.model_dump()
+            )
 
     def stop_run(self, name: str) -> bool:
         """Sends SIGINT so spsa.py can cleanly flush state.json."""

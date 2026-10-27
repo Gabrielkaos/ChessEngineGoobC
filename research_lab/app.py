@@ -52,7 +52,7 @@ app = FastAPI(title="Goob Chess Engine Research Laboratory", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://127.0.0.1:8080", "http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -697,6 +697,8 @@ def start_spsa_run(config: SPSARunConfig):
         if not success:
             raise HTTPException(status_code=400, detail="Run is already active")
         return {"status": "started", "name": config.name}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

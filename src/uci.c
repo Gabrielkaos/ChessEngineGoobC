@@ -722,20 +722,17 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
         else if(strEquals(str,"evaluate") || strEquals(str, "eval")){
             PrintBoard(pos);
             printf("Eval:%d\n",EvalPosition(pos));
-            MirrorBoard(pos);
-            PrintBoard(pos);
-            printf("Eval Mirrored:%d\n",EvalPosition(pos));
-            MirrorBoard(pos);
-            int savedCastle = pos->st->castleRights;
-            int savedFifty = pos->st->fiftyMove;
-            U64 savedKey = pos->st->posKey;
-            HMirrorBoard(pos);
-            PrintBoard(pos);
-            printf("Eval H-Mirrored:%d\n",EvalPosition(pos));
-            HMirrorBoard(pos);
-            pos->st->castleRights = savedCastle;
-            pos->st->fiftyMove = savedFifty;
-            pos->st->posKey = savedKey;
+            S_BOARD tmp = *pos;
+            tmp.st = &tmp.stateTable[0];
+            *tmp.st = *pos->st;
+            tmp.search = NULL;
+            MirrorBoard(&tmp);
+            PrintBoard(&tmp);
+            printf("Eval Mirrored:%d\n",EvalPosition(&tmp));
+            MirrorBoard(&tmp);
+            HMirrorBoard(&tmp);
+            PrintBoard(&tmp);
+            printf("Eval H-Mirrored:%d\n",EvalPosition(&tmp));
             fflush(stdout);
         }
 
