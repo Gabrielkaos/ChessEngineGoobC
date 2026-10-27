@@ -32,9 +32,10 @@ extern int SurpriseSRDEnabled;
 
 //FUNCTIONS
 extern void initLMRTable();
+extern void StartSearch(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table);
+extern void WaitSearch(void);
 extern void SearchPosition(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table);
 extern int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold);
-extern int SearchPositionThread(void *data);
 extern void EnsureThreadPool(int numThreads);
 extern void FreeThreadPool(void);
 //totals over the threads of the current/last search

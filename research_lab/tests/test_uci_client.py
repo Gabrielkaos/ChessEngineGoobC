@@ -101,3 +101,80 @@ def test_uci_engine_lifecycle():
     finally:
         proc.quit()
         assert proc.is_running is False
+
+
+def test_engine_perft_endgame_tt_and_eval():
+    if not os.path.exists(NATIVE_BIN) or not os.access(NATIVE_BIN, os.X_OK):
+        pytest.skip("Goob native binary not found")
+
+    proc = UCIEngineProcess(NATIVE_BIN)
+    try:
+        proc.start()
+
+        # 1. Built-in C TT bucket replacement & 65-search generation wrap-around unit test
+        proc.send("test")
+        proc.send("isready")
+        tt_out = []
+        while True:
+            line = proc.readline()
+            if not line or "readyok" in line:
+                break
+            tt_out.append(line.strip())
+        assert any("All TT tests PASSED" in l for l in tt_out)
+
+        # 2. 5 tricky perft FENs (EP pins, EP check, castling, promotion out of check, underpromotion)
+        tricky_perfts = [
+            ("3k4/3p4/8/K1P4r/8/8/8/8 b - - 0 1", 6, 1134888),
+            ("8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1", 6, 1440467),
+            ("r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1", 4, 1274206),
+            ("2K2r2/4P3/8/8/8/8/8/3k4 w - - 0 1", 6, 3821001),
+            ("8/P1k5/K7/8/8/8/8/8 w - - 0 1", 6, 92683),
+        ]
+        for fen, depth, expected_nodes in tricky_perfts:
+            proc.send(f"position fen {fen}")
+            proc.send(f"uperft {depth}")
+            proc.send("isready")
+            nodes = None
+            while True:
+                line = proc.readline()
+                if not line or "readyok" in line:
+                    break
+                if line.startswith("Nodes:"):
+                    nodes = int(line.split(":")[1].strip())
+            assert nodes == expected_nodes, f"Perft mismatch on {fen}: got {nodes}, expected {expected_nodes}"
+
+        # 3. UCILoop eval state preservation across MirrorBoard / HMirrorBoard
+        test_fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
+        proc.send(f"position fen {test_fen}")
+        evals = []
+        for _ in range(2):
+            proc.send("eval")
+            proc.send("isready")
+            while True:
+                line = proc.readline()
+                if not line or "readyok" in line:
+                    break
+                if line.startswith("Eval:"):
+                    evals.append(int(line.split(":")[1].strip()))
+        assert len(evals) == 2 and evals[0] == evals[1] and evals[0] != 0
+
+        # 4. K+RP vs K win vs corner fortress draw, and 65 consecutive searches
+        win_res = proc.analyze("2k5/P7/1K6/8/8/8/8/8 w - - 0 1", depth=6)
+        assert win_res.best_move_uci == "a7a8q"
+        assert win_res.score_value > 500
+
+        draw_res = proc.analyze("k7/P7/1K6/8/8/8/8/8 w - - 0 1", depth=6)
+        assert abs(draw_res.score_value) <= 5
+
+        for _ in range(65):
+            proc.send("position fen 2k5/P7/1K6/8/8/8/8/8 w - - 0 1")
+            proc.send("go depth 3")
+            while True:
+                line = proc.readline()
+                if not line or line.startswith("bestmove"):
+                    break
+        after_65 = proc.analyze("2k5/P7/1K6/8/8/8/8/8 w - - 0 1", depth=6)
+        assert after_65.best_move_uci == "a7a8q"
+        assert after_65.score_value > 500
+    finally:
+        proc.quit()

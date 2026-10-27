@@ -54,13 +54,11 @@ int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
          + 64000 * (pieceType[PROMOTED(move)] == p_queen);
 }
 
-void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth){
+void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth, U64 threats){
     //no bonus from depth 0 nodes, see updateHistories
-    if(depth <= 0) return;
+    if(depth <= 0 || length <= 0) return;
 
     const int bonus = stat_bonus(depth);
-    // Compute threats once per update
-    U64 threats = allAttackedSquares(pos, pos->side ^ 1);
 
     int i,move,from,to,delta,piece,captured;
 
@@ -158,7 +156,7 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
     return total;
 }
 
-void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
+void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats){
     if (length <= 0) return;
 
     int bestMove = moves[length - 1];
@@ -186,7 +184,6 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth){
     //(Stockfish searches them in qsearch, which updates none either).
     if(depth > 0 && !(length==1 && depth <= 3)){
 
-        U64 threats = allAttackedSquares(pos, pos->side ^ 1);
         int index,bonus,bestBonus,actualMalus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
 
         bonus = stat_bonus(depth);

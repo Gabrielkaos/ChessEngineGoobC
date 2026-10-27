@@ -909,12 +909,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //checkmate and stalemate
     if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
 
-    //update history counters on a fail high for a quiet move
-    if(bestScore>=beta && !moveIsTactical(pos,bestMove))
-        updateHistories(pos,quietsTried,quietsPlayed,depth);
-
-    if(bestScore>=beta)
-        updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth);
+    //update history counters on a fail high
+    if(bestScore>=beta){
+        U64 threats = (mp->threatsComputed || depth <= 0) ? mp->threats : allAttackedSquares(pos, pos->side ^ 1);
+        if(!moveIsTactical(pos,bestMove))
+            updateHistories(pos,quietsTried,quietsPlayed,depth,threats);
+        updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth,threats);
+    }
 
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
@@ -1103,37 +1104,6 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
 
     return pos->side != colour;
 
-}
-
-
-
-static S_BOARD *launcherPos = NULL;
-
-int SearchPositionThread(void *data){
-    THREAD_DATA *thread_data = (THREAD_DATA*)data;
-    if (!launcherPos) {
-        launcherPos = malloc(sizeof(S_BOARD));
-        launcherPos->search = alloc_search_thread();
-    }
-    S_SEARCH_THREAD *saved_search = launcherPos->search;
-    memcpy(launcherPos, thread_data->originalPos, sizeof(S_BOARD));
-    launcherPos->search = saved_search;
-
-    launcherPos->stateTable[0].previous = NULL;
-    for (int i = 1; i <= launcherPos->hisPly; i++) {
-        launcherPos->stateTable[i].previous = &launcherPos->stateTable[i-1];
-    }
-    launcherPos->st = &launcherPos->stateTable[launcherPos->hisPly];
-
-    memcpy(launcherPos->search, thread_data->originalPos->search, sizeof(S_SEARCH_THREAD));
-
-    launcherPos->ply = 0;
-    nnue_refresh_accumulator(launcherPos);
-
-    SearchPosition(launcherPos, thread_data->info, thread_data->ttable);
-
-    free(thread_data);
-    return 0;
 }
 
 //MultiPV support
@@ -1695,6 +1665,15 @@ static int workerLoop(void *data) {
                 }
             }
 
+#ifdef TRACE
+            for (int i = 0; i < activeThreads; ++i) {
+                if (threadPool[i].originalPos && threadPool[i].originalPos->search) {
+                    trace_aggregate_thread(&threadPool[i].originalPos->search->trace);
+                }
+            }
+            trace_finish_search();
+#endif
+
             //safety net: verify the bestmove is actually legal before sending it
             //to the GUI — a TT collision or threading issue could leave a stale
             //move that passed makeMove in a different internal state
@@ -1856,23 +1835,13 @@ void FreeThreadPool(void) {
         }
     }
     poolSize = 0;
-
-    if (launcherPos) {
-        if (launcherPos->search) {
-            free_search_thread(launcherPos->search);
-            launcherPos->search = NULL;
-        }
-        free(launcherPos);
-        launcherPos = NULL;
-    }
 }
 
-void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
+void StartSearch(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     ASSERT(checkBoard(pos));
 
     //init search things
     InitSearcher(pos, info, table);
-    nnue_refresh_accumulator(pos);
 
     //Syzygy root probe
     TBProbeRoot(pos);
@@ -1897,18 +1866,15 @@ void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
     for (int i = 0; i < activeThreads; ++i) {
         startWorkerSearch(i, pos, info, table);
     }
+}
 
-    //wait for all workers to complete
-    for (int i = 0; i < activeThreads; ++i) {
-        waitWorkerSearch(i);
+void WaitSearch(void) {
+    if (poolSize > 0) {
+        waitWorkerSearch(0);
     }
+}
 
-#ifdef TRACE
-    for (int i = 0; i < activeThreads; ++i) {
-        if (threadPool[i].originalPos && threadPool[i].originalPos->search) {
-            trace_aggregate_thread(&threadPool[i].originalPos->search->trace);
-        }
-    }
-    trace_finish_search();
-#endif
+void SearchPosition(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table) {
+    StartSearch(pos, info, table);
+    WaitSearch();
 }

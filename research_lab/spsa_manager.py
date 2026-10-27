@@ -17,6 +17,14 @@ from datetime import datetime
 
 from .models import SPSAParameter, SPSARunConfig, SPSARunSummary
 from .database import save_experiment, update_experiment_status, get_experiment
+from tools.spsa.spsa import (
+    RUNS as RUNS_DIR,
+    DEFAULT_ENGINE as TUNE_BIN,
+    TUNE_H,
+    load_state,
+    read_engine_params,
+    run_dir,
+)
 
 VALID_RUN_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -26,9 +34,6 @@ def _valid_run_name(name: str) -> bool:
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SPSA_PY = os.path.join(ROOT_DIR, "tools", "spsa", "spsa.py")
-RUNS_DIR = os.path.join(ROOT_DIR, "tools", "spsa", "runs")
-TUNE_BIN = os.path.join(ROOT_DIR, "src", "bin", "linux", "GOOB-2.2-BETA-native-tune")
-TUNE_H = os.path.join(ROOT_DIR, "src", "tune.h")
 
 
 class SPSAManager:
@@ -56,21 +61,21 @@ class SPSAManager:
         """Loads state.json and samples history.csv for an SPSA run."""
         if not _valid_run_name(name):
             return None
-        run_path = os.path.join(RUNS_DIR, name)
-        state_file = os.path.join(run_path, "state.json")
-        if not os.path.exists(state_file):
+        state = load_state(name)
+        if state is None:
             return None
-
-        with open(state_file, "r") as f:
-            state = json.load(f)
+        run_path = run_dir(name)
 
         config = state.get("config", {})
         iter_done = state.get("iter", 0)
         iter_total = config.get("iterations", 0)
         pairs = config.get("pairs", 2)
-        games_played = iter_done * pairs * 2
+        games_played = (
+            state.get("wins", 0) + state.get("losses", 0) + state.get("draws", 0)
+            or (iter_done * pairs * 2)
+        )
         tc = config.get("tc", "5+0.05")
-        time_sec = state.get("time_sec", 0.0)
+        time_sec = state.get("seconds", state.get("time_sec", 0.0))
 
         # Parse parameters
         params_list = []

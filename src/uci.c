@@ -25,28 +25,11 @@
 #define Euler 2.8
 
 static int searchThreadValid = 0;
-thrd_t mainSearchThread;
-void joinSearchThread(S_SEARCHINFO *info);
-
-thrd_t LaunchSearchThread(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table){
-    if (searchThreadValid) {
-        joinSearchThread(info);
-    }
-    THREAD_DATA *thread_data = malloc(sizeof(THREAD_DATA));
-
-    thread_data->info=info;
-    thread_data->originalPos=pos;
-    thread_data->ttable=table;
-
-    thrd_create(&mainSearchThread,&SearchPositionThread,(void*)thread_data);
-    searchThreadValid = 1;
-    return mainSearchThread;
-}
 
 void joinSearchThread(S_SEARCHINFO *info){
     if (searchThreadValid) {
         info->stopped=TRUE;
-        thrd_join(mainSearchThread,NULL);
+        WaitSearch();
         searchThreadValid = 0;
     }
 }
@@ -527,7 +510,8 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
     info->ponder        = ponder;
     info->stopOnPonderhit = FALSE;
 
-    mainSearchThread = LaunchSearchThread(pos, info, table);
+    StartSearch(pos, info, table);
+    searchThreadValid = 1;
 }
 void parsePosition(char* lineIn,S_BOARD *pos){
     if(strlen(lineIn) < 9){
@@ -801,4 +785,5 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
         if(info->quit)break;
     }
+    if (searchThreadValid) joinSearchThread(info);
 }
