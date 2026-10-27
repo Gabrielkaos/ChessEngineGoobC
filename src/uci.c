@@ -3,7 +3,6 @@
 #include "string.h"
 #include "math.h"
 #include "search.h"
-#include "evaluate.h"
 #include "stdlib.h"
 #include "uci.h"
 #include "inttypes.h"
@@ -705,18 +704,18 @@ void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){
 
         else if(strEquals(str,"evaluate") || strEquals(str, "eval")){
             PrintBoard(pos);
-            printf("Eval:%d\n",EvalPosition(pos));
+            printf("Eval:%d\n",nnue_eval(pos));
             S_BOARD tmp = *pos;
             tmp.st = &tmp.stateTable[0];
             *tmp.st = *pos->st;
             tmp.search = NULL;
             MirrorBoard(&tmp);
             PrintBoard(&tmp);
-            printf("Eval Mirrored:%d\n",EvalPosition(&tmp));
+            printf("Eval Mirrored:%d\n",nnue_eval(&tmp));
             MirrorBoard(&tmp);
             HMirrorBoard(&tmp);
             PrintBoard(&tmp);
-            printf("Eval H-Mirrored:%d\n",EvalPosition(&tmp));
+            printf("Eval H-Mirrored:%d\n",nnue_eval(&tmp));
             fflush(stdout);
         }
 

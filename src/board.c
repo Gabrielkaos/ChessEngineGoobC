@@ -3,7 +3,6 @@
 #include "inttypes.h"
 #include "bitboards.h"
 #include "hashkeys.h"
-#include "evaluate.h"
 #include "io.h"
 #include "board.h"
 #include "attacks.h"

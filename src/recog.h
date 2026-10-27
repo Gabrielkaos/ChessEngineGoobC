@@ -27,8 +27,6 @@ INLINE int drawByMaterial(const S_BOARD *pos) {
             || (!bishops && COUNTBIT(knights) <= 2));
 }
 
-extern int DistanceBetween[64][64];
-
 INLINE int drawKBPRP(const S_BOARD *pos) {
     if (pos->byTypeBB[QUEEN] | pos->byTypeBB[ROOK] | pos->byTypeBB[KNIGHT])
         return FALSE;
@@ -65,8 +63,7 @@ INLINE int drawKBPRP(const S_BOARD *pos) {
     }
 
     // Defending king on promSq or adjacent (corner fortress reached)
-    int weakKingSq = LSBINDEX(pos->byColorBB[weakColor]);
-    return DistanceBetween[weakKingSq][promSq] <= 1;
+    return (pos->byColorBB[weakColor] & (king_attacks[promSq] | (1ULL << promSq))) != 0;
 }
 
 INLINE int recog_draw(const S_BOARD *pos) {

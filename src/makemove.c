@@ -1,7 +1,6 @@
 #include "stdio.h"
 #include "search.h"
 #include "bitboards.h"
-#include "evaluate.h"
 #include "movegen.h"
 #include "makemove.h"
 #include "init.h"

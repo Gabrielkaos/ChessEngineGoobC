@@ -6,7 +6,6 @@
 #include "pvtable.h"
 #include "some_maths.h"
 #include "recog.h"
-#include "evaluate.h"
 #include "bitboards.h"
 #include "uci.h"
 #include "movepicker.h"
@@ -151,7 +150,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     //if draw
     if(pos->ply){
         if(recog_draw(pos))return 1-(pos->search->nodes & 2);
-        if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
+        if(pos->ply >= MAXDEPTH - 1)return nnue_eval(pos);
     }
 
     int ttMove=NOMOVE, ttValue=0, ttBound=HFNONE, ttEval=VALUE_NONE, ttHit=FALSE;
@@ -173,7 +172,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     //standing pat: save the corrected static eval for history, then deflate
     //it on the fifty-move rule (Berserk) and use it as our floor
     if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
-    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int rawEval = (ttEval != VALUE_NONE) ? ttEval : nnue_eval(pos);
     int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
     int eval = adjustEvalOnFmr(pos, staticEval);
     best = eval;
@@ -285,7 +284,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //see if board is drawn
         if(recog_draw(pos))return 1-(pos->search->nodes & 2);
         //to deep
-        if(pos->ply >= MAXDEPTH - 1)return EvalPosition(pos);
+        if(pos->ply >= MAXDEPTH - 1)return nnue_eval(pos);
         //mate pruning
         int rAlpha = alpha > -AB_BOUND + pos->ply     ? alpha : -AB_BOUND + pos->ply;
         int rBeta  =  beta <  AB_BOUND - pos->ply - 1 ?  beta :  AB_BOUND - pos->ply - 1;
@@ -354,7 +353,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //history stays independent of how much correction was already
     //applied when this position was last stored
     if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
-    int rawEval = (ttEval != VALUE_NONE) ? ttEval : EvalPosition(pos);
+    int rawEval = (ttEval != VALUE_NONE) ? ttEval : nnue_eval(pos);
 
     //store in eval_stack each staticEval (corrected, used for all pruning)
     int staticEval = pos->search->eval_stack[pos->ply] =

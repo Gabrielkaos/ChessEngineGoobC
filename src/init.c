@@ -3,7 +3,6 @@
 #include "stdlib.h"
 #include "stdio.h"
 #include "search.h"
-#include "evaluate.h"
 #include "init.h"
 #include "attacks.h"
 
@@ -52,5 +51,4 @@ void AllInit(){
     //InitPolyBook("Performance.bin");
     InitAttacks();
     initLMRTable();
-    initDistancesForEval();
 }

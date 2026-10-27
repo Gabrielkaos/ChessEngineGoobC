@@ -2,7 +2,6 @@
 #include "validate.h"
 #include "string.h"
 #include "stdio.h"
-#include "evaluate.h"
 
 int SqOnBoard(const int sq){
     return (sq >= 0 && sq < BOARD_NUMS_SQ) ? 1:0;

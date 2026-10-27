@@ -3,7 +3,6 @@
 #include "defs.h"
 #include "string.h"
 #include "pvtable.h"
-#include "evaluate.h"
 #include "some_maths.h"
 #include "bitboards.h"
 #include "inttypes.h"
