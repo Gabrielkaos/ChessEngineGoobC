@@ -7,6 +7,8 @@
 extern U64 pieceKeys[16][BOARD_NUMS_SQ];
 extern U64 sideKey;
 extern U64 castleKeys[16];
+extern U64 cuckoo[8192];
+extern int cuckooMove[8192];
 
 //init.c
 extern void AllInit();

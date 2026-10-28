@@ -93,7 +93,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ### Search & Transposition Table
 * **[`search.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.h) / [`search.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c):**
   * [`AlphaBeta()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L231): PVS search implementation containing:
-    * Mate distance pruning.
+    * Mate distance pruning and Cuckoo upcoming repetition detection (`upcoming_repetition()`).
     * TT probing and TT research margins.
     * Syzygy tablebase WDL probing at interior nodes.
     * Hindsight depth adjustments (+1 extension / -1 reduction).
@@ -129,7 +129,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`perft.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.h) / [`perft.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.c):** Standard and bulk move generation testing (`perft`, `uperft`, and `perfttest` test suites).
 * **[`cpu.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.h) / [`cpu.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.c):** Runtime CPU instruction set detection (POPCNT, BMI2, AVX2, AVX-512) for dynamic dispatch.
 * **[`thread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/thread.h), [`tinycthread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.h) / [`tinycthread.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c):** Cross-platform C11 threads emulation on POSIX `pthread` and Windows Win32 thread APIs.
-* **[`recog.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h):** Draw recognition used by the search ([`recog_draw()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L72)): fifty-move rule (when `useFiftyMoveRule` is on), Stockfish-style repetition (a 2-fold inside the search tree or any 3-fold), insufficient material (bare kings, a lone minor, two knights) and the wrong-coloured-bishop / rook-pawn fortress once the defending king reaches the promotion corner.
+* **[`recog.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h):** Draw recognition used by the search ([`recog_draw()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L108) and Cuckoo 1-move cycle detection [`upcoming_repetition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L17)): fifty-move rule (when `useFiftyMoveRule` is on), Stockfish-style repetition (a 2-fold inside the search tree or any 3-fold), insufficient material (bare kings, a lone minor, two knights) and the wrong-coloured-bishop / rook-pawn fortress once the defending king reaches the promotion corner.
 * **[`io.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.h) / [`io.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.c):** Formatting and parsing for moves, squares, and FEN strings.
 * **[`misc.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.h) / [`misc.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c):** Monotonic 64-bit timing ([`getTimeMs()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/misc.c#L13)) via `clock_gettime(CLOCK_MONOTONIC)` on Linux and `GetTickCount64()` on Windows.
 * **[`some_maths.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/some_maths.h):** Utility math functions (`MIN`, `MAX`, `floorPowerOf2`).

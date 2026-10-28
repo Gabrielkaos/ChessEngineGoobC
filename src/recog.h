@@ -5,9 +5,48 @@
 #include "defs.h"
 #include "board.h"
 #include "bitboards.h"
+#include "init.h"
+#include "attacks.h"
 
 INLINE int is_repetition(const S_BOARD *pos) {
     return pos->st->repetition && pos->st->repetition < pos->ply;
+}
+
+// Marcel van Kervinck's Cuckoo upcoming repetition detection (Stockfish / Berserk):
+// Checks in O(1) per reversible ply whether a single pseudo-legal reversible move
+// from the current board repeats an earlier position.
+INLINE int upcoming_repetition(const S_BOARD *pos) {
+    int end = MIN(pos->st->fiftyMove, pos->st->pliesFromNull);
+    if (end < 3) return FALSE;
+
+    U64 originalKey = pos->st->posKey;
+    const StateInfo *stp = pos->st->previous;
+    if (!stp) return FALSE;
+    U64 other = originalKey ^ stp->posKey ^ sideKey;
+
+    for (int i = 3; i <= end; i += 2) {
+        if (!stp->previous || !stp->previous->previous) break;
+        stp = stp->previous;
+        other ^= stp->posKey ^ stp->previous->posKey ^ sideKey;
+        stp = stp->previous;
+
+        if (other != 0ULL) continue;
+
+        U64 moveKey = originalKey ^ stp->posKey;
+        int j;
+        if ((j = (int)(moveKey & 0x1fff), cuckoo[j] == moveKey) ||
+            (j = (int)((moveKey >> 16) & 0x1fff), cuckoo[j] == moveKey)) {
+            int move = cuckooMove[j];
+            int s1 = FROMSQ(move);
+            int s2 = TOSQ(move);
+
+            if (!(BetweenBB[s1][s2] & pos->byTypeBB[ALL_PIECES])) {
+                if (pos->ply > i || stp->repetition)
+                    return TRUE;
+            }
+        }
+    }
+    return FALSE;
 }
 
 INLINE int drawFiftyMoveRule(const S_BOARD *pos) {

@@ -313,7 +313,56 @@ Tested against the baseline engine:
 
 ---
 
-## 14. Summary of All Merged Features on `main`
+## 14. Round 12: Shuffling Singular Extension Guard (`is_shuffling`) (October 28, 2026)
+
+Tested against the newly compiled 4-bucket mirrored NNUE baseline (`GOOB-base`, bench 842,017 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/is-shuffling`** | **REVERTED** | 597 | 127 - 161 - 309 | 47.2% | **-20.0 ± 19.5** | -0.887 | Rejected / Reverted (Elo Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/is-shuffling` (Reverted: -20.0 Elo)
+* **Concept:** Adapted Stockfish's `is_shuffling()` singular extension guard (`!quietMove || st->fiftyMove < 10 || st->pliesFromNull < 6 || ply < 20`, checking `FROMSQ(move) == TOSQ(move2) && FROMSQ(move2) == TOSQ(move4)`) to disable Singular Extensions on back-and-forth shuffling moves (`A -> B -> A`).
+* **Empirical Match Result:**
+  - **Match:** 597 games against `GOOB-base` at 6+0.06 TC (1 thread, 32 MB hash, non-regression bounds `ELO0 = -5, ELO1 = 0`).
+  - **Score:** 127 wins, 161 losses, 309 draws (47.2% score, -34 net wins).
+  - **Elo Difference:** **-20.0 ± 19.5 Elo** (LOS: 2.2%, DrawRatio: 51.5%, LLR: -0.887).
+* **Failure Analysis:**
+  1. **Loss of Multi-Cut and `-3` Negative Extensions:** In GOOB, `Singularity()` does not only award positive extensions (`+1` or `+2`)—when a shuffling TT move is *not* unique (alternative moves also beat `rBeta`), `Singularity()` triggers **Multi-Cut** (pruning the whole node immediately) or assigns a **`-3` negative extension** to the TT move. Bypassing `Singularity()` when `is_shuffling()` was true prevented GOOB from multi-cutting or reducing non-singular shuffling TT moves.
+  2. **Fallback to `check_ext` / `history_ext`:** Skipping `if (singular)` caused execution to fall into the `else` branch in `AlphaBeta()`, allowing shuffling moves to receive `+1` extension from `inCheck` or `cmhist/fmhist > HistexLimit`.
+  3. **No Triple Extensions or Node `depth++` in GOOB:** Stockfish required `is_shuffling()` (`#6447`) because its singular hits grant up to `+3` triple extensions and increment `depth++` on the parent node; GOOB uses neither.
+* **Action:** Reverted completely from `src/search.c` and `src/README.md`. Documented here for reference.
+
+---
+
+## 15. Round 13: Cuckoo Upcoming Repetition Detection (`upcoming_repetition`) (October 29, 2026)
+
+Tested against the baseline engine (`GOOB-base`, bench 842,017 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/cuckoo-upcoming-repetition`** | **MERGED** | 1429 | 357 - 333 - 739 | 50.8% | **+6.1 ± 12.5** | +1.05 | Accepted (Positive Elo Gain) |
+
+### Detailed Analysis:
+
+#### 1. `search/cuckoo-upcoming-repetition` (Merged: +6.1 Elo)
+* **Concept:** Implemented Marcel van Kervinck's Cuckoo hash table algorithm (`InitCuckoo()` in `src/init.c` and `upcoming_repetition()` in `src/recog.h`), adapted from Stockfish and Berserk:
+  1. **8,192-Entry Cuckoo Table (`cuckoo[8192]`, `cuckooMove[8192]`):** Precomputes Zobrist XOR deltas (`pieceKeys[pc][s1] ^ pieceKeys[pc][s2] ^ sideKey`) and moves for all 3,668 reversible non-pawn piece movements at startup.
+  2. **Opponent Move Cancellation Pre-Filter (`other == 0`):** Scans ancestor `StateInfo` nodes at odd distances (`i = 3, 5, ..., MIN(fiftyMove, pliesFromNull)`) and maintains the running XOR of opponent moves (`other`). Only queries the Cuckoo table when `other == 0` (meaning all opponent moves since `stp` have canceled out).
+  3. **Unobstructed Ray & Tree/Game Repetition Verification:** Verifies `!(BetweenBB[s1][s2] & pos->byTypeBB[ALL_PIECES])` and `pos->ply > i || stp->repetition`.
+  4. **Early Bound Tightening & Cutoff in `AlphaBeta()`:** At interior nodes (`!rootNode`), when `alpha < 0 && upcoming_repetition(pos)`, immediately raises `alpha = drawScore(pos, info)` and cuts off (`if (alpha >= beta) return alpha`) before TT probing, NNUE evaluation, or move generation.
+* **Empirical Match Result:**
+  - **Match:** 1,429 games against `GOOB-base` at 6+0.06 TC (1 thread, 32 MB hash, `ELO0 = -5, ELO1 = 0`).
+  - **Score:** 357 wins, 333 losses, 739 draws (50.8% score, **+24 net wins**; at 1,420g: White `331 - 22 - 357` [71.8%], Black `24 - 308 - 378` [30.0%]).
+  - **Elo Difference:** **+6.1 ± 12.5 Elo** (LOS: **83.0%**, DrawRatio: 51.8%, LLR: **+1.05**).
+  - **Benchmark:** Fixed-depth benchmark (`bench.py 12`) node count decreased from 842,017 to **819,396 nodes (-2.7% overall tree size, and -65% nodes on shuffling middlegames)**; execution time dropped from 448 ms to **432 ms**.
+* **Verdict:** **ACCEPTED & MERGED** into `main`.
+
+---
+
+## 16. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -328,10 +377,11 @@ Tested against the baseline engine:
 11. `opt/movepicker-threats`: Unified lazy attack bitboards and SEE short-circuiting on quiet checks (+96k NPS, +4.6 Elo, commit `1f24ddf`).
 12. `search/lmr-gives-check`: 1-ply Late Move Reduction deduction for candidate moves giving check (`givesCheck`, +3.8 Elo).
 13. `search/hist-order-bonus`: Position-dependent history malus decay by search order and move-count bonus scaling for late quiet refutations (+2.1 Elo, commit `885291b`).
+14. `search/cuckoo-upcoming-repetition`: Marcel van Kervinck's 8,192-entry Cuckoo hash table (`InitCuckoo()`) and 1-move upcoming repetition cycle detection (`upcoming_repetition()`, +6.1 Elo, -2.7% bench nodes).
 
 ---
 
-## 15. Closing Instructions for GitHub PRs
+## 17. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -345,6 +395,7 @@ For each rejected PR on GitHub:
 - `search/conthist-prune`
 - `search/tt-lmr`
 - `search/singular-margin-triple-ext`
+- `search/is-shuffling`
 
 Leave a closing note and close the PR:
 

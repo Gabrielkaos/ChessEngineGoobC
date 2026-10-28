@@ -329,6 +329,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int rAlpha = alpha > -AB_BOUND + pos->ply     ? alpha : -AB_BOUND + pos->ply;
         int rBeta  =  beta <  AB_BOUND - pos->ply - 1 ?  beta :  AB_BOUND - pos->ply - 1;
         if (rAlpha >= rBeta) return rAlpha;
+        //upcoming repetition (Cuckoo cycle detection)
+        if (alpha < 0 && upcoming_repetition(pos)) {
+            alpha = drawScore(pos, info);
+            if (alpha >= beta) return alpha;
+        }
     }
 
     pos->search->searchKillers[0][pos->ply+1] = NOMOVE;
