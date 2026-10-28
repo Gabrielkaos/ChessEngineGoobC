@@ -587,7 +587,6 @@ void run_bench(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table, int depth) {
         //the rest of what parseGo sets for "go depth N"
         info->analyzeMode = EngineOptions->analysisMode;
         info->mateLimit = -1;
-        info->EloNodelimit = info->EloNodeSet==TRUE ? nodesLimitForUci(EngineOptions->uciElo) : 0;
 
         int t0 = getTimeMs();
 

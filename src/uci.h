@@ -4,7 +4,6 @@
 #include "board.h"
 
 //uci.c
-extern U64 nodesLimitForUci(int elo);
 extern int getInput(char *str);
 extern int strEquals(char *str1, char *str2);
 extern int strStartsWith(char *str, char *key);

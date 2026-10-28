@@ -47,6 +47,14 @@ void InitHashKeys(){
 
 void AllInit(){
     InitHashKeys();
+    EngineOptions->analysisMode   = FALSE;
+    EngineOptions->limitStrength  = FALSE;
+    EngineOptions->uciElo         = defaultElo;
+    EngineOptions->skillLevel     = defaultSkillLevel;
+    EngineOptions->personality    = PERSONALITY_DEFAULT;
+    EngineOptions->contempt       = 0;
+    EngineOptions->aggressiveness = 100;
+    EngineOptions->tradeAversion  = 0;
     //InitMvvLva();
     //InitPolyBook("Performance.bin");
     InitAttacks();

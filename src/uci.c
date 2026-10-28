@@ -21,7 +21,6 @@
 #include "trace.h"
 
 #define INPUTBUFFER 65536
-#define Euler 2.8
 
 static int searchThreadValid = 0;
 
@@ -31,10 +30,6 @@ void joinSearchThread(S_SEARCHINFO *info){
         WaitSearch();
         searchThreadValid = 0;
     }
-}
-
-U64 nodesLimitForUci(int elo){
-    return (U64)pow(Euler,((elo + 200) / 160));
 }
 int getInput(char *str) {
 
@@ -257,25 +252,26 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         }
     }
 
+    else if (!strncmp(line, "setoption name Skill Level value ", 33)) {
+        int lvl = atoi(line + 33);
+        if (lvl < 0) lvl = 0;
+        if (lvl > 20) lvl = 20;
+        EngineOptions->skillLevel = lvl;
+        printf("info string Skill Level set to %d\n", lvl);
+    }
+
     else if (!strncmp(line, "setoption name UCI_LimitStrength value ", 39)) {
-        char *ptrTrue=NULL;
-        ptrTrue=strstr(line,"true");
-        if(ptrTrue != NULL){
-            info->EloNodeSet=TRUE;
-            printf("info string LimitStrength set to true\n");
-        }else{
-            info->EloNodeSet=FALSE;
-            printf("info string LimitStrength set to false\n");
-        }
+        char *ptrTrue = strstr(line, "true");
+        EngineOptions->limitStrength = (ptrTrue != NULL);
+        printf("info string UCI_LimitStrength set to %s\n", EngineOptions->limitStrength ? "true" : "false");
     }
 
     else if (!strncmp(line, "setoption name UCI_Elo value ", 29)) {
-        int uciElo=defaultElo;
-        sscanf(line,"%*s %*s %*s %*s %d",&uciElo);
-        if(uciElo < 1200) uciElo = 1200;
-        if(uciElo > defaultElo) uciElo = defaultElo;
-        EngineOptions->uciElo=uciElo;
-        printf("info string Elo set to %d\n",uciElo);
+        int uciElo = atoi(line + 29);
+        if (uciElo < LowestElo) uciElo = LowestElo;
+        if (uciElo > HighestElo) uciElo = HighestElo;
+        EngineOptions->uciElo = uciElo;
+        printf("info string UCI_Elo set to %d\n", uciElo);
     }
 
     else if (!strncmp(line, "setoption name BruteForceMode value ", 36)) {
@@ -351,6 +347,73 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         printf("info string Surprise_SRD set to %s\n", SurpriseSRDEnabled ? "true" : "false");
     }
 #endif
+    else if (!strncmp(line, "setoption name Personality value ", 33)) {
+        char val[64] = {0};
+        if (sscanf(line, "%*s %*s %*s %*s %63s", val) == 1) {
+            if (!strcasecmp(val, "Tal")) {
+                EngineOptions->personality = PERSONALITY_TAL;
+                EngineOptions->contempt = 40;
+                EngineOptions->aggressiveness = 160;
+                EngineOptions->tradeAversion = 30;
+                printf("info string Personality set to Tal (Contempt=40, Aggressiveness=160, TradeAversion=30)\n");
+            } else if (!strcasecmp(val, "Karpov")) {
+                EngineOptions->personality = PERSONALITY_KARPOV;
+                EngineOptions->contempt = -10;
+                EngineOptions->aggressiveness = 50;
+                EngineOptions->tradeAversion = -25;
+                printf("info string Personality set to Karpov (Contempt=-10, Aggressiveness=50, TradeAversion=-25)\n");
+            } else if (!strcasecmp(val, "Aggressive")) {
+                EngineOptions->personality = PERSONALITY_AGGRESSIVE;
+                EngineOptions->contempt = 20;
+                EngineOptions->aggressiveness = 135;
+                EngineOptions->tradeAversion = 15;
+                printf("info string Personality set to Aggressive (Contempt=20, Aggressiveness=135, TradeAversion=15)\n");
+            } else if (!strcasecmp(val, "Solid")) {
+                EngineOptions->personality = PERSONALITY_SOLID;
+                EngineOptions->contempt = 0;
+                EngineOptions->aggressiveness = 70;
+                EngineOptions->tradeAversion = -15;
+                printf("info string Personality set to Solid (Contempt=0, Aggressiveness=70, TradeAversion=-15)\n");
+            } else if (!strcasecmp(val, "Custom")) {
+                EngineOptions->personality = PERSONALITY_CUSTOM;
+                printf("info string Personality set to Custom (Contempt=%d, Aggressiveness=%d, TradeAversion=%d)\n",
+                       EngineOptions->contempt, EngineOptions->aggressiveness, EngineOptions->tradeAversion);
+            } else {
+                EngineOptions->personality = PERSONALITY_DEFAULT;
+                EngineOptions->contempt = 0;
+                EngineOptions->aggressiveness = 100;
+                EngineOptions->tradeAversion = 0;
+                printf("info string Personality set to Default\n");
+            }
+        }
+    }
+    else if (!strncmp(line, "setoption name Contempt value ", 30)) {
+        int val = 0;
+        if (sscanf(line, "%*s %*s %*s %*s %d", &val) == 1) {
+            if (val < -100) val = -100;
+            if (val > 100) val = 100;
+            EngineOptions->contempt = val;
+            printf("info string Contempt set to %d\n", val);
+        }
+    }
+    else if (!strncmp(line, "setoption name Aggressiveness value ", 36)) {
+        int val = 100;
+        if (sscanf(line, "%*s %*s %*s %*s %d", &val) == 1) {
+            if (val < 0) val = 0;
+            if (val > 200) val = 200;
+            EngineOptions->aggressiveness = val;
+            printf("info string Aggressiveness set to %d\n", val);
+        }
+    }
+    else if (!strncmp(line, "setoption name TradeAversion value ", 35)) {
+        int val = 0;
+        if (sscanf(line, "%*s %*s %*s %*s %d", &val) == 1) {
+            if (val < -50) val = -50;
+            if (val > 50) val = 50;
+            EngineOptions->tradeAversion = val;
+            printf("info string TradeAversion set to %d\n", val);
+        }
+    }
 #ifdef TUNE
     else if (tuneSetOption(line)) {
         //tunable search parameter (tune.h), only in `make tune` builds
@@ -493,10 +556,6 @@ void parseGo(char* line,S_SEARCHINFO *info,S_BOARD *pos, S_PVTABLE *table){
         }
     }
 
-    //limits for limiting strength
-    if(info->EloNodeSet==TRUE)info->EloNodelimit=nodesLimitForUci(EngineOptions->uciElo);
-    else info->EloNodelimit=0;
-
     //node limits
     info->nodeSet   = nodestogo > 0;
     info->nodeLimit = nodestogo;
@@ -576,8 +635,9 @@ void uciPrint(){
     printf("option name Clear Hash type button\n"); //12
     printf("option name Ponder type check default false\n"); //10
     printf("option name UCI_AnalyseMode type check default false\n"); //15
-    printf("option name UCI_LimitStrength type check default false\n"); //16
-    printf("option name UCI_Elo type spin default %d min 1200 max %d\n",defaultElo,defaultElo); //17
+    printf("option name Skill Level type spin default 20 min 0 max 20\n");
+    printf("option name UCI_LimitStrength type check default false\n");
+    printf("option name UCI_Elo type spin default %d min %d max %d\n",defaultElo,LowestElo,HighestElo);
     printf("option name BruteForceMode type check default false\n"); //19
     printf("option name useFiftyMoveRule type check default true\n"); //20
     printf("option name EvalFile type string default <empty>\n");
@@ -586,6 +646,10 @@ void uciPrint(){
     printf("option name Syzygy50MoveRule type check default true\n");
     printf("option name SyzygyProbeLimit type spin default 7 min 0 max 7\n");
     printf("option name UCI_ShowWDL type check default false\n");
+    printf("option name Personality type combo default Default var Default var Tal var Karpov var Aggressive var Solid var Custom\n");
+    printf("option name Contempt type spin default 0 min -100 max 100\n");
+    printf("option name Aggressiveness type spin default 100 min 0 max 200\n");
+    printf("option name TradeAversion type spin default 0 min -50 max 50\n");
 #if USE_SURPRISE_SRD
     printf("option name Surprise_SRD type check default true\n");
 #endif
@@ -601,10 +665,15 @@ void uciPrint(){
 void InitUciDefaults(S_BOARD *pos,S_SEARCHINFO *info){
     pos->useFiftyMoveRule        =TRUE;
     EngineOptions->analysisMode  =FALSE;
+    EngineOptions->limitStrength =FALSE;
 	EngineOptions->uciElo        =defaultElo;
+    EngineOptions->skillLevel    =defaultSkillLevel;
+    EngineOptions->personality   =PERSONALITY_DEFAULT;
+    EngineOptions->contempt      =0;
+    EngineOptions->aggressiveness=100;
+    EngineOptions->tradeAversion =0;
 	info->setOptionPonder        =FALSE;
 	info->nodeSet                =FALSE;
-	info->EloNodeSet             =FALSE;
 	info->bruteForceMode         =FALSE;
 	info->multiPV                =1;
 	info->originalTimeAdjust     =-1.0;
@@ -615,6 +684,7 @@ void InitUciDefaults(S_BOARD *pos,S_SEARCHINFO *info){
     SyzygyProbeDepth             =1;
     Syzygy50MoveRule             =TRUE;
     info->showWDL                =FALSE;
+    srand((unsigned)getTimeMs());
 }
 
 void UCILoop(S_BOARD *pos,S_SEARCHINFO *info){

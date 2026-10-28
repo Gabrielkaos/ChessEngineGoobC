@@ -207,8 +207,9 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 | `Clear Hash` | button | — | Clears the Transposition Table. |
 | `Ponder` | check | `false` | Enables pondering during opponent's time. |
 | `UCI_AnalyseMode` | check | `false` | Optimizes search behavior for analysis GUIs. |
-| `UCI_LimitStrength` | check | `false` | Enables Elo rating capping. |
-| `UCI_Elo` | spin | `2700` (1200–2700) | Target Elo when `UCI_LimitStrength` is active. |
+| `Skill Level` | spin | `20` (0–20) | Engine playing strength level (Stockfish multiPV blunder selection; 20 = full strength). |
+| `UCI_LimitStrength` | check | `false` | Enables Elo rating capping via CCRL polynomial mapping to `Skill Level`. |
+| `UCI_Elo` | spin | `1320` (1320–3190) | Target CCRL Elo rating when `UCI_LimitStrength` is active. |
 | `BruteForceMode` | check | `false` | Disables prunings, reductions, and aspiration windows. |
 | `useFiftyMoveRule` | check | `true` | Toggles the 50-move draw rule enforcement. |
 | `EvalFile` | string | `<empty>` | Path to external NNUE `.bin` weights. |
@@ -217,6 +218,10 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 | `Syzygy50MoveRule` | check | `true` | Enforces 50-move rule when probing Syzygy tables. |
 | `SyzygyProbeLimit` | spin | `7` (0–7) | Maximum number of pieces for Syzygy probing. |
 | `UCI_ShowWDL` | check | `false` | Output Win-Draw-Loss probabilities in search info lines. |
+| `Personality` | combo | `Default` | Playing style presets (`Default`, `Tal`, `Karpov`, `Aggressive`, `Solid`, `Custom`). |
+| `Contempt` | spin | `0` (-100–100) | Symmetrical draw score shift; positive values disfavor draws (bypassed during `UCI_AnalyseMode`). |
+| `Aggressiveness` | spin | `100` (0–200) | Forward piece infiltration balance bias (100 = neutral). |
+| `TradeAversion` | spin | `0` (-50–50) | Material complexity bias; positive values reward keeping queens on board. |
 | `Surprise_SRD` | check | `true` | Enables dynamic LMR via sibling history and eval expectation. |
 | *(tune.h parameters)* | spin | see `tune.h` | `make tune` builds only: one option per search constant in [`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h), named after the constant (e.g. `LMRBase`, `FutilityMargin`). |
 

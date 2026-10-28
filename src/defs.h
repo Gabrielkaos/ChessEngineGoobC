@@ -100,7 +100,7 @@ enum {  MAXDEPTH=128,
         ISMATE=AB_BOUND-MAXDEPTH,
         TB_WIN_VALUE=ISMATE-1000,
         VALUE_NONE=AB_BOUND+1};
-enum {defaultElo=2700,defaultHash=64,maxHash=65536};
+enum {LowestElo=1320,HighestElo=3190,defaultElo=1320,defaultSkillLevel=20,defaultHash=64,maxHash=65536};
 enum {OFFBOARD=100,BOARD_NUMS_SQ=64};
 enum {
     EMPTY = 0,
@@ -237,7 +237,6 @@ typedef struct {
     volatile int stopped;
     int depth;
     int movestogo;
-    U64 EloNodelimit;
     U64 nodeLimit;
     int mateLimit;
     int quit;
@@ -246,7 +245,6 @@ typedef struct {
     int timeSet;
     int depthSet;
     int nodeSet;
-    int EloNodeSet;
     int UciInfinite;
 
     //options for uci
@@ -283,8 +281,23 @@ typedef struct {
 //Engine options
 typedef struct{
     int analysisMode;
+    int limitStrength;
     int uciElo;
+    int skillLevel;
+    int personality;
+    int contempt;
+    int aggressiveness;
+    int tradeAversion;
 } S_OPTIONS;
+
+enum {
+    PERSONALITY_DEFAULT = 0,
+    PERSONALITY_TAL,
+    PERSONALITY_KARPOV,
+    PERSONALITY_AGGRESSIVE,
+    PERSONALITY_SOLID,
+    PERSONALITY_CUSTOM
+};
 
 /*MACROS */
 

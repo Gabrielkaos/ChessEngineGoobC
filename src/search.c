@@ -52,10 +52,8 @@ INLINE void addThreadCounter(U64 *counter){
 //function for checking if we should stop early the search
 INLINE void checkUp(S_SEARCHINFO *info){
     if(!info->UciInfinite && !info->ponder){
-        int eloLimit = !info->analyzeMode && info->EloNodeSet==TRUE;
-        U64 nodes    = (eloLimit || info->nodeSet==TRUE) ? NodesSearchedThreadPool(info) : 0;
-        int hitLimit = (eloLimit && nodes>=info->EloNodelimit)                     ||
-                       info->stopOnPonderhit                                       ||
+        U64 nodes    = info->nodeSet==TRUE ? NodesSearchedThreadPool(info) : 0;
+        int hitLimit = info->stopOnPonderhit                                       ||
                        (info->timeSet==TRUE && getTimeMs()>info->stoptime)         ||
                        (info->nodeSet==TRUE && nodes>=info->nodeLimit);
         if(!hitLimit)return;
@@ -131,6 +129,48 @@ INLINE int adjustEvalOnFmr(const S_BOARD *pos, int eval){
     return (200 - pos->st->fiftyMove) * eval / 200;
 }
 
+// Symmetrical draw score with Contempt (Berserk style):
+// Positive contempt makes the engine disfavor draws when it is to move.
+INLINE int drawScore(const S_BOARD *pos, const S_SEARCHINFO *info) {
+    int contempt = EngineOptions->contempt;
+    if (contempt == 0 || info->analyzeMode) {
+        return 1 - (pos->search->nodes & 2);
+    }
+    int rootSide = (pos->ply & 1) ? (pos->side ^ 1) : pos->side;
+    return (pos->side == rootSide) ? -contempt : contempt;
+}
+
+// Playstyle evaluation adjustment:
+// Trade aversion rewards queen presence; aggressiveness rewards forward pieces in opponent's half.
+INLINE int adjustEvalOnStyle(const S_BOARD *pos, const S_SEARCHINFO *info, int eval) {
+    if (info->analyzeMode) return eval;
+
+    int aggr = EngineOptions->aggressiveness, tradeAv = EngineOptions->tradeAversion;
+    if (aggr == 100 && tradeAv == 0) return eval;
+
+    int rootSide = (pos->ply & 1) ? (pos->side ^ 1) : pos->side;
+    int engineBonus = 0;
+
+    if (tradeAv != 0) {
+        if ((pos->byTypeBB[QUEEN] & pos->byColorBB[WHITE]) &&
+            (pos->byTypeBB[QUEEN] & pos->byColorBB[BLACK])) {
+            engineBonus += tradeAv;
+        }
+    }
+
+    if (aggr != 100) {
+        U64 enemyHalf = (rootSide == WHITE) ? 0xFFFFFFFF00000000ULL : 0x00000000FFFFFFFFULL;
+        U64 friendlyNonPawn = pos->byColorBB[rootSide] & ~pos->byTypeBB[PAWN] & ~pos->byTypeBB[KING];
+        U64 opponentNonPawn = pos->byColorBB[rootSide ^ 1] & ~pos->byTypeBB[PAWN] & ~pos->byTypeBB[KING];
+        int fAdv = COUNTBIT(friendlyNonPawn & enemyHalf);
+        int eAdv = COUNTBIT(opponentNonPawn & ~enemyHalf);
+        engineBonus += (fAdv - eAdv) * (aggr - 100) * 8 / 100;
+    }
+
+    int term = (pos->side == rootSide) ? engineBonus : -engineBonus;
+    return eval + term;
+}
+
 
 //Quiescence search function to check if there are captures that can change the game
 
@@ -149,7 +189,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
 
     //if draw
     if(pos->ply){
-        if(recog_draw(pos))return 1-(pos->search->nodes & 2);
+        if(recog_draw(pos))return drawScore(pos, info);
         if(pos->ply >= MAXDEPTH - 1)return nnue_eval(pos);
     }
 
@@ -174,7 +214,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
     if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
     int rawEval = (ttEval != VALUE_NONE) ? ttEval : nnue_eval(pos);
     int staticEval = pos->search->eval_stack[pos->ply] = correctedStaticEval(pos,rawEval);
-    int eval = adjustEvalOnFmr(pos, staticEval);
+    int eval = adjustEvalOnStyle(pos, info, adjustEvalOnFmr(pos, staticEval));
     best = eval;
     TRACE_INC(pos, qs_stand_pat_evals);
     alpha = MAX(alpha, eval);
@@ -282,7 +322,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //if not rootNode check some things
     if(!rootNode){
         //see if board is drawn
-        if(recog_draw(pos))return 1-(pos->search->nodes & 2);
+        if(recog_draw(pos))return drawScore(pos, info);
         //to deep
         if(pos->ply >= MAXDEPTH - 1)return nnue_eval(pos);
         //mate pruning
@@ -364,7 +404,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //FMR-deflated eval used for pruning: more pessimistic as the fifty-move
     //draw approaches (Berserk). improving/hindsight keep the raw staticEval.
-    int eval = inCheck ? staticEval : adjustEvalOnFmr(pos, staticEval);
+    int eval = inCheck ? staticEval : adjustEvalOnStyle(pos, info, adjustEvalOnFmr(pos, staticEval));
 
 
     //hindsight depth adjustment based on how much the parent reduced
@@ -906,7 +946,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //checkmate and stalemate
-    if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : 0;
+    if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : (EngineOptions->contempt ? drawScore(pos, info) : 0);
 
     //update history counters on a fail high
     if(bestScore>=beta){
@@ -1120,6 +1160,49 @@ static int countLegalRootMoves(S_BOARD *pos){
     return legalCount;
 }
 
+//Structure to collect completed lines at each depth for sorting and reporting
+typedef struct {
+    int score;
+    int alpha;
+    int beta;
+    S_PVLINE pv;
+} S_DEPTH_PV;
+
+// Stockfish Heinz van Saanen skill move picker:
+// Chooses among root PV moves using a statistical rule dependent on 'level'.
+static int pick_best_skill_move(const S_DEPTH_PV *depthLines, int count, double level) {
+    if (count <= 0 || depthLines[0].pv.count == 0) return NOMOVE;
+    if (count == 1) return depthLines[0].pv.moves[0];
+
+    int topScore = depthLines[0].score;
+    int minScore = depthLines[0].score;
+    for (int i = 1; i < count; ++i) {
+        if (depthLines[i].score > topScore) topScore = depthLines[i].score;
+        if (depthLines[i].score < minScore) minScore = depthLines[i].score;
+    }
+
+    int delta = MIN(topScore - minScore, 100);
+    int maxScore = -INFINITE_BOUND;
+    double weakness = 120.0 - 2.0 * level;
+    int weaknessInt = (int)weakness;
+    if (weaknessInt < 1) weaknessInt = 1;
+
+    int best = depthLines[0].pv.moves[0];
+
+    for (int i = 0; i < count; ++i) {
+        if (depthLines[i].pv.count == 0) continue;
+        int push = (int)(weakness * (topScore - depthLines[i].score)
+                   + delta * ((unsigned)rand() % weaknessInt)) / 128;
+
+        if (depthLines[i].score + push >= maxScore) {
+            maxScore = depthLines[i].score + push;
+            best     = depthLines[i].pv.moves[0];
+        }
+    }
+
+    return best;
+}
+
 //passing threads
 //searches for each threads
 void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
@@ -1156,9 +1239,32 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
     }
 
+    // Skill Level / UCI_LimitStrength calculation (Stockfish method)
+    double skillLevel = 20.0;
+    int skillEnabled = 0;
+    int skillBestMove = NOMOVE;
+    int lastCompletedSkillMove = NOMOVE;
+
+    if (EngineOptions->limitStrength) {
+        int uciElo = EngineOptions->uciElo;
+        if (uciElo < LowestElo) uciElo = LowestElo;
+        if (uciElo > HighestElo) uciElo = HighestElo;
+        double e = (double)(uciElo - LowestElo) / (HighestElo - LowestElo);
+        skillLevel = (((37.2473 * e - 40.8525) * e + 22.2943) * e - 0.311438);
+        if (skillLevel < 0.0) skillLevel = 0.0;
+        if (skillLevel > 19.0) skillLevel = 19.0;
+        skillEnabled = 1;
+    } else if (EngineOptions->skillLevel < 20) {
+        skillLevel = (double)EngineOptions->skillLevel;
+        skillEnabled = 1;
+    }
+
     //MultiPV: all threads search all requested root lines (Lazy SMP)
     int rootLegalMoves = countLegalRootMoves(pos);
     int multiPV        = MIN(MAX(1,info->multiPV), MAX(1,rootLegalMoves));
+    if (skillEnabled && multiPV < 4) {
+        multiPV = MIN(4, MAX(1, rootLegalMoves));
+    }
 
     //game over (checkmate/stalemate): no legal moves, nothing to search
     if(rootLegalMoves==0){
@@ -1179,14 +1285,8 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     }
 
     int delta,alpha,beta, searchDepth;
-
-    //Structure to collect completed lines at each depth for sorting and reporting
-    typedef struct {
-        int score;
-        int alpha;
-        int beta;
-        S_PVLINE pv;
-    } S_DEPTH_PV;
+    S_DEPTH_PV depthLines[MAXPOSMOVES];
+    int lastCompletedCount = 0;
 
     //iterative deepening
     for(currentDepth=1;currentDepth<MAXDEPTH;++currentDepth){
@@ -1196,7 +1296,6 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         //MultiPV: reset exclusions at start of each depth iteration
         pos->excludedRootMoveCount = 0;
 
-        S_DEPTH_PV depthLines[MAXPOSMOVES];
         int completedLinesCount = 0;
 
         for(pvNum=0;pvNum<multiPV;++pvNum){
@@ -1281,6 +1380,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
 
         if(info->stopped==TRUE && completedLinesCount == 0)break;
+        lastCompletedCount = completedLinesCount;
 
         //MultiPV: sort completed lines by score descending (Ethereal method)
         if(completedLinesCount > 1){
@@ -1319,9 +1419,17 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             info->depthOneComplete = TRUE;
         }
 
+        if (skillEnabled && threadNum == 0 && completedLinesCount > 0) {
+            lastCompletedSkillMove = pick_best_skill_move(depthLines, completedLinesCount, skillLevel);
+            if (currentDepth == 1 + (int)skillLevel) {
+                skillBestMove = lastCompletedSkillMove;
+            }
+        }
+
         //reporting to interface (Thread 0 only)
         if (threadNum==0 && !info->silent){
-            for(int i = 0; i < completedLinesCount; i++){
+            int linesToReport = skillEnabled ? MIN(completedLinesCount, MAX(1, info->multiPV)) : completedLinesCount;
+            for(int i = 0; i < linesToReport; i++){
                 int pCount = depthLines[i].pv.count;
                 if(pCount > MAXDEPTH) pCount = MAXDEPTH;
                 for (int p = 0; p < pCount; p++) {
@@ -1429,6 +1537,21 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
         }
     }
     if (threadNum == 0) {
+        if (skillEnabled) {
+            int finalMove = (skillBestMove != NOMOVE) ? skillBestMove : lastCompletedSkillMove;
+            if (finalMove != NOMOVE) {
+                workerthread->bestMove = finalMove;
+                workerthread->ponderMove = NOMOVE;
+                for (int i = 0; i < lastCompletedCount; ++i) {
+                    if (depthLines[i].pv.count > 0 && depthLines[i].pv.moves[0] == finalMove) {
+                        if (depthLines[i].pv.count > 1) {
+                            workerthread->ponderMove = depthLines[i].pv.moves[1];
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         //the stability hysteresis is per move, so it is only stored once the
         //search is over (storing it every iteration fed each depth's value into
         //the next depth instead of into the next move, unlike Stockfish)
@@ -1485,6 +1608,9 @@ U64 TbHitsThreadPool(const S_SEARCHINFO *info){
 
 // Stockfish 19 get_best_thread Lazy SMP voting implementation
 static int get_best_thread_idx(int activeThreads) {
+    if (EngineOptions->limitStrength || EngineOptions->skillLevel < 20) {
+        return 0;
+    }
     int bestIdx = 0;
 
     // Find minScore among threads that completed at least depth 1 with a valid move
