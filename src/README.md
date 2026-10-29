@@ -27,7 +27,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Finny table accumulator cache (`pos->search->nnue_cache[color][flip][bucket]`): per-thread cache storing the last refreshed accumulator and piece bitboards for each `(color, flip, bucket)` slot so boundary refreshes apply only the bitboard diff (`cur ^ prev`) instead of summing all pieces on the board.
   * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks) with `GOOBNNUE` v2 architecture trailer verification.
 * **Correction History:** Multi-table evaluation error correction indexed by pawn-king hash, minor-piece hash, dual non-pawn material hashes, and 2-ply / 4-ply continuation moves.
-* **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double extensions and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, SEE pruning, and **Surprise-SRD** (dynamic LMR responding to sibling fail highs and evaluation expectation).
+* **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double/triple extensions, shuffling guard, and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, SEE pruning, and **Surprise-SRD** (dynamic LMR responding to sibling fail highs and evaluation expectation).
 * **Transposition Table:** 4-entry, 64-byte buckets (matching an x86 L1 cache line), lockless SMP key verification combining `posKey` and `smp_data`, and age/depth replacement.
 * **Endgame Tablebases:** Syzygy 3–7 men support integrated via Fathom probe at root and interior nodes.
 * **Parallel Search:** Lazy SMP with thread voting across threads wrapped by [`tinycthread`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c).
@@ -105,7 +105,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
     * Tactical pruning: Capture Futility Pruning ($D \le 6$, `CaptureFutilityBase + CaptureFutilityPerDepth * depth`) and history-adjusted SEE margin.
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
-    * Singular Extensions ($D \ge 7$, TT move), double extensions, and multicut.
+    * Singular Extensions ($D \ge 10$, non-mate/TB TT move, verified via `excludedMove` recursive `AlphaBeta` at `(depth - 1) / 2`), double and quiet non-PV triple extensions (capped at `dextensions <= 6` and guarded against back-and-forth piece shuffling via `is_shuffling()`), negative extensions, and multicut.
     * Check extensions and history extensions.
     * Late Move Reduction (LMR) table with adjustments for check evasions, moves giving check (`givesCheck`), PV, improving, tactical TT moves (`ttCapture`), and history.
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.

@@ -53,6 +53,8 @@ typedef struct {
     U64 tbhits;
     int eval_stack[MAXDEPTH];
     int reduction_stack[MAXDEPTH];
+    int dextensions[MAXDEPTH];
+    int excludedMove[MAXDEPTH];
     int moveStack[MAXDEPTH];
     int pieceStack[MAXDEPTH];
     int pvArray[MAXDEPTH];

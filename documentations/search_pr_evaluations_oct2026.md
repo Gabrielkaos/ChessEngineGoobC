@@ -362,7 +362,67 @@ Tested against the baseline engine (`GOOB-base`, bench 842,017 nodes):
 
 ---
 
-## 16. Summary of All Merged Features on `main`
+## 16. Round 14: Shuffling Guard + Triple Extensions on Manual Singular Loop (Option A) (October 29, 2026)
+
+Tested against the updated Cuckoo baseline (`GOOB-base`, bench 819,396 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/se-shuffling` (Option A)** | **REVERTED** | 2034 | 476 - 509 - 1049 | 49.2% | **-5.5 ± 10.5** | -1.39 | Rejected / Reverted (Elo Regression) |
+
+### Detailed Analysis:
+
+#### 1. `search/se-shuffling` Option A (Reverted: -5.5 Elo)
+* **Concept:** Combined Stockfish's `is_shuffling()` guard with calibrated double/triple extensions inside GOOB's existing manual `Singularity()` loop (6 quiet / 3 tactical moves):
+  1. Added `abs(ttValue) < TB_WIN_VALUE - MAXDEPTH` to the `singular` eligibility check.
+  2. Added `dextensions[MAXDEPTH]` per-ply counter (`baseDext <= 6`) to cap runaway $>1$ extension chains.
+  3. Kept Multi-Cut and `-3` negative extensions active on all moves, while gating positive extensions with `!is_shuffling(pos, ttMove, !ttCapture)` inside `Singularity()`.
+  4. Added `+3` triple extensions on non-PV quiet singular moves (`!pvNode && !ttCapture && value < rBeta - adjustedDoubleMargin - 64`).
+* **Empirical Match Result:**
+  - **Match:** 2,034 games against `GOOB-base` at 6+0.06 TC (1 thread, 32 MB hash, `ELO0 = 0, ELO1 = 5`, logged in `tools/sprt/logs/se-shuffling2.log`; plus an initial 228-game warmup `57 - 55 - 116` in `se-shuffling.log`).
+  - **Score:** 476 wins, 509 losses, 1,049 draws (49.2% score, -33 net wins; at 2,030g: White `447 - 39 - 529` [70.1%], Black `28 - 468 - 519` [28.3%]).
+  - **Elo Difference:** **-5.5 ± 10.5 Elo** (LOS: 15.4%, DrawRatio: 51.6%, LLR: -1.39 [-47.1%]).
+  - **Benchmark:** `815,794` nodes at depth 12 (-0.44% vs `GOOB-base`).
+* **Failure Analysis:**
+  1. **Mismatch Between Manual Singular Loop and Triple Extensions:** GOOB's legacy `Singularity()` loop searches only up to 6 quiet and 3 tactical moves at unreduced `depth / 2 - 1` (with no LMR, no SEE/futility/LMP pruning, and hard move-count caps), whereas Stockfish, Berserk, and Ethereal-14.00 evaluate singularity via a full `excludedMove` recursive `AlphaBeta` search at `(depth - 1) / 2` where moves after the first alternative are subject to LMR and pruning.
+  2. **Over-extension on Unverified Late Alternatives:** Because the manual loop stops after 6 quiets and 3 captures, a move can appear deeply singular (`value < rBeta - adjustedDoubleMargin - 64`) simply because the true refutation was move #7+, or conversely waste nodes searching 6 unreduced quiet alternatives at `depth / 2 - 1`.
+* **Action:** Reverted Option A and proceeded to Option B (`excludedMove` recursive singular search).
+
+---
+
+## 17. Round 15: `excludedMove` Recursive Singular Search & Shuffling Guard (Option B) (October 29, 2026)
+
+Tested against the baseline engine (`GOOB-base`, bench 819,396 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Win Rate | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/se-excluded` (Option B)** | **MERGED** | 1078 | 255 - 251 - 572 | 50.2% | **+1.6 ± 14.3** | -0.083 | Accepted / Merged |
+
+### Detailed Analysis:
+
+#### 1. `search/se-excluded` Option B (Merged: +1.6 Elo)
+* **Concept:** Refactored singular verification search from the legacy unpruned 6-quiet/3-tactical manual loop to a modern Stockfish/Berserk/Ethereal-style recursive `AlphaBeta` search with `excludedMove`, combined with the `is_shuffling()` singular extension guard:
+  1. **`excludedMove` Recursive Verification:** At candidate singular nodes, `Singularity()` sets `pos->search->excludedMove[pos->ply] = ttMove` and calls `AlphaBeta(rBeta - 1, rBeta, (depth - 1) / 2, ...)` at the same node. The first alternative move (`Legal == 1`) is searched unreduced, while subsequent alternative moves are subject to standard move-loop pruning (Futility, LMP, CounterMove/Followup, Capture Futility, SEE) and LMR.
+  2. **`excludedMove` Search Stack Protection:** Inside `AlphaBeta()`, when `excludedMove != NOMOVE`:
+     - Uses `pos->search->singularMovePickers[pos->ply]` via `initSingularMovePicker()` so the outer node's `movePickers[pos->ply]` is preserved.
+     - Reuses `pos->search->eval_stack[pos->ply]` without re-evaluating NNUE.
+     - Bypasses TT/Syzygy cutoffs, `upcoming_repetition()`, Hindsight, Razoring, RFP, NMP, IIR, ProbCut, `ttMoveHistory`, correction history, and TT storage at the singular root node.
+     - Returns `alpha` (`rBeta - 1`) if `Legal == 0 && excludedMove` so single-legal-move positions are correctly recognized as singular.
+  3. **`is_shuffling()` Guard & Calibrated Double/Triple Extensions:**
+     - `is_shuffling()` checks for back-and-forth piece shuffling (`A -> B -> A`, `fiftyMove >= 10`, `pliesFromNull >= 6`, `ply >= 20`) to prevent runaway singular extension explosions.
+     - Gated only on positive extensions (`extension = 0` if shuffling), leaving Multi-Cut and `-3` negative extensions fully functional.
+     - Tracks cumulative $>1$ extensions via `dextensions[MAXDEPTH]` (`baseDext <= 6`) and allows `+3` triple extensions only on non-PV quiet singular moves (`!pvNode && !ttCapture && value < rBeta - adjustedDoubleMargin - 64`).
+* **Empirical Match Result:**
+  - **Match:** 1,078 games against `GOOB-base` at 6+0.06 TC (1 thread, 32 MB hash, logged in `tools/sprt/logs/se-excluded.log`).
+  - **Score:** 255 wins, 251 losses, 572 draws (50.2% score, +4 net wins; at 1,070g: White `467 - 36 - 567` [70.1%], Black `24 - 237 - 273` [30.1%]).
+  - **Elo Difference:** **+1.6 ± 14.3 Elo** (LOS: 58.8%, DrawRatio: 53.0%, LLR: -0.0829).
+  - **Benchmark:** `829,601` nodes at depth 12 (+1.2% nodes vs `GOOB-base`, NPS `1,907,128` vs `1,849,652`).
+  - **Endgame Shuffling Stability:** On complex shuffling endgames (e.g. `4k3/p1p1p1p1/1p1p1p1p/3P1P2/2P1P1P1/1P5P/P7/2B1K2n w - - 20 50` at depth 22), `seldepth` dropped from **43** (8.04M nodes in Option A) to **28** (3.29M nodes in Option B, 2.4× speedup).
+* **Verdict:** **ACCEPTED & MERGED** into `main`.
+
+---
+
+## 18. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -378,10 +438,11 @@ Tested against the baseline engine (`GOOB-base`, bench 842,017 nodes):
 12. `search/lmr-gives-check`: 1-ply Late Move Reduction deduction for candidate moves giving check (`givesCheck`, +3.8 Elo).
 13. `search/hist-order-bonus`: Position-dependent history malus decay by search order and move-count bonus scaling for late quiet refutations (+2.1 Elo, commit `885291b`).
 14. `search/cuckoo-upcoming-repetition`: Marcel van Kervinck's 8,192-entry Cuckoo hash table (`InitCuckoo()`) and 1-move upcoming repetition cycle detection (`upcoming_repetition()`, +6.1 Elo, -2.7% bench nodes).
+15. `search/se-excluded`: Stockfish/Berserk/Ethereal-style `excludedMove` recursive singular verification search at `(depth - 1) / 2`, `is_shuffling()` piece-shuffle singular extension guard, `dextensions <= 6` extension cap, and quiet non-PV triple extensions (+1.6 Elo, bounded seldepth 28 vs 43 on shuffling endgames).
 
 ---
 
-## 17. Closing Instructions for GitHub PRs
+## 19. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -396,6 +457,7 @@ For each rejected PR on GitHub:
 - `search/tt-lmr`
 - `search/singular-margin-triple-ext`
 - `search/is-shuffling`
+- `search/se-shuffling`
 
 Leave a closing note and close the PR:
 

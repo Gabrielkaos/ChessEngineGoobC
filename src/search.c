@@ -110,7 +110,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
 
 //protos
-static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt);
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext, StateInfo *ttSt);
 
 static int isExcludedRootMove(const S_BOARD *pos,int move){
     int i;
@@ -127,6 +127,18 @@ static int isExcludedRootMove(const S_BOARD *pos,int move){
 INLINE int adjustEvalOnFmr(const S_BOARD *pos, int eval){
     if(!pos->useFiftyMoveRule) return eval;
     return (200 - pos->st->fiftyMove) * eval / 200;
+}
+
+// Detect back-and-forth piece shuffling (A -> B -> A) to prevent singular extension explosions (Stockfish).
+// Called after makeMove(), so pos->st->previous and pos->ply - 1 reflect the pre-move node state.
+INLINE int is_shuffling(const S_BOARD *pos, int move, int quietMove) {
+    const StateInfo *st = pos->st->previous;
+    int ply = pos->ply - 1;
+    if (!quietMove || st->fiftyMove < 10 || st->pliesFromNull < 6 || ply < 20)
+        return FALSE;
+    int move2 = pos->search->moveStack[ply - 2];
+    int move4 = pos->search->moveStack[ply - 4];
+    return FROMSQ(move) == TOSQ(move2) && FROMSQ(move2) == TOSQ(move4);
 }
 
 // Symmetrical draw score with Contempt (Berserk style):
@@ -301,6 +313,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int capturesPlayed  =0;
     int *capturesTried  = pos->search->capturesTried[pos->ply];
     int hist            =0;
+    int excludedMove    = pos->search->excludedMove[pos->ply];
 
     //go to qsearch if depth<=0 AND we are not in check.
     if(depth<=0 && !inCheck){
@@ -330,18 +343,23 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int rBeta  =  beta <  AB_BOUND - pos->ply - 1 ?  beta :  AB_BOUND - pos->ply - 1;
         if (rAlpha >= rBeta) return rAlpha;
         //upcoming repetition (Cuckoo cycle detection)
-        if (alpha < 0 && upcoming_repetition(pos)) {
+        if (!excludedMove && alpha < 0 && upcoming_repetition(pos)) {
             alpha = drawScore(pos, info);
             if (alpha >= beta) return alpha;
         }
     }
 
-    pos->search->searchKillers[0][pos->ply+1] = NOMOVE;
-    pos->search->searchKillers[1][pos->ply+1] = NOMOVE;
+    int baseDext = rootNode ? 0 : pos->search->dextensions[pos->ply - 1];
+    pos->search->dextensions[pos->ply] = baseDext;
+    pos->search->excludedMove[pos->ply + 1] = NOMOVE;
+    if (!excludedMove) {
+        pos->search->searchKillers[0][pos->ply+1] = NOMOVE;
+        pos->search->searchKillers[1][pos->ply+1] = NOMOVE;
+    }
 
     //probing Transposition Table
     uint64_t ttData;
-    if(ProbeTTEntry(table, pos->st->posKey, &ttData, &ttEval)){
+    if(!excludedMove && ProbeTTEntry(table, pos->st->posKey, &ttData, &ttEval)){
         ttHit = TRUE;
         TRACE_INC(pos, tt_hits);
 
@@ -371,7 +389,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //Syzygy interior-node probe
-    if(!rootNode && SyzygyEnabled && depth >= SyzygyProbeDepth && !pos->tbHit){
+    if(!rootNode && !excludedMove && SyzygyEnabled && depth >= SyzygyProbeDepth && !pos->tbHit){
         TRACE_INC(pos, syzygy_probes);
         int tbScore, tbBound;
         if(TBProbeWDLSearch(pos, pos->ply, &tbScore, &tbBound)){
@@ -397,12 +415,17 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //store in eval_stack each staticEval
     //history stays independent of how much correction was already
     //applied when this position was last stored
-    if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
-    int rawEval = (ttEval != VALUE_NONE) ? ttEval : nnue_eval(pos);
+    int rawEval, staticEval;
+    if (excludedMove) {
+        rawEval = staticEval = pos->search->eval_stack[pos->ply];
+    } else {
+        if(ttEval == VALUE_NONE) { TRACE_INC(pos, eval_calls); }
+        rawEval = (ttEval != VALUE_NONE) ? ttEval : nnue_eval(pos);
 
-    //store in eval_stack each staticEval (corrected, used for all pruning)
-    int staticEval = pos->search->eval_stack[pos->ply] =
-        inCheck ? rawEval : correctedStaticEval(pos, rawEval);
+        //store in eval_stack each staticEval (corrected, used for all pruning)
+        staticEval = pos->search->eval_stack[pos->ply] =
+            inCheck ? rawEval : correctedStaticEval(pos, rawEval);
+    }
 
     //see if we improved on the last position
     improving = (!inCheck && pos->ply >= 2) ? (staticEval > pos->search->eval_stack[pos->ply-2] || (pos->ply >= 4 && staticEval > pos->search->eval_stack[pos->ply-4])) : 1;
@@ -418,7 +441,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int priorReduction = pos->ply >= 1 ? pos->search->reduction_stack[pos->ply] : 0;
     int opponentWorsening = pos->ply >= 1 && staticEval > -pos->search->eval_stack[pos->ply-1];
 
-    if(!info->bruteForceMode){
+    if(!info->bruteForceMode && !excludedMove){
         if(priorReduction >= 3 && !opponentWorsening) {
             depth++;
             TRACE_INC(pos, hindsight_ext);
@@ -432,7 +455,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //RAZORING
     //if staticEval is far below alpha, a full search is very unlikely to
     //recover — verify with qsearch instead of expanding this node
-    if(!info->bruteForceMode && !pvNode && !inCheck &&
+    if(!info->bruteForceMode && !pvNode && !inCheck && !excludedMove &&
     depth <= RazoringDepth) {
         TRACE_INC(pos, razoring_attempted);
         if (eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
@@ -450,7 +473,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     seeMargin[0] = SEENoisyMargin * depth * depth;
     seeMargin[1] = SEEQuietMargin * depth;
 
-    if(!info->bruteForceMode && !inCheck && !pvNode){
+    if(!info->bruteForceMode && !inCheck && !pvNode && !excludedMove){
 
         if(depth <= BetaPruningDepth) {
             TRACE_INC(pos, beta_prune_attempted);
@@ -523,7 +546,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //IIR — reduce depth when no TT move is available.
     //All-nodes get a stronger reduction (-2) since they are least likely
     //to have a useful move from the TT.
-    if(!info->bruteForceMode && depth>=IIRDepth) {
+    if(!info->bruteForceMode && !excludedMove && depth>=IIRDepth) {
         TRACE_INC(pos, iir_attempted);
         if(ttMove==NOMOVE) {
             depth -= (1 + allNode);
@@ -542,6 +565,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
     if (!info->bruteForceMode &&
         !pvNode &&
+        !excludedMove &&
         depth >=probCutDepth &&
         abs(beta) < ISMATE &&
         !(ttHit && ttDepth >= depth - 3 && ttValue < rBeta) &&
@@ -580,8 +604,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //generate the moves
-    S_MOVEPICKER *mp = &pos->search->movePickers[pos->ply];
-    initMovePicker(mp, pos, ttMove);
+    S_MOVEPICKER *mp = excludedMove ? &pos->search->singularMovePickers[pos->ply] : &pos->search->movePickers[pos->ply];
+    if (excludedMove) initSingularMovePicker(mp, pos, excludedMove);
+    else initMovePicker(mp, pos, ttMove);
 
     //a tactical TT move makes the quiet alternatives less promising
     int ttCapture = ttMove != NOMOVE && moveIsTactical(pos, ttMove);
@@ -730,15 +755,17 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //then we search this line deeper
         if(!info->bruteForceMode){
             singular = !rootNode
+                     && !excludedMove
                      &&  depth >= SingularDepth
                      &&  moveInLoop == ttMove
+                     &&  abs(ttValue) < TB_WIN_VALUE - MAXDEPTH
                      &&  ttDepth >= depth - 2
                      && (ttBound >= HFBETA);
 
             //check if the move is singular or in check or quiet moves that performed based on history scores
             if (singular) {
                 TRACE_INC(pos, singular_attempted);
-                extension = Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, &st);
+                extension = Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, pvNode, ttCapture, baseDext, &st);
                 if (multiCut == TRUE) {
                     TRACE_INC(pos, singular_multicut);
                 } else if (extension > 1) {
@@ -760,6 +787,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 }
             }
 
+            pos->search->dextensions[pos->ply - 1] = baseDext + (extension > 1);
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
 
             //MultiCut, super aggressive pruning
@@ -951,7 +979,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     }
 
     //checkmate and stalemate
-    if(Legal==0)return inCheck ? -AB_BOUND + pos->ply : (EngineOptions->contempt ? drawScore(pos, info) : 0);
+    if(Legal==0)return excludedMove ? alpha : inCheck ? -AB_BOUND + pos->ply : (EngineOptions->contempt ? drawScore(pos, info) : 0);
 
     //update history counters on a fail high
     if(bestScore>=beta){
@@ -963,7 +991,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
-    if(!pvNode){
+    if(!pvNode && !excludedMove){
         int bonus = (bestMove == ttMove) ? TTMoveHistBonus : -TTMoveHistMalus;
         int entry = pos->search->ttMoveHistory;
         entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;
@@ -974,7 +1002,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //actually used (not in check), and when the best move wasn't a
     //capture (captures move material, they don't tell you your eval
     //of the position's structure was wrong)
-    if(!inCheck && (bestMove==NOMOVE || !moveIsTactical(pos,bestMove))){
+    if(!excludedMove && !inCheck && (bestMove==NOMOVE || !moveIsTactical(pos,bestMove))){
         int diff = bestScore - staticEval;
         int alphaRaised = bestScore > oldAlpha;
         if((bestScore > staticEval) == alphaRaised){
@@ -987,7 +1015,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     if(bestScore > maxValue) bestScore = maxValue;
 
     //update TT
-    if(!rootNode || (pos->currentPvNum==0 && pos->excludedRootMoveCount==0)){
+    if(!excludedMove && (!rootNode || (pos->currentPvNum==0 && pos->excludedRootMoveCount==0))){
         ttBound = bestScore>=beta    ? HFBETA
                 : bestScore>oldAlpha ? HFEXACT : HFALPHA;
         StoreHashEntry(pos, table, bestMove, bestScore, ttBound, depth, rawEval);
@@ -999,67 +1027,41 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //Singularity
 //checks if the move is truly singular or the only best move in the position
 //also checks if a stornger move if found(MULTICUT)
-static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, StateInfo *ttSt){
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext, StateInfo *ttSt){
 
-    int moveInLoop = NOMOVE;
-    int skipQuiets = 0;
-    int quiets     = 0;
-    int tacticals  = 0;
-    int value      = -AB_BOUND;
-    int rBeta      = MAX(ttValue-depth,-AB_BOUND);
-    int quietMove;
+    int rBeta = MAX(ttValue-depth,-AB_BOUND);
 
     //reverts the move
     takeMove(pos);
 
-    //generate the moves
-    S_MOVEPICKER *smp = &pos->search->singularMovePickers[pos->ply];
-    initSingularMovePicker(smp, pos, ttMove);
-
-    while((moveInLoop = selectNextMove(smp,pos,skipQuiets)) != NOMOVE){
-
-        quietMove = !moveIsTactical(pos,moveInLoop);
-
-        if(!legal(pos, moveInLoop)) continue;
-        StateInfo singSt;
-        makeMove(pos, moveInLoop, &singSt);
-        prefetchTT(table, pos->st->posKey);
-        value = -AlphaBeta(-rBeta-1,-rBeta,depth/2-1,pos,info, table,threadNum,TRUE, TRUE, NULL);
-        takeMove(pos);
-        if(info->stopped==TRUE)break;
-        //if found a stronger move breaks, triggers MultiCut
-        if(value>rBeta)break;
-
-        quietMove ? quiets++ : tacticals++;
-        skipQuiets = quiets >= SingularQuietLimit;
-
-        //break the loop if skip quiets and has seen too many tactical moves
-        if(skipQuiets && tacticals >= SingularTacticalLimit)break;
-    }
+    pos->search->excludedMove[pos->ply] = ttMove;
+    int value = AlphaBeta(rBeta - 1, rBeta, (depth - 1) / 2, pos, info, table, threadNum, FALSE, cutNode, NULL);
+    pos->search->excludedMove[pos->ply] = NOMOVE;
 
     //MultiCut
     //if found a stronger move than ttMove
     //we are confident that this is a strong move, we cut off every move and returns early
-    if(value>rBeta && rBeta >=beta && !info->stopped){
-        if(moveInLoop != NOMOVE &&
-           !moveIsTactical(pos,moveInLoop)){
-                updateKillers(pos,moveInLoop);
-        }
-        *multiCut=TRUE;
-        
+    if(value >= rBeta && rBeta >= beta && !info->stopped){
+        *multiCut = TRUE;
     }
 
     //reapply
     makeMove(pos, ttMove, ttSt);
 
-    if(*multiCut==TRUE)return 1;
+    if(*multiCut == TRUE) return 1;
 
-    if(value <= rBeta){
+    if(value < rBeta){
+        // Block positive singular extensions on back-and-forth shuffling moves (Stockfish)
+        if(is_shuffling(pos, ttMove, !ttCapture)) return 0;
+
         int extension = 1;
 
-        int adjustedDoubleMargin = DoubleExtMargin - pos->search->ttMoveHistory / TTMoveHistoryScale;
-
-        if(value < rBeta - adjustedDoubleMargin) extension++;
+        if(baseDext <= 6){
+            int adjustedDoubleMargin = DoubleExtMargin - pos->search->ttMoveHistory / TTMoveHistoryScale;
+            if(value < rBeta - adjustedDoubleMargin){
+                extension = 2 + (!pvNode && !ttCapture && value < rBeta - adjustedDoubleMargin - 64);
+            }
+        }
         return extension;
     }
 
