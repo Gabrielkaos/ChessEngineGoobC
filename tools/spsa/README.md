@@ -188,6 +188,15 @@ python3 tools/spsa/spsa.py run lmr1 --include '^LMR|AllNode'
 
 # everything except the depth limits
 python3 tools/spsa/spsa.py run all1 --exclude '(Depth|LIMIT)$'
+
+# singular extensions (re-tune after the excludedMove singular search rewrite)
+python3 tools/spsa/spsa.py run se1 --include '^Singular|ExtMargin|MaxDoubleExtensions|TTMoveHist'
+
+# history update formula and quiet move ordering
+python3 tools/spsa/spsa.py run hist1 --include '^Hist(Move|Malus|Bonus)|LowPlyHistUpdate|PawnHist|GoodQuietThreshold|QuietCheckBonus|QuietThreatMul'
+
+# correction history weights
+python3 tools/spsa/spsa.py run corr1 --include 'Corr.*Weight'
 ```
 
 `--include` / `--exclude` are regular expressions on the parameter names in
@@ -196,7 +205,11 @@ and are not touched by `apply`.
 
 Depth limits (`...Depth`, `EVAL_MOVE_LIMIT`) are small integers with
 `c_end = 1`: they move slowly and cost a lot when wrong, so leaving them out is
-a reasonable default.
+a reasonable default. `RazoringDepth` may reach 0, which disables razoring.
+
+When a tuned value ends up at its `min` or `max`, the range was too narrow:
+widen it in `tune.h` and tune again (this was done for `NMPBase`,
+`SingularDepth`, `RazoringDepth`, `BetaMargin` and `HistMoveCountBonusMul`).
 
 ---
 

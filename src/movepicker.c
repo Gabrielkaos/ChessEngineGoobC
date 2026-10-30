@@ -6,7 +6,6 @@
 #include "movegen.h"
 
 static const int MVVAugment[] = { 700, 3150, 3150, 4725, 9100, 9100 };
-static const int GoodQuietThreshold = -3000;
 
 static inline int piece_mvv_lva_val(int pt) {
     static const int vals[6] = { 100, 450, 450, 675, 1300, 1500 };
@@ -342,7 +341,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                                   
                         // penalty for moving to a square threatened by a lesser piece
                         // or bonus for escaping an attack by a lesser piece.
-                        int v = 20 * (((mp->threatByLesser[pType] & (1ULL << from)) ? 1 : 0) - 
+                        int v = QuietThreatMul * (((mp->threatByLesser[pType] & (1ULL << from)) ? 1 : 0) - 
                                       ((mp->threatByLesser[pType] & (1ULL << to))   ? 1 : 0));
                         mp->list->moves[i].score += SEEPieceValues[basePiece + pType] * v;
 
@@ -350,7 +349,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                         if(checkSquares[pType] & (1ULL << to)){
                             if(!(mp->threats & (1ULL << to)) ||
                                (!(mp->threatByLesser[pType] & (1ULL << to)) && StaticExchangeEvaluation(pos, move, 0))){
-                                mp->list->moves[i].score += 16384;
+                                mp->list->moves[i].score += QuietCheckBonus;
                             }
                         }
                     }

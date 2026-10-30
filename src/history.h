@@ -3,12 +3,13 @@
 
 #include "board.h"
 #include "some_maths.h"
+#include "tune.h"
 
 static const int HistoryMax = 16384;
 static const int HistoryDivisor = 16384;
 
 INLINE int stat_bonus(int depth) {
-    return MIN(1708, 4 * depth * depth + 191 * depth - 118);
+    return MIN(HistBonusMax, HistBonusQuad * depth * depth + HistBonusLinear * depth - 118);
 }
 
 extern int getCaptureHistory(S_BOARD *pos,int move, U64 threats);

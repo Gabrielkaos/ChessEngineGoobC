@@ -11,14 +11,13 @@
 //
 #include "board.h"
 #include "string.h"
+#include "tune.h"
 
-// relative table weights taken from Stockfish's correction_value():
+// relative table weights (CorrPawnWeight, CorrMinorWeight, CorrNonPawnWeight
+// and ContCorrWeight in tune.h) start from Stockfish's correction_value():
 // 15341*pawn + 10569*minor + 12906*(wnpcv + bnpcv), normalized so that
 // pawn=128. Dividing by CORR_HIST_SCALE*128 keeps the existing per-entry
 // gain of this engine's pawn table (entry/256 cp) unchanged.
-#define CORR_PAWN_W      128
-#define CORR_MINOR_W      88
-#define CORR_NONPAWN_W   108
 
 // per-table update weights from Stockfish's update_correction_history():
 // pawn gets the raw bonus, minors 150/128, each non-pawn table 186/128
@@ -66,23 +65,23 @@ int correctedStaticEval(const S_BOARD *pos, int rawEval){
             if(pos->ply >= 2){
                 const int m2 = pos->search->moveStack[pos->ply - 2];
                 if(m2 != NOMOVE && m2 != NULLMOVE)
-                    cntCorr += CONT_CORR_WEIGHT *
+                    cntCorr += ContCorrWeight *
                         pos->shared->contCorrHist[pos->search->pieceStack[pos->ply - 2]]
                                                  [TOSQ(m2)][pc1][sq1];
             }
             if(pos->ply >= 4){
                 const int m4 = pos->search->moveStack[pos->ply - 4];
                 if(m4 != NOMOVE && m4 != NULLMOVE)
-                    cntCorr += CONT_CORR_WEIGHT *
+                    cntCorr += ContCorrWeight *
                         pos->shared->contCorrHist[pos->search->pieceStack[pos->ply - 4]]
                                                  [TOSQ(m4)][pc1][sq1];
             }
         }
     }
 
-    int totalCorr = CORR_PAWN_W    * pawnCorr
-                  + CORR_MINOR_W   * minorCorr
-                  + CORR_NONPAWN_W * (wnpCorr + bnpCorr)
+    int totalCorr = CorrPawnWeight    * pawnCorr
+                  + CorrMinorWeight   * minorCorr
+                  + CorrNonPawnWeight * (wnpCorr + bnpCorr)
                   + cntCorr;
 
     int adjusted = rawEval + totalCorr / (CORR_HIST_SCALE * 128);

@@ -211,11 +211,11 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats)
 
             if(pos->ply < LOWPLY_HIST_SLOTS)
                 histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
-                                  delta * 712 / 1024, LOWPLY_HIST_MAX);
+                                  delta * LowPlyHistUpdate / 1024, LOWPLY_HIST_MAX);
 
             {
                 const int pIdx = pawnHistIndex(pos);
-                const int pBonus = delta * (delta > 0 ? 1104 : 459) / 1024;
+                const int pBonus = delta * (delta > 0 ? PawnHistBonus : PawnHistMalus) / 1024;
                 histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
                                   pBonus, PAWN_HIST_MAX);
             }

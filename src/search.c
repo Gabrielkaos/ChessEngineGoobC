@@ -503,7 +503,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 StateInfo nullSt;
                 makeNullMove(pos, &nullSt);
 
-                R = NMPBase + depth / NMPDepthDiv + MIN(3, (eval - beta) / NMPEvalDiv);
+                R = NMPBase + depth / NMPDepthDiv + MIN(NMPEvalMax, (eval - beta) / NMPEvalDiv);
 
                 int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, &lpv);
                 takeNullMove(pos);
@@ -708,7 +708,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             int captured = pos->pieces[TOSQ(moveInLoop)];
             if(moveInLoop & MVFLAGEP) captured = pos->side == WHITE ? wP : bP;
             int futilityValue = eval + CaptureFutilityBase + CaptureFutilityPerDepth * depth
-                              + SEEPieceValues[captured] + hist / 16;
+                              + SEEPieceValues[captured] + hist / CaptureFutilityHistDiv;
             if(futilityValue <= alpha) continue;
         }
 
@@ -729,7 +729,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 }
             } else {
                 TRACE_INC(pos, see_noisy_attempted);
-                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove] - hist / 64)) {
+                if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove] - hist / SEENoisyHistDiv)) {
                     TRACE_INC(pos, see_noisy_pruned);
                     continue;
                 }
@@ -794,7 +794,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //engine thinks that the move is too strong
             if(multiCut==TRUE){
                 takeMove(pos);
-                return MAX(ttValue-depth,-AB_BOUND);
+                return MAX(ttValue - depth * SingularBetaMargin / 16, -AB_BOUND);
             }
         }else{
             newDepth  = depth;
@@ -1029,7 +1029,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //also checks if a stornger move if found(MULTICUT)
 static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext, StateInfo *ttSt){
 
-    int rBeta = MAX(ttValue-depth,-AB_BOUND);
+    int rBeta = MAX(ttValue - depth * SingularBetaMargin / 16, -AB_BOUND);
 
     //reverts the move
     takeMove(pos);
@@ -1056,10 +1056,10 @@ static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int th
 
         int extension = 1;
 
-        if(baseDext <= 6){
+        if(baseDext <= MaxDoubleExtensions){
             int adjustedDoubleMargin = DoubleExtMargin - pos->search->ttMoveHistory / TTMoveHistoryScale;
             if(value < rBeta - adjustedDoubleMargin){
-                extension = 2 + (!pvNode && !ttCapture && value < rBeta - adjustedDoubleMargin - 64);
+                extension = 2 + (!pvNode && !ttCapture && value < rBeta - adjustedDoubleMargin - TripleExtMargin);
             }
         }
         return extension;
@@ -1364,7 +1364,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                     break;
                 }
 
-                delta += delta/2;
+                delta += delta * AspWidening / 100;
                 if(delta > INFINITE_BOUND) delta = INFINITE_BOUND;
             }
 
