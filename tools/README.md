@@ -29,7 +29,7 @@ The tooling is divided into three primary operational domains:
 1. **NNUE Training & Quantization Pipeline:** Centered in [`nnue_project/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/nnue_project), this provides dataset conversion, memory-mapped data loaders, PyTorch training with weight bounds enforcement, and binary weight export matching the C engine's SIMD layout.
 2. **Self-Play & Dataset Generation:** Native C generator ([`datagen.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.c)) and Python scripts ([`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py) and [`datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/datagen.py)) that harvest evaluated self-play positions with game outcomes.
 3. **Verification, Tuning & Telemetry:** Tools for testing incremental accumulator updates ([`test_incremental.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_incremental.c)), comparing C inference against PyTorch floating-point output ([`test_nnue_comprehensive.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_nnue_comprehensive.py)), profiling search prunings ([`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)), and SPSA tuning of the search constants ([`spsa/spsa.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa/spsa.py)).
-4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated Cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
+4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated fastchess / cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 5. **EPD Benchmarks & Matchless Elo Estimation:** Centered in [`suites/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/suites) and [`epd_test.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/epd_test.py), this provides standard match-free strength and Elo estimation using canonical test suites (BT-2630, STS 1–15, Bratko-Kopec, Win At Chess).
 6. **Goob Research Laboratory:** Interactive web platform and experimentation dashboard ([`research_lab/`](file:///home/gabriel/Desktop/ChessEngineGoobC/research_lab)) integrating live position exploration, iterative deepening analysis, search heuristic telemetry, cutechess tournaments, SPSA parameter management, and persistent experiment tracking. Launched via `python3 run_lab.py`.
 
@@ -137,7 +137,7 @@ The tooling is divided into three primary operational domains:
 ### 7. SPRT Testing Suite ([`tools/sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt))
 * **Purpose:** Automated engine strength and regression testing harness comparing modified engine builds against a baseline version.
 * **Key Components:**
-  * [`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh): Cutechess-cli runner executing SPRT matches with standard parameters (default 6+0.06s time control, 10 concurrent games capped at the CPU count, 1 thread per engine (`THREADS=` for SMP changes), 32MB hash, `tools/book.epd` openings).
+  * [`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh): Match runner using fastchess (pentanomial SPRT; falls back to cutechess-cli when fastchess is not installed) with standard parameters (default 6+0.06s time control, 10 concurrent games capped at the CPU count, 1 thread per engine (`THREADS=` for SMP changes), 32MB hash, `tools/book.epd` openings). `MODE=gainer` (default, SPRT [0, 3]), `MODE=nonreg` (SPRT [-3, 1]) or `MODE=fixed` (fixed-length regression check); SPRTs run until a verdict.
   * [`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py): Fast 12-position fixed-depth sanity benchmark verifying node counts, move stability, and lack of crashes.
   * [`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md): Detailed testing guide, SPRT hypothesis bounds, and branch merge guidelines.
 * **Usage:**
@@ -145,7 +145,7 @@ The tooling is divided into three primary operational domains:
   # Sanity check:
   python3 tools/sprt/bench.py tools/sprt/bin/GOOB-candidate 12
 
-  # Run cutechess SPRT match:
+  # Run an SPRT match (gainer bounds [0, 3]; MODE=nonreg for bug fixes):
   tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-candidate tools/sprt/bin/GOOB-base
   ```
 
