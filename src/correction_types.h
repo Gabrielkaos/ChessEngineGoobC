@@ -20,10 +20,9 @@ typedef int16_t MinorCorrectionTable[2][CORR_HIST_SIZE];
 
 // continuation correction history tuning, scaled to this engine's
 // CORR_HIST_SCALE normalization from Stockfish's weights:
-//   read weight 8761/15341 of the pawn term   -> CONT_CORR_WEIGHT
+//   read weight 8761/15341 of the pawn term   -> ContCorrWeight (tune.h)
 //   no-move fallback 64049/131072 cp          -> CONT_CORR_NOMOVE
 //   initial fill 5 * CORR_HIST_MAX/1024       -> CONT_CORR_INIT_FILL
-#define CONT_CORR_WEIGHT     73
 #define CONT_CORR_NOMOVE  16000
 #define CONT_CORR_INIT_FILL  80
 // per-table update weights from update_correction_history():
