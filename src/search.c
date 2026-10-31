@@ -378,12 +378,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //TT research margin (Ethereal): an upper-bound entry from only one
         //ply shallower that fails hard against alpha needs no re-search
-        if(!pvNode && ttDepth >= depth - 1 && ttBound==HFALPHA &&
-           ttValue + TTResearchMargin <= alpha && depth>=2 && 
-           !inCheck && pos->st->fiftyMove < 96){
-            TRACE_INC(pos, tt_research_cutoffs);
-            return alpha;
-        }
 
         ttMove  = EXTRACT_MOVE(ttData);
     }
