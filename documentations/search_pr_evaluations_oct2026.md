@@ -422,7 +422,36 @@ Tested against the baseline engine (`GOOB-base`, bench 819,396 nodes):
 
 ---
 
-## 18. Summary of All Merged Features on `main`
+## 18. Round 16: Correction History Exact-Bound Update (October 30-31, 2026)
+
+First test run with the fastchess pentanomial runner (`tools/sprt/run_sprt.sh`, `MODE=gainer`) under the conclusive-only acceptance rule: a change is merged only if the SPRT accepts H1. Tested against `main` at `a612576` (binary `GOOB-main-a612576`, bench 1,389,081 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/corr-exact-bound`** | **NOT MERGED** | 12178 | 2850 - 2902 - 6426 | 49.79% | **-1.48 ± 3.40** | -2.97 | Rejected (H0 accepted) |
+
+### Detailed Analysis:
+
+#### 1. `fix/corr-exact-bound` (Rejected: -1.48 Elo, H0 accepted)
+* **Concept:** Change the condition for writing `bestScore - staticEval` into the correction history tables (`src/search.c`, end of `AlphaBeta()`), following Berserk/Stockfish:
+  - **Before (`main`):** update only when `(bestScore > staticEval) == (bestScore > oldAlpha)`, i.e. a fail low may only lower the correction and any score above `oldAlpha` (fail high *or* exact) may only raise it. An exact PV score below the static eval was never used.
+  - **After:** a fail high (`bestScore >= beta`) may only raise the correction, a fail low (`bestScore <= oldAlpha`) may only lower it, and an exact score corrects in both directions.
+  - One logical change of 8 lines; the tables, weights and update formula are untouched.
+* **Correctness checks before the match:** `perfttest` 33/33 passed; mate-in-1 and mate-in-10 test positions gave identical mate scores; `make` clean.
+* **Benchmark:** bench 1,389,081 -> 1,487,928 nodes (+7.1%); `bench.py 12` 829,601 -> 748,028 nodes.
+* **Empirical Match Result:**
+  - **Runner:** fastchess 1.8.2-alpha, pentanomial SPRT, logistic Elo bounds `[0, 3]`, `alpha = beta = 0.05` (LLR bounds ±2.94).
+  - **Conditions:** 6+0.06 TC, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd` (random order, each opening played with both colours), same adjudication as earlier rounds. Total time 5 h 28 min.
+  - **Score:** 2,850 wins, 2,902 losses, 6,426 draws (49.79%).
+  - **Elo Difference:** **-1.48 ± 3.40 Elo** (nElo -2.69 ± 6.17, LOS 19.6%, DrawRatio 48.0%).
+  - **Pentanomial (0-2):** `[84, 1530, 2922, 1460, 93]`.
+  - **LLR:** **-2.97** (-2.94 lower bound crossed) -> **H0 accepted** (log: `tools/sprt/logs/corr-exact-bound.log`).
+* **Failure Analysis:** The result is a conclusive "no gain", not a demonstrated loss: the Elo interval (-4.9, +1.9) includes zero. Letting exact scores lower the correction makes the corrected eval more pessimistic at PV nodes, which in GOOB changed the tree size (+7% bench nodes) without improving play. The original rule, although less symmetric than Berserk's, is at least as good for this engine and its current correction weights.
+* **Verdict:** **REJECTED.** Not merged into `main`; the branch `fix/corr-exact-bound` (commit `b6ab8f3`) is kept locally only and was never pushed.
+
+---
+
+## 19. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -442,7 +471,7 @@ Tested against the baseline engine (`GOOB-base`, bench 819,396 nodes):
 
 ---
 
-## 19. Closing Instructions for GitHub PRs
+## 20. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
