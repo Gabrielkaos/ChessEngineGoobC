@@ -38,7 +38,7 @@ void initLMRTable(){
     }
 }
 
-int SurpriseSRDEnabled = 1;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
+int SurpriseSRDEnabled = 0;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
 
 //Node and tbhit counters live in each thread's S_SEARCH_THREAD: only the
 //owner writes them, other threads only read them (relaxed atomics compile to
