@@ -23,13 +23,6 @@ static const int DepthOneGraceMs = 300;
 static const int SingularQuietLimit = 6;
 static const int SingularTacticalLimit = 3;
 
-// Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation
-#ifndef USE_SURPRISE_SRD
-#define USE_SURPRISE_SRD 1
-#endif
-
-extern int SurpriseSRDEnabled;
-
 //FUNCTIONS
 extern void initLMRTable();
 extern void StartSearch(S_BOARD *pos, S_SEARCHINFO *info, S_PVTABLE *table);

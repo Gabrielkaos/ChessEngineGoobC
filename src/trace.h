@@ -16,7 +16,6 @@ typedef struct {
     uint64_t nnue_refresh_eg;
     uint64_t tt_hits;
     uint64_t tt_cutoffs;
-    uint64_t tt_research_cutoffs;
     uint64_t syzygy_probes;
     uint64_t syzygy_hits;
 
@@ -77,7 +76,6 @@ typedef struct {
     uint64_t singular_negative_ext;
 
     uint64_t check_ext;
-    uint64_t history_ext;
 
     uint64_t lmr_quiet_attempted;
     uint64_t lmr_quiet_reduced;
@@ -86,9 +84,6 @@ typedef struct {
     uint64_t lmr_researches;
 
     // Surprise-SRD
-    uint64_t srd_deficit_triggered;
-    uint64_t srd_surplus_triggered;
-    uint64_t srd_sibling_triggered;
 
     // Fail highs & Move ordering
     uint64_t beta_cutoffs;

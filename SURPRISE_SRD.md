@@ -1,6 +1,10 @@
 # Surprise-SRD 
 
-Status: Experimental
+Status: **Removed from GOOB (November 2026).** A removal SPRT (non-regression
+[-3, 1], 6+0.06, fastchess pentanomial) found the engine at least as strong without it:
++2.94 ± 4.53 Elo over 6,506 games, LLR +2.94. See
+`documentations/search_pr_evaluations_oct2026.md` (Round 17). This document is kept as a
+historical design note; the code it describes is no longer in `src/`.
 
 Surprise-SRD is an experimental adaptive search heuristic for
 alpha-beta/PVS chess engines.
