@@ -811,8 +811,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             R += ttCapture;
 
-            // Reduce LMR on moves that give check (forcing moves)
-            R -= givesCheck;
 
             R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
 
@@ -854,7 +852,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
             R += !pvNode;
             R += ttCapture;
-            R -= givesCheck;
             R -= MAX(-2, MIN(2, hist / LMRNoisyHistDiv));
             R = MIN(depth - 1, MAX(R, 1));
             if (R > 1) {
