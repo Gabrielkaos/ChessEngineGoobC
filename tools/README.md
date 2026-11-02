@@ -99,7 +99,7 @@ The tooling is divided into three primary operational domains:
 ### 3. [`trace_search.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/trace_search.py)
 * **Purpose:** Search telemetry analysis and regression detection tool. Runs engine benchmarks under the `trace` command, collects over 50 internal counters, checks heuristic cutoff rates against expected ranges, and performs side-by-side comparisons of engine revisions.
 * **Key Features:**
-  * Validates trigger rates for RFP (Beta Pruning), NMP, IIR, ProbCut, LMP, Futility, Singular Extensions, and Surprise-SRD.
+  * Validates trigger rates for RFP (Beta Pruning), NMP, IIR, ProbCut, LMP, Futility and Singular Extensions.
   * Warns if heuristics are over-pruning (causing tactical blindness) or under-pruning (wasting search nodes).
   * Saves and compares JSON telemetry profiles.
 * **Usage:**

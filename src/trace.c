@@ -45,7 +45,6 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, nnue_refresh_eg);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_hits);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_cutoffs);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, tt_research_cutoffs);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, syzygy_probes);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, syzygy_hits);
 
@@ -103,7 +102,6 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, singular_negative_ext);
 
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, check_ext);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, history_ext);
 
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, lmr_quiet_attempted);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, lmr_quiet_reduced);
@@ -111,9 +109,6 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, lmr_noisy_reduced);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, lmr_researches);
 
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, srd_deficit_triggered);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, srd_surplus_triggered);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, srd_sibling_triggered);
 
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, beta_cutoffs);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, cutoff_first_move);
@@ -148,7 +143,6 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, nnue_refresh_eg);
     ADD_TRACE_FIELD(dst, src, tt_hits);
     ADD_TRACE_FIELD(dst, src, tt_cutoffs);
-    ADD_TRACE_FIELD(dst, src, tt_research_cutoffs);
     ADD_TRACE_FIELD(dst, src, syzygy_probes);
     ADD_TRACE_FIELD(dst, src, syzygy_hits);
 
@@ -206,7 +200,6 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, singular_negative_ext);
 
     ADD_TRACE_FIELD(dst, src, check_ext);
-    ADD_TRACE_FIELD(dst, src, history_ext);
 
     ADD_TRACE_FIELD(dst, src, lmr_quiet_attempted);
     ADD_TRACE_FIELD(dst, src, lmr_quiet_reduced);
@@ -214,9 +207,6 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, lmr_noisy_reduced);
     ADD_TRACE_FIELD(dst, src, lmr_researches);
 
-    ADD_TRACE_FIELD(dst, src, srd_deficit_triggered);
-    ADD_TRACE_FIELD(dst, src, srd_surplus_triggered);
-    ADD_TRACE_FIELD(dst, src, srd_sibling_triggered);
 
     ADD_TRACE_FIELD(dst, src, beta_cutoffs);
     ADD_TRACE_FIELD(dst, src, cutoff_first_move);
@@ -309,8 +299,6 @@ void trace_print(int current_only) {
            "Hindsight Extensions", "", t->hindsight_ext, "");
     printf("  %-25s %12s %12" PRIu64 " %9s   HindsightMargin(%d)\n",
            "Hindsight Reductions", "", t->hindsight_red, "", HindsightMargin);
-    printf("  %-25s %12s %12" PRIu64 " %9s   TTResearchMargin(%d)\n",
-           "TT Research Cutoff", "", t->tt_research_cutoffs, "", TTResearchMargin);
 
     printf("\n--- MOVE LOOP PRUNINGS ---\n");
     printf("  %-25s %12s %12s %9s   %-30s\n", "Heuristic", "Considered", "Triggered", "Rate (%)", "Governing Constants");
@@ -362,8 +350,6 @@ void trace_print(int current_only) {
            "", t->singular_negative_ext, rate(t->singular_negative_ext, t->singular_attempted));
     printf("  %-25s %12s %12" PRIu64 " %9s   inCheck\n",
            "Check Extension", "", t->check_ext, "");
-    printf("  %-25s %12s %12" PRIu64 " %9s   HistexLimit(%d)\n",
-           "History Extension", "", t->history_ext, "", HistexLimit);
     printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   LMRTable[depth][legal], AllNodeScale\n",
            "Quiet LMR", t->lmr_quiet_attempted, t->lmr_quiet_reduced,
            rate(t->lmr_quiet_reduced, t->lmr_quiet_attempted));
@@ -373,12 +359,6 @@ void trace_print(int current_only) {
     printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   Score > alpha (fail-high re-search)\n",
            "LMR Re-searches", t->lmr_quiet_reduced + t->lmr_noisy_reduced, t->lmr_researches,
            rate(t->lmr_researches, t->lmr_quiet_reduced + t->lmr_noisy_reduced));
-    printf("  %-25s %12s %12" PRIu64 " %9s   EVAL_DEFICIT_MARGIN(%d)\n",
-           "Surprise-SRD Deficit", "", t->srd_deficit_triggered, "", EVAL_DEFICIT_MARGIN);
-    printf("  %-25s %12s %12" PRIu64 " %9s   EVAL_SURPLUS_MARGIN(%d)\n",
-           "Surprise-SRD Surplus", "", t->srd_surplus_triggered, "", EVAL_SURPLUS_MARGIN);
-    printf("  %-25s %12s %12" PRIu64 " %9s   Sibling Surprise (R -= 1)\n",
-           "Surprise-SRD Sibling", "", t->srd_sibling_triggered, "");
 
     printf("\n--- QUIESCENCE SEARCH ---\n");
     printf("  %-25s %12s %12s %9s   %-30s\n", "Heuristic", "Considered", "Triggered", "Rate (%)", "Governing Constants");
@@ -434,7 +414,6 @@ void trace_print_json(int current_only) {
     printf("  \"nnue_refresh_eg\": %" PRIu64 ",\n", t->nnue_refresh_eg);
     printf("  \"tt_hits\": %" PRIu64 ",\n", t->tt_hits);
     printf("  \"tt_cutoffs\": %" PRIu64 ",\n", t->tt_cutoffs);
-    printf("  \"tt_research_cutoffs\": %" PRIu64 ",\n", t->tt_research_cutoffs);
     printf("  \"syzygy_probes\": %" PRIu64 ",\n", t->syzygy_probes);
     printf("  \"syzygy_hits\": %" PRIu64 ",\n", t->syzygy_hits);
 
@@ -469,7 +448,6 @@ void trace_print_json(int current_only) {
     printf("    \"singular\": {\"attempted\": %" PRIu64 ", \"single_ext\": %" PRIu64 ", \"double_ext\": %" PRIu64 ", \"multicut\": %" PRIu64 ", \"negative_ext\": %" PRIu64 "},\n",
            t->singular_attempted, t->singular_single_ext, t->singular_double_ext, t->singular_multicut, t->singular_negative_ext);
     printf("    \"check_ext\": %" PRIu64 ",\n", t->check_ext);
-    printf("    \"history_ext\": %" PRIu64 ",\n", t->history_ext);
     printf("    \"lmr_quiet\": {\"considered\": %" PRIu64 ", \"reduced\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->lmr_quiet_attempted, t->lmr_quiet_reduced, rate(t->lmr_quiet_reduced, t->lmr_quiet_attempted) / 100.0);
     printf("    \"lmr_noisy\": {\"considered\": %" PRIu64 ", \"reduced\": %" PRIu64 ", \"rate\": %.4f},\n",
@@ -477,8 +455,6 @@ void trace_print_json(int current_only) {
     printf("    \"lmr_researches\": {\"reduced_searches\": %" PRIu64 ", \"researched\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->lmr_quiet_reduced + t->lmr_noisy_reduced, t->lmr_researches,
            rate(t->lmr_researches, t->lmr_quiet_reduced + t->lmr_noisy_reduced) / 100.0);
-    printf("    \"srd\": {\"deficit\": %" PRIu64 ", \"surplus\": %" PRIu64 ", \"sibling\": %" PRIu64 "},\n",
-           t->srd_deficit_triggered, t->srd_surplus_triggered, t->srd_sibling_triggered);
     printf("    \"qs\": {\"stand_pat_evals\": %" PRIu64 ", \"stand_pat_cutoffs\": %" PRIu64 ", \"delta_attempted\": %" PRIu64 ", \"delta_pruned\": %" PRIu64 ", \"see_attempted\": %" PRIu64 ", \"see_pruned\": %" PRIu64 "}\n",
            t->qs_stand_pat_evals, t->qs_stand_pat_cutoffs, t->qs_delta_attempted, t->qs_delta_pruned, t->qs_see_attempted, t->qs_see_pruned);
     printf("  },\n");

@@ -27,7 +27,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * Finny table accumulator cache (`pos->search->nnue_cache[color][flip][bucket]`): per-thread cache storing the last refreshed accumulator and piece bitboards for each `(color, flip, bucket)` slot so boundary refreshes apply only the bitboard diff (`cur ^ prev`) instead of summing all pieces on the board.
   * Quantized SIMD inference routines (AVX-512, AVX2, and scalar fallbacks) with `GOOBNNUE` v2 architecture trailer verification.
 * **Correction History:** Multi-table evaluation error correction indexed by pawn-king hash, minor-piece hash, dual non-pawn material hashes, and 2-ply / 4-ply continuation moves.
-* **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double/triple extensions, shuffling guard, and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, SEE pruning, and **Surprise-SRD** (dynamic LMR responding to sibling fail highs and evaluation expectation).
+* **Search:** Alpha-Beta with Principal Variation Search (PVS), Iterative Deepening, Aspiration Windows, Singular Extensions (including double/triple extensions, shuffling guard, and multicut), ProbCut, Null Move Pruning with verification, Razoring, Beta Pruning (RFP), IIR, Late Move Pruning (LMP), Futility Pruning, and SEE pruning.
 * **Transposition Table:** 4-entry, 64-byte buckets (matching an x86 L1 cache line), lockless SMP key verification combining `posKey` and `smp_data`, and age/depth replacement.
 * **Endgame Tablebases:** Syzygy 3–7 men support integrated via Fathom probe at root and interior nodes.
 * **Parallel Search:** Lazy SMP with thread voting across threads wrapped by [`tinycthread`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c).
@@ -94,7 +94,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`search.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.h) / [`search.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c):**
   * [`AlphaBeta()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L231): PVS search implementation containing:
     * Mate distance pruning and Cuckoo upcoming repetition detection (`upcoming_repetition()`).
-    * TT probing and TT research margins.
+    * TT probing and cutoffs.
     * Syzygy tablebase WDL probing at interior nodes.
     * Hindsight depth adjustments (+1 extension / -1 reduction).
     * Razoring ($D \le 2$).
@@ -103,18 +103,17 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Internal Iterative Reduction (IIR) with all-node bias.
     * ProbCut ($D \ge 5$) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`) and verified cutoff storage in TT.
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
-    * Tactical pruning: Capture Futility Pruning ($D \le 6$, `CaptureFutilityBase + CaptureFutilityPerDepth * depth`) and history-adjusted SEE margin.
+    * Tactical pruning: history-adjusted SEE margin on captures.
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
     * Singular Extensions ($D \ge 10$, non-mate/TB TT move, verified via `excludedMove` recursive `AlphaBeta` at `(depth - 1) / 2`), double and quiet non-PV triple extensions (capped at `dextensions <= 6` and guarded against back-and-forth piece shuffling via `is_shuffling()`), negative extensions, and multicut.
-    * Check extensions and history extensions.
-    * Late Move Reduction (LMR) table with adjustments for check evasions, moves giving check (`givesCheck`), PV, improving, tactical TT moves (`ttCapture`), and history.
+    * Check extensions.
+    * Late Move Reduction (LMR) table with adjustments for check evasions, PV, improving, tactical TT moves (`ttCapture`), and history.
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * Post-LMR re-search history penalty: quiet moves that trigger a full-depth re-search but fail low (`Score <= alpha`) receive a continuation history malus (`-stat_bonus(resDepth)`), penalizing false alarms.
-    * **Surprise-SRD:** Dynamic LMR adjustments based on sibling fail highs, eval deficit, and eval surplus.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
   * [`IterativeDeepening()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1135): Root iterative loop, Aspiration Windows, MultiPV support, soft time management (eval drop, best move flip instability via local `lastBestMoveDepth`, root effort), single legal move cutoff, and programmatic search hooks (`info->silent` suppresses all UCI output, while `info->bestMove` and `info->bestScore` export search outcomes to programmatic drivers like `tools/datagen.c`).
   * Thread pool management: [`EnsureThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1705) and [`FreeThreadPool()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L1787). Thread-local node and tablebase hit counters written atomically and aggregated via `NodesSearchedThreadPool()` and `TbHitsThreadPool()` to prevent SMP cache-line contention; root search termination includes a fallback safety net guaranteeing that reported best moves are non-null and legal before transmitting to UCI.
-* **[`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h) / [`tune.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.c):** The tunable search constants (qsearch/TT margins, aspiration window and its widening, hindsight, razoring, RFP, NMP formula, IIR, ProbCut, futility and history-pruning limits, capture futility and its history divisor, SEE margins and the noisy SEE history divisor, singular beta margin, double/triple extension margins and the double-extension cap, ttMoveHistory, LMR formula and history divisors, Surprise-SRD margins, the `stat_bonus()` history bonus formula, the low-ply/pawn history update shares, quiet move ordering terms (`GoodQuietThreshold`, safe check bonus, lesser-piece threat weight) and the correction history table weights) as one `TP(name, default, min, max, c_end)` table. Normal builds turn them into compile-time constants (an `enum`); `make tune` (`-DTUNE`) turns them into globals exposed as UCI spin options plus an `spsa` command, for the SPSA tuner in [`tools/spsa/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa). The constants that are not tuned (LMP table, counter/follow-up pruning depths, UCI reporting times, singular move limits) stay in `search.h`.
+* **[`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h) / [`tune.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.c):** The tunable search constants (qsearch margins, aspiration window and its widening, hindsight, razoring, RFP, NMP formula, IIR, ProbCut, futility and history-pruning limits, SEE margins and the noisy SEE history divisor, singular beta margin, double/triple extension margins and the double-extension cap, ttMoveHistory, LMR formula and history divisors, the `stat_bonus()` history bonus formula, the low-ply/pawn history update shares, quiet move ordering terms (`GoodQuietThreshold`, safe check bonus, lesser-piece threat weight) and the correction history table weights) as one `TP(name, default, min, max, c_end)` table. Normal builds turn them into compile-time constants (an `enum`); `make tune` (`-DTUNE`) turns them into globals exposed as UCI spin options plus an `spsa` command, for the SPSA tuner in [`tools/spsa/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/spsa). The constants that are not tuned (LMP table, counter/follow-up pruning depths, UCI reporting times, singular move limits) stay in `search.h`.
 * **[`pvtable.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h) / [`pvtable.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.c):** Transposition Table with 4-entry buckets (64 bytes per bucket, exactly matching an x86 L1 cache line). Uses lockless SMP key packing:
   $$\text{key}_{32} = \text{posKey} \oplus (\text{posKey} \gg 32) \oplus \text{smp\_data} \oplus (\text{smp\_data} \gg 32)$$
   Features inlined high-throughput lockless probing ([`ProbeTTEntry()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L53)) validating and extracting entry contents directly without stack spills or torn-read hazards, a release memory barrier in [`StoreHashEntry()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L93) guaranteeing data ordering across threads, fast-path inlined mate/TB score scaling ([`valueFromTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L26) and [`valueToTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L36)), a cached `hashMask` in `S_PVTABLE` avoiding per-probe decrements, and L1 cache hardware prefetching ([`prefetchTT()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/pvtable.h#L46)) triggered immediately after move execution.
@@ -222,7 +221,6 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
 | `Contempt` | spin | `0` (-100–100) | Symmetrical draw score shift; positive values disfavor draws (bypassed during `UCI_AnalyseMode`). |
 | `Aggressiveness` | spin | `100` (0–200) | Forward piece infiltration balance bias (100 = neutral). |
 | `TradeAversion` | spin | `0` (-50–50) | Material complexity bias; positive values reward keeping queens on board. |
-| `Surprise_SRD` | check | `true` | Enables dynamic LMR via sibling history and eval expectation. |
 | *(tune.h parameters)* | spin | see `tune.h` | `make tune` builds only: one option per search constant in [`tune.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tune.h), named after the constant (e.g. `LMRBase`, `FutilityMargin`). |
 
 ### Special Non-UCI Commands
@@ -248,9 +246,7 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
    * `S_SEARCH_THREAD`, `NNUE_Accumulator`, and `NNUE_CacheEntry` structures use `ALIGN64` to avoid false sharing across multiple CPU cores in Lazy SMP.
 3. **Lockless Transposition Table:**
    Rather than using mutexes or spinlocks across threads, GOOB stores a 32-bit checksum combining both 32-bit halves of the board's `posKey` with the packed 64-bit entry data (`smp_data`). If another thread partially overwrites the slot during reading, the test key check fails safely.
-4. **Surprise-SRD (Search Reduction Dynamics):**
-   * *Sibling Surprise:* If an earlier reduced quiet move scores $> \alpha$, move ordering is volatile; reductions on subsequent siblings are decreased ($R -= 1$).
-   * *Deficit Adjustment:* If static evaluation is severely behind $\alpha$ ($> 120\text{ cp}$ deficit), late quiet moves are reduced more aggressively ($R += 1$).
-   * *Surplus Adjustment:* If static evaluation significantly exceeds $\alpha$, reductions on promising quiet moves are softened.
+4. **Removed search features (November 2026 ablation):**
+   Surprise-SRD, the TT research-margin cutoff, history extensions, the gives-check LMR reduction and capture futility pruning were removed after one-at-a-time removal SPRTs showed no measurable benefit (see `documentations/search_pr_evaluations_oct2026.md`, Round 17). [`SURPRISE_SRD.md`](../SURPRISE_SRD.md) is kept as a historical design note.
 5. **LMR-Scaled Futility Pruning:**
    Instead of checking futility pruning conditions against the raw root `depth`, GOOB checks against the predicted `lmrDepth` (the depth after Late Move Reductions). This safely applies aggressive futility margins to moves deep in the move list which are already heavily reduced, generating significant node savings in wide branches.

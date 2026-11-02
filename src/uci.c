@@ -340,13 +340,6 @@ void UciSetOption(char *line,S_BOARD *pos,S_SEARCHINFO *info){
         info->showWDL = (ptrTrue != NULL);
         printf("info string UCI_ShowWDL set to %s\n", info->showWDL ? "true" : "false");
     }
-#if USE_SURPRISE_SRD
-    else if (!strncmp(line, "setoption name Surprise_SRD value ", 34)) {
-        char *ptrTrue = strstr(line, "true");
-        SurpriseSRDEnabled = (ptrTrue != NULL);
-        printf("info string Surprise_SRD set to %s\n", SurpriseSRDEnabled ? "true" : "false");
-    }
-#endif
     else if (!strncmp(line, "setoption name Personality value ", 33)) {
         char val[64] = {0};
         if (sscanf(line, "%*s %*s %*s %*s %63s", val) == 1) {
@@ -650,9 +643,6 @@ void uciPrint(){
     printf("option name Contempt type spin default 0 min -100 max 100\n");
     printf("option name Aggressiveness type spin default 100 min 0 max 200\n");
     printf("option name TradeAversion type spin default 0 min -50 max 50\n");
-#if USE_SURPRISE_SRD
-    printf("option name Surprise_SRD type check default true\n");
-#endif
 #ifdef TUNE
     tunePrintUciOptions();
 #endif

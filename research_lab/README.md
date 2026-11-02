@@ -17,7 +17,7 @@ The **Goob Chess Engine Research Laboratory** is an interactive experimentation,
 2. **Search-Tree & Heuristics Visualizer**
    - Real-time diagnostic telemetry from Goob's trace engine (`make trace` build).
    - Beta cutoff distribution breakdown (1st move cutoff, TT move, Killer, Counter, Followup, Quiet, Tactical).
-   - Search pruning & reduction health checks (RFP, NMP, Razoring, ProbCut, LMP, Futility, SEE, LMR, Surprise-SRD) with automatic status assessment against Goob's diagnostic thresholds.
+   - Search pruning & reduction health checks (RFP, NMP, Razoring, ProbCut, LMP, Futility, SEE, LMR) with automatic status assessment against Goob's diagnostic thresholds.
    - Node allocation profiling (Alpha-Beta vs. Quiescence vs. Static Evaluations vs. NNUE Refreshes).
 
 3. **Tournaments & Engine Benchmarks**

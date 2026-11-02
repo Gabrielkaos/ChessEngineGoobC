@@ -203,7 +203,7 @@ python3 tools/spsa/spsa.py run corr1 --include 'Corr.*Weight'
 `tune.h`. Constants that are not selected stay at their defaults during the run
 and are not touched by `apply`.
 
-Depth limits (`...Depth`, `EVAL_MOVE_LIMIT`) are small integers with
+Depth limits (`...Depth`) are small integers with
 `c_end = 1`: they move slowly and cost a lot when wrong, so leaving them out is
 a reasonable default. `RazoringDepth` may reach 0, which disables razoring.
 

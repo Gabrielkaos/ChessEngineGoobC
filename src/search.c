@@ -38,7 +38,6 @@ void initLMRTable(){
     }
 }
 
-int SurpriseSRDEnabled = 0;       // Surprise-SRD: Sibling Surprise + Eval LMR (default enabled)
 
 //Node and tbhit counters live in each thread's S_SEARCH_THREAD: only the
 //owner writes them, other threads only read them (relaxed atomics compile to
@@ -608,9 +607,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     Score = -AB_BOUND;
     int skipQuiets = 0;
     int pawnHist = 0;
-#if USE_SURPRISE_SRD
-    int siblingSurprise = 0;
-#endif
 
     //main move loop
     while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
@@ -693,15 +689,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     continue;
                 }
             }
-        }
-
-        if (!rootNode && !info->bruteForceMode && !quietMove && bestScore > -ISMATE && !inCheck
-            && mp->lastStage != STAGE_TABLE && depth <= CaptureFutilityDepth){
-            //Capture futility (Stockfish): even winning this piece outright,
-            //plus a generous depth margin, leaves us below alpha
-            int captured = pos->pieces[TOSQ(moveInLoop)];
-            if(moveInLoop & MVFLAGEP) captured = pos->side == WHITE ? wP : bP;
-            (void)captured;
         }
 
         //SEE
@@ -793,8 +780,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //Late Move Reduction, see how much we should cut depth
         //prunes if the move is quiet and that this is one of the many moves searched already
         //we prune if the move is unlikely promising
-        int givesCheck = (pos->st->checkersBB != 0);
-
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             TRACE_INC(pos, lmr_quiet_attempted);
             R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
@@ -811,28 +796,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
 
             R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
-
-#if USE_SURPRISE_SRD
-            // Surprise-SRD: Dynamic LMR via Sibling History & Eval Expectation Deficit
-            // 1. Sibling Surprise: If an earlier reduced sibling scored > alpha, move ordering
-            //    at this node is volatile; damp reduction on subsequent siblings (R -= 1).
-            // 2. Deficit: When severely behind (evalDiff > EVAL_DEFICIT_MARGIN), reduce
-            //    late quiet moves (Legal >= EVAL_MOVE_LIMIT) by +1, while protecting early quiets.
-            // 3. Surplus: When statically winning/ahead of alpha, reduce promising quiets less.
-            if (SurpriseSRDEnabled && !rootNode && !inCheck && abs(alpha) < ISMATE) {
-                int evalDiff = alpha - staticEval;
-                if (siblingSurprise) {
-                    TRACE_INC(pos, srd_sibling_triggered);
-                    R -= 1;
-                } else if (evalDiff > EVAL_DEFICIT_MARGIN && Legal >= EVAL_MOVE_LIMIT) {
-                    TRACE_INC(pos, srd_deficit_triggered);
-                    R += 1;
-                } else if (evalDiff < -EVAL_SURPLUS_MARGIN && R > 1) {
-                    TRACE_INC(pos, srd_surplus_triggered);
-                    R -= 1;
-                }
-            }
-#endif
 
             //scale up reduction further at expected all-nodes, proportional to
             //existing R rather than a flat bump, so it doesn't dominate at low depth
@@ -883,11 +846,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 TRACE_INC(pos, lmr_researches);
                 didLmrResearch = 1;
             }
-#if USE_SURPRISE_SRD
-            if (SurpriseSRDEnabled && R > 1) {
-                siblingSurprise = 1;
-            }
-#endif
             Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
         }
 

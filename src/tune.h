@@ -20,7 +20,6 @@
     TP(DeltaMarginQ,                97,    40,   250,   10) \
     TP(QSSeeMargin,                108,    40,   250,   10) \
     /* transposition table */ \
-    TP(TTResearchMargin,           126,    50,   300,   12) \
     /* aspiration windows */ \
     TP(ScoreWindow,                  10,     4,    30,    2) \
     TP(WindowDepth,                  5,     2,     9,    1) \
@@ -60,10 +59,6 @@
     TP(FollowUpHistLimitNI,       -424, -3500,  1500,  250) \
     TP(FollowUpHistLimitI,       -1781, -4500,   500,  250) \
     /* capture futility pruning */ \
-    TP(CaptureFutilityDepth,         6,     3,    10,    1) \
-    TP(CaptureFutilityBase,         91,    30,   250,   10) \
-    TP(CaptureFutilityPerDepth,    122,    50,   250,   10) \
-    TP(CaptureFutilityHistDiv,      16,     4,    64,    3) \
     /* SEE pruning: quiet margin * depth, noisy margin * depth^2 - capture history / SEENoisyHistDiv */ \
     TP(SEEPruningDepth,              9,     5,    13,    1) \
     TP(SEEQuietMargin,             -73,  -130,   -20,    5) \
@@ -75,7 +70,6 @@
     TP(DoubleExtMargin,            128,    40,   250,   10) \
     TP(TripleExtMargin,             64,     0,   200,    8) \
     TP(MaxDoubleExtensions,          6,     2,    12,    1) \
-    TP(HistexLimit,               9859,  4000, 16000,  600) \
     /* ttMoveHistory (singular double-extension margin scaling) */ \
     TP(TTMoveHistoryMax,          8812,  4096, 16384,  500) \
     TP(TTMoveHistoryScale,          42,    15,   100,    4) \
@@ -91,9 +85,6 @@
     TP(LMRDeeperMargin,             37,    10,   100,    4) \
     TP(LMRShallowerMargin,           7,     0,    20,    1) \
     /* Surprise-SRD */ \
-    TP(EVAL_DEFICIT_MARGIN,        118,    40,   250,   10) \
-    TP(EVAL_SURPLUS_MARGIN,         96,    30,   250,   10) \
-    TP(EVAL_MOVE_LIMIT,              4,     2,     8,    1) \
     /* quiet history update */ \
     TP(HistMoveCountThreshold,        8,     4,    16,    1) \
     TP(HistMoveCountBonusMul,      1272,   768,  2048,   60) \
