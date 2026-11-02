@@ -451,7 +451,57 @@ First test run with the fastchess pentanomial runner (`tools/sprt/run_sprt.sh`, 
 
 ---
 
-## 19. Summary of All Merged Features on `main`
+## 19. Round 17: Search Feature Ablation (October 31 - November 2, 2026)
+
+Every search / move-loop feature that had been merged on an inconclusive SPRT was re-tested on its own by **removing** it. Each test played the engine *without* the feature (NEW) against the current baseline (BASE):
+
+* **Runner:** `tools/sprt/run_sprt.sh`, `MODE=nonreg` (SPRT [-3, 1], logistic, LLR ±2.94), fastchess pentanomial, capped at 10,000 games.
+* **Conditions:** 6+0.06, 1 thread, 32 MB hash, `tools/book.epd` (UHO-style, random order, each opening with both colours), 10 concurrent games (12 for the last three tests).
+* **Baseline:** `main` at `14e2845`. A removal that passed (H1) was committed and became the baseline for the following tests; a feature whose removal lost (H0) was kept.
+* **Undecided** features (no verdict after 10,000 games) were kept in the baseline and decided afterwards by review.
+* Queue, patches and logs: `tools/sprt/logs/ablation/` and `tools/sprt/logs/abl-<feature>.log` (git-ignored). Median search depth at this time control: 14 plies.
+
+"Elo" is the engine **without** the feature: positive means removing it did not hurt.
+
+| # | Feature removed | Games | Elo (without) | LLR | Ptnml(0-2) | Verdict |
+| :---: | :--- | :---: | :---: | :---: | :--- | :--- |
+| 1 | Surprise-SRD (sibling surprise / eval deficit LMR) | 6,506 | **+2.94 ± 4.53** | +2.94 | [34, 767, 1603, 808, 41] | **REMOVED** (H1) |
+| 2 | Hindsight depth adjustment | 10,000 | +0.14 ± 3.78 | +1.23 | [72, 1254, 2339, 1268, 67] | Undecided -> **kept** |
+| 3 | History extension (`HistexLimit`) | 10,000 | -1.08 ± 3.70 | -0.09 | [65, 1235, 2425, 1216, 59] | Undecided -> **removed** |
+| 4 | Countermove / follow-up history pruning | 9,014 | **-3.97 ± 3.94** | -2.95 | [77, 1118, 2203, 1049, 60] | **KEPT** (H0) |
+| 5 | TT research-margin cutoff | 6,942 | **+2.75 ± 4.41** | +2.96 | [39, 822, 1699, 867, 44] | **REMOVED** (H1) |
+| 6 | Post-LMR re-search continuation malus | 9,240 | **-3.80 ± 3.80** | -2.98 | [61, 1144, 2302, 1061, 52] | **KEPT** (H0) |
+| 7 | History malus decay / move-count bonus | 10,000 | -2.47 ± 3.66 | -1.68 | [65, 1230, 2473, 1175, 57] | Undecided -> **kept** |
+| 8 | ttMoveHistory in the double-extension margin | 10,000 | -2.02 ± 3.71 | -1.13 | [64, 1262, 2403, 1210, 61] | Undecided -> **kept** |
+| 9 | LMR gives-check reduction | 10,000 | +1.15 ± 3.70 | +2.40 | [70, 1179, 2473, 1204, 74] | Undecided -> **removed** |
+| 10 | LMR `ttCapture` increase | 10,000 | -1.63 ± 3.65 | -0.73 | [63, 1228, 2447, 1217, 45] | Undecided -> **kept** |
+| 11 | LMR deeper/shallower re-search | 3,134 | **-9.65 ± 6.68** | -2.97 | [28, 413, 764, 342, 20] | **KEPT** (H0) |
+| 12 | Capture futility pruning | 10,000 | -0.59 ± 3.70 | +0.46 | [78, 1193, 2453, 1220, 56] | Undecided -> **removed** |
+| 13 | ProbCut TT guard and TT store | 10,000 | -1.08 ± 3.76 | -0.08 | [78, 1225, 2428, 1188, 81] | Undecided -> **kept** |
+| 14 | Cuckoo upcoming repetition | 8,286 | **-4.19 ± 4.06** | -2.97 | [56, 1044, 2048, 934, 61] | **KEPT** (H0) |
+
+### Decisions on the undecided features
+
+Decided by the SPRT trend, by whether Stockfish 19, Berserk 14 and Ethereal 14 use the idea, and by whether it is likely to behave differently at longer time controls (at 6+0.06 GOOB reaches a median depth of 14; features gated to deep nodes are under-measured).
+
+* **Kept:**
+  * *History malus decay / move-count bonus:* 91% likely positive; Stockfish uses the identical 921/1024 malus decay and also scales the bonus by the number of searched moves.
+  * *ttMoveHistory:* 86% likely positive; Stockfish uses it in its double-extension margin. It only acts inside singular-extension searches (depth >= 10), which cover the top ~4 plies at this time control and many more at longer ones.
+  * *LMR `ttCapture`:* 81% likely positive; used by Stockfish and Berserk.
+  * *ProbCut TT guard and store:* the same guard is used by Stockfish, Berserk and Ethereal.
+  * *Hindsight:* exactly 0 Elo here, but used by both Stockfish and Berserk, and its trigger (a large parent reduction) occurs more often in deeper searches.
+* **Removed:**
+  * *History extension:* no reference engine uses it; Ethereal 14 dropped this exact extension.
+  * *LMR gives-check:* the removal came closest to passing (LLR +2.40) and Stockfish 19 has no gives-check LMR term.
+  * *Capture futility:* a coin flip (-0.6 Elo); it overlaps with the existing history-adjusted SEE capture pruning and is low-depth pruning, so a longer time control is not expected to change it.
+
+### Result
+
+Five features were removed (Surprise-SRD, TT research cutoff, history extension, LMR gives-check, capture futility) on branch `cleanup/search-ablation`, followed by a node-identical dead-code cleanup (their tunables, trace counters and the `Surprise_SRD` UCI option). Depth-12 bench (`tools/sprt/bench.py 12`): **829,601 -> 867,532** nodes. The combined removal of the three review-decided features was **not** confirmed with a final SPRT against `14e2845`, at the user's request.
+
+---
+
+## 20. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -469,9 +519,12 @@ First test run with the fastchess pentanomial runner (`tools/sprt/run_sprt.sh`, 
 14. `search/cuckoo-upcoming-repetition`: Marcel van Kervinck's 8,192-entry Cuckoo hash table (`InitCuckoo()`) and 1-move upcoming repetition cycle detection (`upcoming_repetition()`, +6.1 Elo, -2.7% bench nodes).
 15. `search/se-excluded`: Stockfish/Berserk/Ethereal-style `excludedMove` recursive singular verification search at `(depth - 1) / 2`, `is_shuffling()` piece-shuffle singular extension guard, `dextensions <= 6` extension cap, and quiet non-PV triple extensions (+1.6 Elo, bounded seldepth 28 vs 43 on shuffling endgames).
 
+
+**Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
+
 ---
 
-## 20. Closing Instructions for GitHub PRs
+## 21. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
