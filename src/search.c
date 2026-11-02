@@ -773,9 +773,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 if (inCheck) {
                     TRACE_INC(pos, check_ext);
                     extension = 1;
-                } else if (quietMove && pvNode && cmhist > HistexLimit && fmhist > HistexLimit) {
-                    TRACE_INC(pos, history_ext);
-                    extension = 1;
                 } else {
                     extension = 0;
                 }
