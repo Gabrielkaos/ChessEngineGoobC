@@ -701,9 +701,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             //plus a generous depth margin, leaves us below alpha
             int captured = pos->pieces[TOSQ(moveInLoop)];
             if(moveInLoop & MVFLAGEP) captured = pos->side == WHITE ? wP : bP;
-            int futilityValue = eval + CaptureFutilityBase + CaptureFutilityPerDepth * depth
-                              + SEEPieceValues[captured] + hist / CaptureFutilityHistDiv;
-            if(futilityValue <= alpha) continue;
+            (void)captured;
         }
 
         //SEE
