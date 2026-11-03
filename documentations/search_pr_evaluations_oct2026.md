@@ -501,7 +501,25 @@ Five features were removed (Surprise-SRD, TT research cutoff, history extension,
 
 ---
 
-## 20. Summary of All Merged Features on `main`
+## 20. Round 18: Post-Ablation SPSA Retune of LMR / SEE (November 2-4, 2026)
+
+After the Round 17 removals the LMR and noisy-SEE constants were retuned with SPSA and the result was tested against `main` (`9cb2059`).
+
+* **SPSA run:** `tools/spsa/spsa.py run post-ablation1 --include '^LMR|AllNode|SEENoisy'` (10 parameters), 8,000 iterations (32,000 games), 5+0.05, 12 workers, 9.1 h. Run directory `tools/spsa/runs/post-ablation1/` (git-ignored).
+* **Tuned values (main -> tuned):** LMRBase 77 -> 79, LMRDivisor 224 -> 220, LMRQuietHistDiv 4984 -> 5001, LMRNoisyHistDiv 4873 -> 4882, AllNodeScale 277 -> 274, AllNodeBase 288 -> 287, LMRDeeperMargin 37 -> 39, SEENoisyHistDiv 64 -> 58; SEENoisyMargin (-18) and LMRShallowerMargin (7) unchanged. Every change is smaller than the parameter's SPSA step size `c_end`.
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`spsa-pruning1`** (post-ablation1 values) | **NOT MERGED** | 23880 | 5773 - 5693 - 12414 | 50.17% | **+1.16 ± 2.44** | -0.65 | Stopped, inconclusive |
+
+* **Match:** `run_sprt.sh GOOB-tuned GOOB-base spsa-pruning1 6+0.06 12`, gainer SPRT `[0, 3]`, fastchess pentanomial, 6+0.06, 1 thread, 32 MB hash, 12 concurrent games, `tools/book.epd`. Ran 2026-11-03 21:23 to 2026-11-04 06:20 and was stopped by hand before a verdict.
+* **Pentanomial (0-2):** `[161, 2936, 5697, 2954, 192]`; nElo +2.10 ± 4.41, LOS 82.5%, DrawRatio 47.7%. Log: `tools/sprt/logs/spsa-pruning1.log`.
+* **Analysis:** The tuned values moved by less than the tuner's own perturbation size, so the run mostly confirms that these ten constants were already close to optimal after the removals. The measured gain (about +1 Elo, 95% interval -1.3 to +3.6) is too small to prove at this time control in a reasonable number of games.
+* **Verdict:** **NOT MERGED** (no conclusive SPRT). `src/tune.h` keeps the `main` values.
+
+---
+
+## 21. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -524,7 +542,7 @@ Five features were removed (Surprise-SRD, TT research cutoff, history extension,
 
 ---
 
-## 21. Closing Instructions for GitHub PRs
+## 22. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

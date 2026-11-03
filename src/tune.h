@@ -84,7 +84,6 @@
     TP(AllNodeBase,                288,   100,   500,   20) \
     TP(LMRDeeperMargin,             37,    10,   100,    4) \
     TP(LMRShallowerMargin,           7,     0,    20,    1) \
-    /* Surprise-SRD */ \
     /* quiet history update */ \
     TP(HistMoveCountThreshold,        8,     4,    16,    1) \
     TP(HistMoveCountBonusMul,      1272,   768,  2048,   60) \
