@@ -563,7 +563,23 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 23. Summary of All Merged Features on `main`
+## 23. Round 21: Prior Quiet Countermove Bonus on Fail Low (November 5, 2026)
+
+Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 867,532 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/prior-cm-bonus`** | **NOT MERGED** | 2332 | 525 - 621 - 1186 | 47.94% | **-14.31 ± 7.73** | -2.97 | Rejected (H0 accepted) |
+
+* **Concept (Stockfish; the classic form used before the current `bonusScale` formula):** when a node fails low (`bestScore <= alpha`, `depth >= 3` or PV, not root, not a singular verification search), give the opponent's quiet move that led to it a `stat_bonus(depth)` continuation history bonus in the position it was played from (`updatePriorQuietBonus()` in `history.c`).
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 697,174 nodes.
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, 50 min. Pentanomial (0-2) `[16, 335, 562, 235, 18]`, LOS 0.01%. Log: `tools/sprt/logs/prior-cm-bonus.log`.
+* **Failure analysis:** Fail-low nodes are a large share of all interior nodes, so a full `stat_bonus(depth)` at every one of them adds far more positive continuation history than the fail-high updates. GOOB also prunes with continuation history (countermove / follow-up pruning, futility history limits), so inflated scores change pruning, not just move ordering. Stockfish today scales this bonus by the parent's move count, eval drop and stat score (often to 0 at low depth) and spreads it over much smaller weights; the flat classic form is clearly harmful here.
+* **Verdict:** **REJECTED.** Branch `search/prior-cm-bonus` (commit `f008b87`) kept locally only, never pushed.
+
+---
+
+## 24. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -586,7 +602,7 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 24. Closing Instructions for GitHub PRs
+## 25. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
