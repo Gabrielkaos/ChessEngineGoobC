@@ -547,7 +547,23 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 22. Summary of All Merged Features on `main`
+## 22. Round 20: Cutoff-Count LMR Increase (November 4-5, 2026)
+
+Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 867,532 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/cutoff-cnt`** | **NOT MERGED** | 29242 | 7036 - 6959 - 15247 | 50.13% | **+0.91 ± 2.20** | -1.39 | Stopped, rejected on review |
+
+* **Concept (Stockfish 19 `search.cpp:810, 1335-1336, 1529`):** count fail highs per ply in `cutoff_cnt[]`; every node clears the grandchild ply, so `cutoff_cnt[ply + 1]` holds the fail highs of the node's children and of its earlier siblings' children. A fail high counts unless it came from a double extension at a non-PV node. Quiet and noisy LMR added one ply when `cutoff_cnt[ply + 1] > 2`.
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 599,906 nodes (-31%).
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, 10 h 17 min. Pentanomial (0-2) `[238, 3489, 7075, 3596, 223]`, LOS 79.2%. Log: `tools/sprt/logs/cutoff-cnt.log`.
+* **Decision:** Stopped by hand without a verdict. After 29k games the best estimate is under +1 Elo (95% interval -1.3 to +3.1) and the LLR was drifting towards H0, so the change is not worth its code under the conclusive-only rule. Stockfish's version is fractional (+0.26 ply for more than one cutoff, +1.07 more for more than two, and +1.11 more at all-nodes); the whole-ply approximation here may be too coarse to show the effect.
+* **Verdict:** **REJECTED.** Branch `search/cutoff-cnt` (commit `561330f`) kept locally only, never pushed.
+
+---
+
+## 23. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -570,7 +586,7 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 23. Closing Instructions for GitHub PRs
+## 24. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
