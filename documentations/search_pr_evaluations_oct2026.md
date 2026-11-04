@@ -499,6 +499,18 @@ Decided by the SPRT trend, by whether Stockfish 19, Berserk 14 and Ethereal 14 u
 
 Five features were removed (Surprise-SRD, TT research cutoff, history extension, LMR gives-check, capture futility) on branch `cleanup/search-ablation`, followed by a node-identical dead-code cleanup (their tunables, trace counters and the `Surprise_SRD` UCI option). Depth-12 bench (`tools/sprt/bench.py 12`): **829,601 -> 867,532** nodes. The combined removal of the three review-decided features was **not** confirmed with a final SPRT against `14e2845`, at the user's request.
 
+### Confirmation match: post-ablation vs pre-ablation (November 4, 2026)
+
+All five removals together (`main` at `6fb1b3d`, engine-identical to `9cb2059`, bench 867,532) were then played against the pre-ablation `main` (`14e2845`, bench 829,601).
+
+| Experiment | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`ablation-total`** (post vs pre ablation) | 32996 | 7997 - 7801 - 17198 | 50.30% | **+2.06 ± 2.08** | +1.51 | Stopped, accepted by the user |
+
+* **Match:** `run_sprt.sh GOOB-post-ablation-6fb1b3d GOOB-pre-ablation-14e2845 ablation-total 6+0.06 12`, gainer SPRT `[0, 3]`, fastchess pentanomial, 6+0.06, 1 thread, 32 MB hash, 12 concurrent games, `tools/book.epd`. Log: `tools/sprt/logs/ablation-total.log`.
+* **Pentanomial (0-2):** `[244, 3947, 7969, 4045, 293]`; nElo +3.72 ± 3.75, LOS 97.4%.
+* **Result:** Stopped by hand at 32,996 games without an SPRT verdict (the LLR peaked at +1.79 around 32,000 games). The 95% interval (0.0 to +4.1 Elo) and the 97% LOS show the cleaned-up engine is at least as strong as before and most likely about +2 Elo stronger; the user accepted the removals on this evidence.
+
 ---
 
 ## 20. Round 18: Post-Ablation SPSA Retune of LMR / SEE (November 2-4, 2026)
