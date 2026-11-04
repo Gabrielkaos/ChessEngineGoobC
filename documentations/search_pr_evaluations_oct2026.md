@@ -531,7 +531,23 @@ After the Round 17 removals the LMR and noisy-SEE constants were retuned with SP
 
 ---
 
-## 21. Summary of All Merged Features on `main`
+## 21. Round 19: Stored `ttPv` Flag in LMR (November 4, 2026)
+
+Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 867,532 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/ttpv`** | **NOT MERGED** | 4070 | 929 - 1016 - 2125 | 48.93% | **-7.43 ± 5.90** | -2.95 | Rejected (H0 accepted) |
+
+* **Concept (Berserk 14 `search.c:426-429, 716`; Stockfish 19 `search.cpp:822`):** store a "was on a PV line" bit (bit 63 of `smp_data`) with every TT write; `ttPv = pvNode || (ttHit && stored bit)`, kept in `ttpv_stack[ply]` for the singular verification search. Quiet and noisy LMR added their one-ply non-PV increase on `!ttPv` instead of `!pvNode`. Unlike Round 9 (`search/tt-lmr`), the flag was really stored and no other LMR term was changed.
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 667,344 nodes (-23%).
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, **5+0.05**, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`. Pentanomial (0-2) `[39, 525, 980, 466, 25]`, LOS 0.7%. Log: `tools/sprt/logs/ttpv.log`. (A first run at 6+0.06 was stopped after 61 games to change the time control.)
+* **Failure analysis:** The exact cause was not measured. The large tree change (-23% bench nodes) shows the flag touches far more nodes than true PV nodes, so the one-ply non-PV reduction was dropped for a large share of cut/all nodes. Stockfish and Berserk use `ttPv` together with other terms built around it (Stockfish also adds base reduction for `ttPv` nodes, scales its LMR bonus by TT value and depth, and propagates the flag on fail low); swapped in alone for GOOB's `!pvNode`, it is a clear loss.
+* **Verdict:** **REJECTED.** Branch `search/ttpv` (commit `1246d01`) kept locally only, never pushed.
+
+---
+
+## 22. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -554,7 +570,7 @@ After the Round 17 removals the LMR and noisy-SEE constants were retuned with SP
 
 ---
 
-## 22. Closing Instructions for GitHub PRs
+## 23. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
