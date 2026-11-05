@@ -579,7 +579,23 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 24. Summary of All Merged Features on `main`
+## 24. Round 22: History Update for a Quiet TT Move on a TT Cutoff (November 5, 2026)
+
+Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 867,532 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/tt-cutoff-hist`** | **NOT MERGED** | 2980 | 680 - 771 - 1529 | 48.47% | **-10.61 ± 6.85** | -2.95 | Rejected (H0 accepted) |
+
+* **Concept (Stockfish 19 `search.cpp:880-884`):** when a non-PV node returns on a TT lower bound (`ttValue >= beta`) and the TT move is a pseudo-legal quiet move, pass it to `updateHistories()` as a one-move fail high (killers, countermove / follow-up tables and, above depth 3, the history bonus).
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 701,757 nodes.
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, 1 h 5 min. Pentanomial (0-2) `[20, 417, 706, 328, 19]`, LOS 0.12%. Log: `tools/sprt/logs/tt-cutoff-hist.log`.
+* **Failure analysis:** The third history-side change in a row to lose clearly (after Round 21). Reusing `updateHistories()` gives the TT move GOOB's full fail-high treatment (killer and countermove replacement plus the full `stat_bonus`), while Stockfish gives only a small capped bonus (`min(112 * depth, 695)`). GOOB's history scores also drive pruning (countermove / follow-up pruning, futility history limits, LMR history terms), so extra updates shift the tuned pruning thresholds. Further history-side additions should use small, separately tuned bonuses or be avoided.
+* **Verdict:** **REJECTED.** Branch `search/tt-cutoff-hist` (commit `75605cb`) kept locally only, never pushed.
+
+---
+
+## 25. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -602,7 +618,7 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 25. Closing Instructions for GitHub PRs
+## 26. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
