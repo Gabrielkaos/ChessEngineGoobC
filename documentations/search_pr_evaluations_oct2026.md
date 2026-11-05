@@ -595,7 +595,23 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 25. Summary of All Merged Features on `main`
+## 25. Round 23: Opponent-Worsening Term in the RFP Margin (November 5, 2026)
+
+Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 867,532 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/rfp-opp-worsening`** | **NOT MERGED** | 3572 | 785 - 873 - 1914 | 48.77% | **-8.56 ± 6.24** | -2.95 | Rejected (H0 accepted) |
+
+* **Concept (Stockfish 19 `futility_margin`):** shrink the reverse futility pruning margin by `BetaMargin / 3` when the opponent's position keeps getting worse (`opponentWorsening`: `staticEval > -eval_stack[ply-1]`), so RFP prunes `eval - BetaMargin * depth + opponentWorsening * BetaMargin / 3 > beta`. Tested alone, as one small term, because Round 5 bundled an RFP improving term with a soft bound.
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 641,024 nodes.
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, about 1 h 15 min. Pentanomial (0-2) `[28, 471, 874, 387, 26]`, LOS 0.36%. Log: `tools/sprt/logs/rfp-opp-worsening.log`.
+* **Failure analysis:** The extra RFP pruning (bench -26%) costs more than the saved nodes buy. GOOB's RFP margin (`BetaMargin`) was tuned by SPSA without this term, and the current RFP already prunes aggressively; a further margin cut on top of it prunes too many nodes where the static eval overestimates the position. Like Round 5, tightening RFP beyond the tuned margin does not pay off; a retry would need the margin and the term tuned together.
+* **Verdict:** **REJECTED.** Branch `search/rfp-opp-worsening` (commit `349a19d`) kept locally only, never pushed.
+
+---
+
+## 26. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -618,7 +634,7 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 26. Closing Instructions for GitHub PRs
+## 27. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
