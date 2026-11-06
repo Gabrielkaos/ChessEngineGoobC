@@ -44,6 +44,14 @@ The tooling is divided into three primary operational domains:
   * Runs node-limited searches (`--nodes`, default 5000) directly in-process (one process per core, seeded via `--seed`).
   * Records quiet positions only (side to move not in check, best move not a capture/promotion, best move does not give check), keeps lopsided scores (saturated at $\pm 3000$) and mate flags, and sets result bits (`1`=White win, `2`=Draw, `3`=Black win) after game end or adjudication (`--resign-eval 1500` for 4 plies; `--draw-eval 10` for 8 plies after move 40; `--max-ply 400`).
   * Refuses to open or overwrite any existing output file (`O_CREAT | O_EXCL`).
+  * Resets the TT and every history table (`resetContinuationTable()`) before each game.
+  * **Datagen v2 flags** (NNUE Round 2 Phase 6; all off by default, and with all of them off the output is byte-identical to v1 for the same seed):
+    * `--max-fifty N`: do not record positions whose fifty-move clock exceeds `N` plies (the engine shrinks scores toward 0 as the clock rises, and the record has no clock).
+    * `--max-open-eval N`: search the position after the random plies and pick another opening if `|score| > N` cp. Note that `tools/book.epd` is an unbalanced (UHO-style) book: White is about +1 pawn up on average.
+    * `--draw-abs`: count `--draw-move` from the real game move (FEN fullmove number) instead of from the book position.
+    * `--index <csv>`: one row per game (`first_record,records,result,reason,plies`).
+    * Skipped and rejected counts are printed in the final summary.
+* **Opening books:** `tools/book_test.epd` (every 10th line of `book.epd`, for SPRTs of new nets) and `tools/book_datagen.epd` (the other 90%, for datagen from Gen-3 on), so test openings never appear in training data. Both are git-ignored like `book.epd`; recreate them with `awk 'NR % 10 == 0' tools/book.epd > tools/book_test.epd` and `awk 'NR % 10 != 0' tools/book.epd > tools/book_datagen.epd`.
 * **Build & Usage:**
   ```bash
   # Recommended build via makefile:
@@ -64,6 +72,9 @@ The tooling is divided into three primary operational domains:
   ```bash
   # Generate 1,000,000 quiet positions across 8 workers at 5,000 nodes/move:
   python3 tools/run_datagen.py --workers 8 --positions 1000000 --nodes 5000 --out-dir tools/nnue_project/data_gen
+  # Datagen v2 (Gen-3): passes --max-fifty / --max-open-eval / --draw-abs through, --index writes gen_w*.csv per worker
+  python3 tools/run_datagen.py --workers 12 --positions 50000000 --book tools/book_datagen.epd \
+      --max-fifty 30 --max-open-eval 500 --draw-abs --index --out-dir tools/nnue_project/data_gen3
   ```
 
 ### 3. [`test_datagen.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_datagen.py)
@@ -71,6 +82,10 @@ The tooling is divided into three primary operational domains:
 * **Usage:**
   ```bash
   python3 tools/test_datagen.py
+  ```
+* [`test_datagen_v2.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/test_datagen_v2.py) tests the v2 flags: byte-identical output with every flag off (against a v1 build passed as `--v1`), `--max-fifty` drops exactly the counted records from the same games, `--max-open-eval` rejects openings and leaves no resignation in the first 8 plies, and `--index` row counts add up to the file:
+  ```bash
+  python3 tools/test_datagen_v2.py --v1 <datagen built from the v1 datagen.c>
   ```
 
 ### 4. [`selfplay_nnue.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/selfplay_nnue.py)

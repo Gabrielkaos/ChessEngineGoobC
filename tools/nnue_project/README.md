@@ -45,6 +45,10 @@ scripts/
   test_net.py           evaluates FENs with a saved checkpoint
   scale_test.py         quantization headroom of a checkpoint
   mix_data.py           mixes native self-play generated data with base Lichess data
+                        (several --gen-data PATH[:cap] sources, --exclude hold-out sets, --gen-share 0 base-only files)
+  data_stats.py         read-only audit of record files: eval / bucket / king-bucket histograms, duplicates,
+                        WDL calibration (fitted scale K vs 400) and datagen log statistics
+  test_r2_tools.py      tests for the Round 2 trainer and mixer flags
 data_selfplay/          self-play records from tools/selfplay_nnue.py (tracked)
 data_gen/               self-play records from tools/datagen.c / run_datagen.py
 data/, data_json/, checkpoints/   created by the scripts (not tracked)
@@ -76,6 +80,30 @@ python train.py --train ../data/train.bin --val ../data/val.bin --epochs 20 --ba
 # 3. export and check
 python export_weights.py --checkpoint ../checkpoints/nnue.pt --out ../checkpoints/quantised.bin
 python check_net.py --net ../checkpoints/quantised.bin --checkpoint ../checkpoints/nnue.pt --pipeline
+```
+
+### Round 2 flags (`NNUE_IMPROVEMENT_PLAN_ROUND2.md` Phase 2)
+
+Every flag defaults to the old behaviour, so earlier commands reproduce their results.
+
+| `train.py` flag | Effect |
+| :--- | :--- |
+| `--total-samples N` | stop after `N // batch_size` optimizer steps whatever the file size (overrides `--epochs`); runs with different files see the same number of samples |
+| `--lr-schedule step-cosine`, `--lr-min` | cosine from `--lr` to `--lr-min` (default `1e-5`) over every step of the run, stepped per batch (default `epoch-cosine`: per epoch over `--epochs`) |
+| `--select-by last` | `--out-best` holds the last epoch instead of the lowest `--val` MSE |
+| `--val-extra FILE` | extra validation file (repeatable), logged each epoch; files with game results also log MSE against the pure-eval target, which stays comparable across `--wdl-lambda` |
+| `--val-every N`, `--curve-val-max` | every `N` batches, append step, samples, LR, train loss and every validation MSE (on up to 200k records per set) to `<out-last stem>_curve.csv` |
+
+Checkpoints now store `global_step`, so a `--total-samples` run resumes mid-epoch on the same LR curve.
+`train.py` does not seed the model's random initialisation; runs that must be
+comparable bit for bit warm-start with `--init`.
+
+```bash
+python3 data_stats.py --data ../data_gen --log-dir ../data_gen           # audit a generation
+python3 mix_data.py --gen-data ../data_gen3 --gen-data ../data_gen:10000000 --exclude ../r2/val_gen3.bin \
+    --base-data ../data/train.bin --gen-share 0.25 --out ../data_mixed/<new>.bin
+python3 test_r2_tools.py --gen ../data_gen/<file>.bin --base ../data/train.bin \
+    --old-train <train.py before Round 2> --work <new empty dir>
 ```
 
 Keep `--clip 1.98` (the default): the engine's fast SCReLU kernel needs every

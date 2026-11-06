@@ -99,6 +99,14 @@ def parse_args():
         default=400,
         help="Maximum plies per game before draw adjudication (default: 400).",
     )
+    parser.add_argument("--max-fifty", type=int, default=-1,
+                        help="v2: do not record positions whose fifty-move clock exceeds N plies (default: off).")
+    parser.add_argument("--max-open-eval", type=int, default=-1,
+                        help="v2: discard openings whose search score after the random plies exceeds N cp (default: off).")
+    parser.add_argument("--draw-abs", action="store_true",
+                        help="v2: count the draw-adjudication move from the FEN fullmove number, not the book position.")
+    parser.add_argument("--index", action="store_true",
+                        help="v2: write a per-game CSV index (<prefix><w>_<time>.csv) next to each worker's .bin.")
     return parser.parse_args()
 
 
@@ -167,6 +175,14 @@ def main():
             "--draw-eval", str(args.draw_eval),
             "--max-ply", str(args.max_ply),
         ]
+        if args.max_fifty >= 0:
+            cmd.extend(["--max-fifty", str(args.max_fifty)])
+        if args.max_open_eval >= 0:
+            cmd.extend(["--max-open-eval", str(args.max_open_eval)])
+        if args.draw_abs:
+            cmd.append("--draw-abs")
+        if args.index:
+            cmd.extend(["--index", out_file[:-4] + ".csv"])
         if pos_per_worker > 0:
             cmd.extend(["--positions", str(pos_per_worker)])
         if games_per_worker > 0:

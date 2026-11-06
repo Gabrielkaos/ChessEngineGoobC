@@ -13,6 +13,12 @@ Fine-tune an existing network on new data (weights only, fresh optimizer):
     python train.py --train ../data/train2.bin --val ../data/val2.bin \
         --init ../checkpoints/nnue.pt --lr 3e-4 --epochs 8 \
         --out-best ../checkpoints/nnue_ft.pt --out-last ../checkpoints/last_ft.pt
+
+Round 2 data experiments (fixed sample budget, per-step cosine, last checkpoint,
+extra validation sets and a learning-curve CSV):
+    python train.py --train mix.bin --val ../data/val.bin --val-extra val_gen2.bin \
+        --init ../checkpoints/exp_datagen_d1_50m/nnue.pt --total-samples 320000000 \
+        --lr-schedule step-cosine --select-by last --val-every 2000 ...
 """
 
 import argparse
@@ -135,6 +141,53 @@ def evaluate(model, loader, device):
     return total_loss.item() / max(1, n)
 
 
+def has_results(path, probe=200_000):
+    """True if any of the first `probe` records carries a game result."""
+    ds = NNUEDataset(path)
+    k = min(ds.n, probe)
+    if k == 0:
+        return False
+    mm = np.memmap(path, dtype=np.uint8, mode="r", shape=(ds.n, 68))
+    return bool(np.any((np.asarray(mm[:k, 67]) >> 1) & 3))
+
+
+class ValSet:
+    """A validation file with a blended-target loader and, for files that hold
+    game results, a pure-eval loader (comparable across --wdl-lambda)."""
+
+    def __init__(self, path, args, device, limit=0):
+        self.path = path
+        self.name = os.path.splitext(os.path.basename(path))[0]
+        ds = NNUEDataset(path)
+        if limit and limit < len(ds):
+            ds = torch.utils.data.Subset(ds, range(limit))
+        self.n = len(ds)
+
+        def loader(lmb):
+            return DataLoader(
+                ds,
+                batch_size=args.batch_size,
+                shuffle=False,
+                num_workers=0,
+                collate_fn=functools.partial(
+                    nnue_collate, wdl_lambda=lmb, mirror=args.mirror,
+                    king_buckets=args.king_buckets, flip_augment=False,
+                ),
+            )
+
+        self.blended = loader(args.wdl_lambda)
+        self.pure = loader(1.0) if has_results(path) and args.wdl_lambda != 1.0 else None
+
+    def columns(self):
+        return [f"{self.name}_mse"] + ([f"{self.name}_eval_mse"] if self.pure is not None else [])
+
+    def measure(self, model, device):
+        out = [evaluate(model, self.blended, device)]
+        if self.pure is not None:
+            out.append(evaluate(model, self.pure, device))
+        return out
+
+
 def save_checkpoint(
     path,
     model,
@@ -145,6 +198,7 @@ def save_checkpoint(
     batch=None,
     total_batches=None,
     sampler_state=None,
+    global_step=None,
 ):
     """Saves the complete state to resume training later using an atomic write."""
     abs_path = os.path.abspath(path)
@@ -163,6 +217,8 @@ def save_checkpoint(
         checkpoint["total_batches"] = total_batches
     if sampler_state is not None:
         checkpoint["sampler"] = sampler_state
+    if global_step is not None:
+        checkpoint["global_step"] = global_step
 
     tmp_path = f"{abs_path}.tmp"
     torch.save(checkpoint, tmp_path)
@@ -277,6 +333,47 @@ def main():
         action="store_true",
         help="Random horizontal flip augmentation (p=0.5 per sample, both perspectives) without mirroring",
     )
+    ap.add_argument(
+        "--val-extra",
+        action="append",
+        default=[],
+        help="Extra validation file, evaluated after every epoch next to --val (repeatable). "
+             "Files with game results also report MSE against the pure-eval target.",
+    )
+    ap.add_argument(
+        "--val-every",
+        type=int,
+        default=0,
+        help="Also evaluate every validation set every N batches and append a row to a "
+             "learning-curve CSV beside --out-last (<out-last stem>_curve.csv). 0 disables.",
+    )
+    ap.add_argument(
+        "--curve-val-max",
+        type=int,
+        default=200_000,
+        help="Records per validation set used for the --val-every curve points (default 200k).",
+    )
+    ap.add_argument(
+        "--select-by",
+        choices=["val", "last"],
+        default="val",
+        help="Which checkpoint --out-best holds: lowest --val MSE (default) or simply the last epoch.",
+    )
+    ap.add_argument(
+        "--total-samples",
+        type=int,
+        default=0,
+        help="Stop after total_samples // batch_size optimizer steps, whatever the file size "
+             "(overrides --epochs). 0 = train --epochs full epochs.",
+    )
+    ap.add_argument(
+        "--lr-schedule",
+        choices=["epoch-cosine", "step-cosine"],
+        default="epoch-cosine",
+        help="epoch-cosine: cosine over --epochs, stepped once per epoch (default). "
+             "step-cosine: cosine over every optimizer step of the run, stepped per batch.",
+    )
+    ap.add_argument("--lr-min", type=float, default=1e-5, help="Final LR of the cosine schedule (default 1e-5)")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -289,6 +386,13 @@ def main():
     total_batches = len(train_ds) // args.batch_size
     if total_batches == 0:
         raise SystemExit("Training set is smaller than one batch.")
+    if args.total_samples > 0:
+        total_steps = args.total_samples // args.batch_size
+        args.epochs = -(-total_steps // total_batches)
+        print(f"Sample budget: {total_steps * args.batch_size:,} samples = {total_steps:,} steps "
+              f"= {total_steps / total_batches:.2f} epochs of this file")
+    else:
+        total_steps = args.epochs * total_batches
 
     train_collate = functools.partial(
         nnue_collate,
@@ -349,14 +453,16 @@ def main():
             opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     else:
         opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    step_sched = args.lr_schedule == "step-cosine"
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt, T_max=args.epochs, eta_min=1e-5
+        opt, T_max=total_steps if step_sched else args.epochs, eta_min=args.lr_min
     )
     loss_fn = nn.MSELoss()
 
     start_epoch = 1
     start_batch = 0
     best_val = float("inf")
+    global_step = 0
 
     # Resume training state if requested and checkpoint exists
     if args.resume:
@@ -385,6 +491,9 @@ def main():
                     start_batch = saved_batch
                 else:
                     print("    (data, batch size or shuffle settings changed: restarting that epoch from batch 0)")
+            global_step = checkpoint.get(
+                "global_step", (start_epoch - 1) * total_batches + start_batch
+            )
             where = f" at batch {start_batch}/{total_batches}" if start_batch else ""
             print(
                 f"--> Resumed successfully at Epoch {start_epoch}{where} (Best Val MSE: {best_val:.6f})"
@@ -414,12 +523,34 @@ def main():
     if args.clip > 0:
         clip_weights(model, args.clip)  # an older, unclipped net is brought into range once here
 
+    if args.total_samples > 0 and global_step >= total_steps:
+        print(f"--> Checkpoint has already reached the sample budget ({global_step} steps).")
+        return
     if start_epoch > args.epochs:
         print(
             f"--> Checkpoint has already reached Epoch {start_epoch - 1} of {args.epochs}. "
             f"Increase --epochs to train further."
         )
         return
+
+    val_extra = [ValSet(p, args, device) for p in args.val_extra]
+    for vs in val_extra:
+        print(f"Extra val: {vs.path} ({vs.n} positions{', + pure-eval MSE' if vs.pure is not None else ''})")
+    curve_path = None
+    if args.val_every > 0:
+        curve_sets = [ValSet(args.val, args, device, args.curve_val_max)] + [
+            ValSet(p, args, device, args.curve_val_max) for p in args.val_extra
+        ]
+        curve_path = os.path.splitext(args.out_last)[0] + "_curve.csv"
+        if not os.path.exists(curve_path):
+            with open(curve_path, "w") as f:
+                cols = ["step", "samples", "epoch", "lr", "train_loss"]
+                for vs in curve_sets:
+                    cols += vs.columns()
+                f.write(",".join(cols) + "\n")
+        print(f"Learning curve every {args.val_every} batches -> {curve_path}")
+    curve_loss = torch.zeros((), device=device)
+    curve_seen = 0
 
     # Progress is stored as one tuple so each update is a single assignment:
     # a Ctrl-C can land anywhere and the handler still sees a consistent state.
@@ -449,15 +580,33 @@ def main():
                 if args.clip > 0:
                     clip_weights(model, args.clip)
 
+                if step_sched:
+                    sched.step()
+                global_step += 1
+
                 running += loss.detach() * y.size(0)
                 seen += y.size(0)
                 progress = (epoch, batch_idx)
+
+                if curve_path is not None:
+                    curve_loss += loss.detach() * y.size(0)
+                    curve_seen += y.size(0)
+                    if global_step % args.val_every == 0:
+                        row = [global_step, global_step * args.batch_size, epoch,
+                               opt.param_groups[0]["lr"], curve_loss.item() / max(1, curve_seen)]
+                        for vs in curve_sets:
+                            row += vs.measure(model, device)
+                        with open(curve_path, "a") as f:
+                            f.write(",".join(f"{v:.8g}" if isinstance(v, float) else str(v) for v in row) + "\n")
+                        curve_loss.zero_()
+                        curve_seen = 0
 
                 # Periodic mid-epoch save
                 if args.save_interval > 0 and batch_idx % args.save_interval == 0:
                     save_checkpoint(
                         args.out_last, model, opt, sched, epoch - 1, best_val,
                         batch=batch_idx, total_batches=total_batches, sampler_state=sampler_state,
+                        global_step=global_step,
                     )
 
                 # Print every 100 batches (or on the last batch)
@@ -475,39 +624,54 @@ def main():
                         flush=True,
                     )
 
+                if args.total_samples > 0 and global_step >= total_steps:
+                    break
+
             print()  # Move to next line after epoch finishes
 
-            sched.step()
+            if not step_sched:
+                sched.step()
             finalized_epoch = epoch
 
             val_loss = evaluate(model, val_loader, device)
             dt = time.time() - t0
             train_mse = running.item() / max(1, seen)
 
+            extra = ""
+            for vs in val_extra:
+                m = vs.measure(model, device)
+                extra += f" | {vs.name} {m[0]:.6f}" + (f" (eval {m[1]:.6f})" if len(m) > 1 else "")
             print(
                 f"Epoch {epoch:3d} complete | "
                 f"Train MSE {train_mse:.6f} | "
-                f"Val MSE {val_loss:.6f} | "
+                f"Val MSE {val_loss:.6f}{extra} | "
                 f"Time {dt:.1f}s"
             )
 
             is_best = val_loss < best_val
             if is_best:
                 best_val = val_loss
+            if args.select_by == "last":
+                is_best = True
 
             # Save last state after every completed epoch
             save_checkpoint(
                 args.out_last, model, opt, sched, epoch, best_val,
                 batch=total_batches, total_batches=total_batches, sampler_state=sampler_state,
+                global_step=global_step,
             )
 
-            # Save best state if validation improved
+            # Save best state if validation improved (or every epoch with --select-by last)
             if is_best:
                 save_checkpoint(
                     args.out_best, model, opt, sched, epoch, best_val,
                     batch=total_batches, total_batches=total_batches, sampler_state=sampler_state,
+                    global_step=global_step,
                 )
-                print(f"  -> saved new best checkpoint to {args.out_best}")
+                print(f"  -> saved {'last' if args.select_by == 'last' else 'new best'} checkpoint to {args.out_best}")
+
+            if args.total_samples > 0 and global_step >= total_steps:
+                break
 
         print("Done. Best val MSE:", best_val)
 
@@ -518,7 +682,8 @@ def main():
         if finalized_epoch >= p_epoch:
             saved_epoch, saved_batch = finalized_epoch, total_batches
         elif p_batches >= total_batches:
-            sched.step()             # every batch of this epoch ran: finish the epoch
+            if not step_sched:
+                sched.step()         # every batch of this epoch ran: finish the epoch
             finalized_epoch = p_epoch
             saved_epoch, saved_batch = p_epoch, total_batches
         else:
@@ -526,6 +691,7 @@ def main():
         save_checkpoint(
             args.out_last, model, opt, sched, saved_epoch, best_val,
             batch=saved_batch, total_batches=total_batches, sampler_state=sampler_state,
+            global_step=global_step,
         )
         print(f"--> Emergency checkpoint successfully saved to: {args.out_last}")
         print("--> Resume anytime by running with: --resume\n")

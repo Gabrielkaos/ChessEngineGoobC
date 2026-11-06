@@ -198,6 +198,26 @@ static int is_threefold_repetition(const S_BOARD *pos) {
     return 0;
 }
 
+/* One node-limited search of the current position; fills bestMove/bestScore. */
+static void datagen_search(S_BOARD *pos, S_SEARCHINFO *info, int nodes_per_move) {
+    info->starttime = getTimeMs();
+    info->nodeSet = TRUE;
+    info->nodeLimit = (U64)nodes_per_move;
+    info->depth = MAXDEPTH - 1;
+    info->depthSet = FALSE;
+    info->timeSet = FALSE;
+    info->softTimeSet = FALSE;
+    info->UciInfinite = FALSE;
+    info->ponder = FALSE;
+    info->stopped = FALSE;
+    info->depthOneComplete = FALSE;
+    info->analyzeMode = EngineOptions->analysisMode;
+    info->mateLimit = -1;
+    info->silent = 1;
+
+    SearchPosition(pos, info, pvTable);
+}
+
 static void print_usage(const char *prog) {
     printf("GOOB NNUE Native Self-Play Data Generator\n\n");
     printf("Usage:\n");
@@ -218,6 +238,11 @@ static void print_usage(const char *prog) {
     printf("  --draw-move <N>      Move number after which draw adjudication triggers (default: %d)\n", DEFAULT_DRAW_MOVE);
     printf("  --max-ply <N>        Maximum plies per game before draw adjudication (default: %d)\n", DEFAULT_MAX_PLY);
     printf("  --hash <N>           Transposition table hash size in MB (default: %d)\n", DEFAULT_HASH_MB);
+    printf("\nDatagen v2 (all off by default; v1 output is unchanged):\n");
+    printf("  --max-fifty <N>      Do not record positions whose fifty-move clock exceeds N plies\n");
+    printf("  --max-open-eval <N>  Search the position after the random plies; discard openings with |score| > N cp\n");
+    printf("  --draw-abs           Count --draw-move from the real game move (FEN fullmove), not from the book position\n");
+    printf("  --index <path>       Write a per-game CSV index (first record, records, result, reason, plies)\n");
     printf("  --help, -h           Show this help message\n");
 }
 
@@ -234,6 +259,10 @@ int main(int argc, char **argv) {
     int draw_eval = DEFAULT_DRAW_EVAL;
     int draw_plies = DEFAULT_DRAW_PLIES;
     int draw_move = DEFAULT_DRAW_MOVE;
+    int max_fifty = -1;
+    int max_open_eval = -1;
+    int draw_abs = 0;
+    const char *index_path = NULL;
     int max_ply = DEFAULT_MAX_PLY;
     int hash_mb = DEFAULT_HASH_MB;
 
@@ -266,6 +295,14 @@ int main(int argc, char **argv) {
             max_ply = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--hash") && i + 1 < argc) {
             hash_mb = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--max-fifty") && i + 1 < argc) {
+            max_fifty = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--max-open-eval") && i + 1 < argc) {
+            max_open_eval = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--draw-abs")) {
+            draw_abs = 1;
+        } else if (!strcmp(argv[i], "--index") && i + 1 < argc) {
+            index_path = argv[++i];
         } else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             print_usage(argv[0]);
             return 0;
@@ -301,6 +338,18 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    FILE *index_fp = NULL;
+    if (index_path) {
+        verify_path_safety(index_path);
+        int index_fd = open(index_path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+        if (index_fd < 0 || !(index_fp = fdopen(index_fd, "w"))) {
+            fprintf(stderr, "FATAL: Could not create index file '%s': %s\n", index_path, strerror(errno));
+            fclose(out_fp);
+            return 1;
+        }
+        fprintf(index_fp, "first_record,records,result,reason,plies\n");
+    }
+
     seed_rand(seed);
 
     Book book;
@@ -323,6 +372,12 @@ int main(int argc, char **argv) {
     printf("  Draw Eval        : <= %d cp for %d consecutive plies after move %d\n", draw_eval, draw_plies, draw_move);
     printf("  Max Game Ply     : %d\n", max_ply);
     printf("  Hash Size        : %d MB\n", hash_mb);
+    printf("  Max Fifty Clock  : %s", max_fifty >= 0 ? "" : "off\n");
+    if (max_fifty >= 0) printf("%d plies\n", max_fifty);
+    printf("  Max Open Eval    : %s", max_open_eval >= 0 ? "" : "off\n");
+    if (max_open_eval >= 0) printf("%d cp\n", max_open_eval);
+    printf("  Draw Move From   : %s\n", draw_abs ? "game start (FEN fullmove)" : "book position");
+    printf("  Index File       : %s\n", index_path ? index_path : "off");
     printf("================================================================================\n");
     fflush(stdout);
 
@@ -362,6 +417,8 @@ int main(int argc, char **argv) {
     uint64_t total_positions = 0;
     uint64_t games_played = 0;
     int wins_white = 0, draws = 0, wins_black = 0;
+    uint64_t fifty_skipped = 0;
+    uint64_t openings_rejected = 0;
     int t_start = getTimeMs();
 
     BinaryRecord game_buffer[MAX_GAME_BUFFER];
@@ -406,6 +463,20 @@ int main(int argc, char **argv) {
         }
 
         if (!opening_ok) continue;
+
+        /* v2: reject openings that are already decided (F2). The check search
+         * runs on the cleared tables, which the game then starts from. */
+        if (max_open_eval >= 0) {
+            datagen_search(pos, info, nodes_per_move);
+            int s = info->bestScore;
+            clearPvTable(pvTable);
+            resetContinuationTable(pos);
+            if (abs(s) > max_open_eval) {
+                openings_rejected++;
+                continue;
+            }
+        }
+        int start_ply = pos->hisPly + pos->gamePlyOffset;
 
         int game_records = 0;
         int consec_white_win = 0;
@@ -456,23 +527,7 @@ int main(int argc, char **argv) {
             }
 
             /* Perform node-limited search */
-            info->starttime = getTimeMs();
-            info->nodeSet = TRUE;
-            info->nodeLimit = (U64)nodes_per_move;
-            info->depth = MAXDEPTH - 1;
-            info->depthSet = FALSE;
-            info->timeSet = FALSE;
-            info->softTimeSet = FALSE;
-            info->UciInfinite = FALSE;
-            info->ponder = FALSE;
-            info->stopped = FALSE;
-            info->depthOneComplete = FALSE;
-            info->analyzeMode = EngineOptions->analysisMode;
-            info->mateLimit = -1;
-            info->EloNodelimit = 0;
-            info->silent = 1;
-
-            SearchPosition(pos, info, pvTable);
+            datagen_search(pos, info, nodes_per_move);
 
             int bestMove = info->bestMove;
             int score = info->bestScore;
@@ -511,7 +566,10 @@ int main(int argc, char **argv) {
                 takeMove(pos);
             }
 
-            if (!in_check && !tactical && !gives_check && game_records < MAX_GAME_BUFFER) {
+            int fifty_ok = (max_fifty < 0 || pos->st->fiftyMove <= max_fifty);
+            if (!fifty_ok && !in_check && !tactical && !gives_check) fifty_skipped++;
+
+            if (!in_check && !tactical && !gives_check && fifty_ok && game_records < MAX_GAME_BUFFER) {
                 BinaryRecord *rec = &game_buffer[game_records++];
                 for (int sq = 0; sq < 64; sq++) {
                     rec->board[sq] = piece_to_record_code(pos->pieces[sq]);
@@ -556,7 +614,7 @@ int main(int argc, char **argv) {
             }
 
             /* Draw adjudication after draw_move full moves */
-            if (pos->hisPly >= draw_move * 2) {
+            if ((draw_abs ? pos->hisPly + pos->gamePlyOffset : pos->hisPly) >= draw_move * 2) {
                 if (abs(white_score) <= draw_eval) {
                     consec_draw++;
                     if (consec_draw >= draw_plies) {
@@ -600,6 +658,12 @@ int main(int argc, char **argv) {
             double pos_per_sec = (double)total_positions * 1000.0 / (double)elapsed;
             double draw_pct = 100.0 * (double)draws / (double)games_played;
 
+            if (index_fp) {
+                fprintf(index_fp, "%" PRIu64 ",%d,%d,%s,%d\n", total_positions - game_records, game_records,
+                        result_code, adjudication_reason, pos->hisPly + pos->gamePlyOffset - start_ply);
+                fflush(index_fp);
+            }
+
             const char *res_str = (result_code == 1) ? "1-0" : (result_code == 2) ? "1/2-1/2" : "0-1";
             printf("Game %5" PRIu64 " | Pos: %8" PRIu64 " (+%2d) | %-7s (%s) | W/D/L: %d/%d/%d (%.1f%% D) | %.1f pos/s\n",
                    games_played, total_positions, game_records, res_str, adjudication_reason,
@@ -621,9 +685,14 @@ int main(int argc, char **argv) {
     printf("  Score (W/D/L)    : %d / %d / %d (%.1f%% draws)\n", wins_white, draws, wins_black, final_draw_pct);
     printf("  Total Time       : %.2f s (%.1f pos/s)\n", (double)elapsed_total / 1000.0, final_rate);
     printf("  Output File      : %s\n", out_path);
+    if (max_fifty >= 0)
+        printf("  Fifty Skipped    : %" PRIu64 " quiet positions over the fifty-move clock limit\n", fifty_skipped);
+    if (max_open_eval >= 0)
+        printf("  Openings Rejected: %" PRIu64 " (|score| > %d cp after the random plies)\n", openings_rejected, max_open_eval);
     printf("================================================================================\n");
 
     fclose(out_fp);
+    if (index_fp) fclose(index_fp);
     book_free(&book);
 
     if (pvTable->pTable) goob_aligned_free(pvTable->pTable);

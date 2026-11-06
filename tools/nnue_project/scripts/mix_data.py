@@ -22,6 +22,12 @@ Examples:
         --val-out tools/nnue_project/checkpoints/exp_datagen/val_gen.bin \\
         --val-count 50000 \\
         --out tools/nnue_project/checkpoints/exp_datagen/d1_train.bin
+
+    # Round 2: several generated sources with caps, a base-only control file, and
+    # records of a fixed hold-out set kept out of every training file:
+    python3 mix_data.py --gen-data data_gen3 --gen-data data_gen:10000000 \
+        --exclude r2/val_gen3.bin --base-data data/train.bin --gen-share 0.25 --out ...
+    python3 mix_data.py --base-data data/train.bin --gen-share 0 --max-total 120000000 --out ...
 """
 
 import argparse
@@ -44,9 +50,17 @@ def parse_args():
     )
     parser.add_argument(
         "--gen-data",
-        type=str,
-        required=True,
-        help="Path to generated .bin file or directory containing generated .bin files.",
+        action="append",
+        default=[],
+        help="Generated .bin file, directory or glob, optionally with a record cap: PATH[:N] "
+             "(repeatable; each source contributes at most N random records). Not needed with --gen-share 0.",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="Record file (e.g. a fixed hold-out set) whose exact records are dropped from the "
+             "generated pool before sampling (repeatable).",
     )
     parser.add_argument(
         "--base-data",
@@ -64,7 +78,8 @@ def parse_args():
         "--gen-share",
         type=float,
         default=0.25,
-        help="Target share of generated data in the final dataset (default: 0.25 = 25%%).",
+        help="Target share of generated data in the final dataset (default: 0.25 = 25%%). "
+             "0 builds a base-only file (needs --max-total).",
     )
     parser.add_argument(
         "--val-out",
@@ -110,6 +125,30 @@ def get_gen_files(path):
     raise FileNotFoundError(f"No binary files found matching: {path}")
 
 
+def parse_source(spec):
+    """PATH or PATH:N -> (path, cap or 0)."""
+    head, sep, tail = spec.rpartition(":")
+    if sep and tail.isdigit() and head:
+        return head, int(tail)
+    return spec, 0
+
+
+def record_hash(recs):
+    """64-bit hash of whole 68-byte records."""
+    words = np.ascontiguousarray(recs[:, :64]).view("<u8")
+    tail = np.ascontiguousarray(recs[:, 64:68]).view("<u4").reshape(-1).astype(np.uint64)
+    h = np.full(len(recs), 0x9E3779B97F4A7C15, dtype=np.uint64)
+    with np.errstate(over="ignore"):
+        for i in range(8):
+            h ^= words[:, i]
+            h *= np.uint64(0xBF58476D1CE4E5B9)
+            h ^= h >> np.uint64(31)
+        h ^= tail
+        h *= np.uint64(0x94D049BB133111EB)
+        h ^= h >> np.uint64(29)
+    return h
+
+
 def verify_protection(out_path, base_path):
     out_abs = os.path.abspath(out_path)
     base_abs = os.path.abspath(base_path)
@@ -129,14 +168,49 @@ def main():
     if args.val_out:
         verify_protection(args.val_out, args.base_data)
 
-    gen_files = get_gen_files(args.gen_data)
-    if not gen_files:
-        print(f"Error: No generated data files found at '{args.gen_data}'.")
+    rng = np.random.default_rng(args.seed)
+    gen_share = args.gen_share
+    if gen_share < 0.0 or gen_share >= 1.0:
+        print(f"Error: --gen-share must be in [0.0, 1.0), got {gen_share}")
+        sys.exit(1)
+    if gen_share == 0.0 and args.max_total <= 0:
+        print("Error: --gen-share 0 (base-only file) needs --max-total")
+        sys.exit(1)
+    if gen_share > 0.0 and not args.gen_data:
+        print("Error: --gen-data is required unless --gen-share 0")
         sys.exit(1)
 
-    total_gen_bytes = sum(os.path.getsize(f) for f in gen_files)
-    total_gen_records = total_gen_bytes // RECORD_SIZE
-    print(f"Found {len(gen_files)} generated file(s) with {total_gen_records:,} total records.")
+    # Generated pool: every source, capped, minus excluded records
+    excl = None
+    if args.exclude:
+        excl = np.unique(np.concatenate([
+            record_hash(np.fromfile(e, dtype=np.uint8).reshape(-1, RECORD_SIZE)) for e in args.exclude
+        ]))
+    gen_parts = []
+    if gen_share > 0.0:
+        for spec in args.gen_data:
+            path, cap = parse_source(spec)
+            files = get_gen_files(path)
+            maps = []
+            for fpath in files:
+                n_recs = os.path.getsize(fpath) // RECORD_SIZE
+                if n_recs:
+                    maps.append(np.memmap(fpath, dtype=np.uint8, mode="r", shape=(n_recs, RECORD_SIZE)))
+            if not maps:
+                print(f"Error: No generated data files found at '{path}'.")
+                sys.exit(1)
+            src = np.concatenate(maps, axis=0)
+            if excl is not None:
+                keep = ~np.isin(record_hash(src), excl)
+                print(f"  {path}: excluded {int((~keep).sum()):,} record(s) found in --exclude")
+                src = src[keep]
+            if cap and cap < len(src):
+                src = src[np.sort(rng.choice(len(src), size=cap, replace=False))]
+            print(f"  {path}: {len(files)} file(s), {len(src):,} records used" + (f" (cap {cap:,})" if cap else ""))
+            gen_parts.append(src)
+    gen_concat = np.concatenate(gen_parts, axis=0) if gen_parts else np.zeros((0, RECORD_SIZE), np.uint8)
+    total_gen_records = len(gen_concat)
+    print(f"Generated pool: {total_gen_records:,} records.")
 
     if not os.path.isfile(args.base_data):
         print(f"Error: Base dataset not found at '{args.base_data}'.")
@@ -146,10 +220,7 @@ def main():
     total_base_records = base_bytes // RECORD_SIZE
     print(f"Base dataset '{args.base_data}': {total_base_records:,} records.")
 
-    rng = np.random.default_rng(args.seed)
-
     # 1. Hold out validation records if requested
-    val_records = []
     available_gen_records = total_gen_records
     val_count = min(args.val_count, total_gen_records // 10) if args.val_out else 0
 
@@ -158,11 +229,6 @@ def main():
         available_gen_records -= val_count
 
     # 2. Determine sample counts for training
-    gen_share = args.gen_share
-    if gen_share <= 0.0 or gen_share >= 1.0:
-        print(f"Error: --gen-share must be between 0.0 and 1.0, got {gen_share}")
-        sys.exit(1)
-
     if args.max_total > 0:
         n_gen_needed = int(args.max_total * gen_share)
         n_base_needed = args.max_total - n_gen_needed
@@ -187,18 +253,6 @@ def main():
     print(f"  Target File                : {args.out}")
     print("================================================================================")
 
-    # Read generated records across files
-    print("Reading generated records...")
-    all_gen_records = []
-    for fpath in gen_files:
-        fsize = os.path.getsize(fpath)
-        n_recs = fsize // RECORD_SIZE
-        if n_recs == 0:
-            continue
-        mm = np.memmap(fpath, dtype=np.uint8, mode="r", shape=(n_recs, RECORD_SIZE))
-        all_gen_records.append(mm)
-
-    gen_concat = np.concatenate(all_gen_records, axis=0)
     perm_gen = rng.permutation(len(gen_concat))
 
     if val_count > 0 and args.val_out:
