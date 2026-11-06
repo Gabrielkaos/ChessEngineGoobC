@@ -611,7 +611,26 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 ---
 
-## 26. Summary of All Merged Features on `main`
+## 26. Round 24: Full 66-Parameter SPSA Retune (November 5-6, 2026)
+
+After four rejected feature ports in a row (Rounds 20-23), every constant in `src/tune.h` was retuned at once, including the depth limits that earlier runs excluded.
+
+* **SPSA run:** `tools/spsa/spsa.py run full1 --tc 5+0.05 --workers 12 --iterations 15000` (all 66 parameters, no `--include` / `--exclude`), 15,000 iterations (60,000 games), 17.0 h, frozen engine = `main` `11775fd` (`bench.py 12` 867,532). Run directory `tools/spsa/runs/full1/` (git-ignored). 54 of the 66 defaults changed.
+* **Structural changes (main -> tuned):** RazoringDepth 1 -> 0 (razoring disabled; theta 0.03, at the lower bound), SingularDepth 10 -> 8, probCutDepth 6 -> 7, BetaPruningDepth 8 -> 9, NMPBase 6 -> 5, defaultNullMoveDepth 2 -> 3 (theta 2.55, borderline), HistMoveCountThreshold 8 -> 7.
+* **Largest margin / limit changes:** QSSeeMargin 108 -> 99, FutilityMarginNoHistory 100 -> 92, DoubleExtMargin 128 -> 121, HindsightMargin 167 -> 174, probCutMargin 89 -> 95, CounterMoveHistLimitNI -279 -> -451, FollowUpHistLimitNI -424 -> -539, LMRNoisyHistDiv 4873 -> 4718, GoodQuietThreshold -3000 -> -2886, QuietCheckBonus 16384 -> 16672. Full diff: commit `a2a4abd` (`src/tune.h`).
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 867,532 -> 1,083,787 nodes (razoring off, smaller null-move reduction).
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`spsa/full1`** | **MERGED** | 3168 | 809 - 687 - 1672 | 51.93% | **+13.39 ± 6.77** | +2.96 | Accepted (H1 accepted) |
+
+* **Match:** `run_sprt.sh GOOB-spsa-full1 GOOB-main-6122fa5 spsa-full1 5+0.05 10`, gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, 1 h 8 min. Pentanomial (0-2) `[25, 334, 748, 448, 29]`, nElo +23.95 ± 12.10, LOS 99.99%. Log: `tools/sprt/logs/spsa-full1.log`.
+* **Analysis:** The largest single gain in this report. Retuning everything together lets the pruning margins, depth limits and history thresholds move as a set, which the single-feature ports of Rounds 19-23 could not do. Disabling razoring is bundled into this result; whether it helps on its own (or whether the razoring code can be removed) needs a separate test.
+* **Verdict:** **ACCEPTED.** Branch `spsa/full1` (commit `a2a4abd`) fast-forwarded into `main`.
+
+---
+
+## 27. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -632,9 +651,11 @@ Tested against `main` at `6122fa5` (binary `GOOB-main-6122fa5`, `bench.py 12` 86
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
 
+**Retuned in Round 24:** all 66 `src/tune.h` constants from the full SPSA run `full1` (+13.39 Elo, commit `a2a4abd`); razoring is disabled by `RazoringDepth = 0`.
+
 ---
 
-## 27. Closing Instructions for GitHub PRs
+## 28. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
