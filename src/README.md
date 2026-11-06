@@ -97,15 +97,15 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * TT probing and cutoffs.
     * Syzygy tablebase WDL probing at interior nodes.
     * Hindsight depth adjustments (+1 extension / -1 reduction).
-    * Razoring ($D \le 2$).
-    * Beta Pruning / RFP ($D \le 8$).
+    * Razoring (`depth <= RazoringDepth`; currently `RazoringDepth = 0`, which disables it).
+    * Beta Pruning / RFP ($D \le 9$).
     * Null Move Pruning with verification search ($D \ge 16$).
     * Internal Iterative Reduction (IIR) with all-node bias.
-    * ProbCut ($D \ge 5$) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`) and verified cutoff storage in TT.
+    * ProbCut ($D \ge 7$) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`) and verified cutoff storage in TT.
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
     * Tactical pruning: history-adjusted SEE margin on captures.
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
-    * Singular Extensions ($D \ge 10$, non-mate/TB TT move, verified via `excludedMove` recursive `AlphaBeta` at `(depth - 1) / 2`), double and quiet non-PV triple extensions (capped at `dextensions <= 6` and guarded against back-and-forth piece shuffling via `is_shuffling()`), negative extensions, and multicut.
+    * Singular Extensions ($D \ge 8$, non-mate/TB TT move, verified via `excludedMove` recursive `AlphaBeta` at `(depth - 1) / 2`), double and quiet non-PV triple extensions (capped at `dextensions <= 6` and guarded against back-and-forth piece shuffling via `is_shuffling()`), negative extensions, and multicut.
     * Check extensions.
     * Late Move Reduction (LMR) table with adjustments for check evasions, PV, improving, tactical TT moves (`ttCapture`), and history.
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.

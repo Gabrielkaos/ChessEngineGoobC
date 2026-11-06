@@ -17,27 +17,27 @@
 
 #define SEARCH_PARAMS(TP) \
     /* qsearch */ \
-    TP(DeltaMarginQ,                97,    40,   250,   10) \
-    TP(QSSeeMargin,                108,    40,   250,   10) \
+    TP(DeltaMarginQ,                95,    40,   250,   10) \
+    TP(QSSeeMargin,                 99,    40,   250,   10) \
     /* transposition table */ \
     /* aspiration windows */ \
-    TP(ScoreWindow,                  10,     4,    30,    2) \
+    TP(ScoreWindow,                  11,     4,    30,    2) \
     TP(WindowDepth,                  5,     2,     9,    1) \
     /* window growth after a fail, in percent of the current delta */ \
-    TP(AspWidening,                 50,    20,   150,    6) \
+    TP(AspWidening,                 45,    20,   150,    6) \
     /* hindsight depth adjustment */ \
-    TP(HindsightMargin,            167,    60,   320,   12) \
+    TP(HindsightMargin,            174,    60,   320,   12) \
     /* razoring */ \
     /* RazoringDepth 0 disables razoring */ \
-    TP(RazoringDepth,                1,     0,     6,    1) \
-    TP(RazorMarginBase,            229,   100,   450,   18) \
-    TP(RazorMarginCoeff,           166,    60,   320,   12) \
+    TP(RazoringDepth,                0,     0,     6,    1) \
+    TP(RazorMarginBase,            232,   100,   450,   18) \
+    TP(RazorMarginCoeff,           172,    60,   320,   12) \
     /* reverse futility (beta) pruning */ \
-    TP(BetaPruningDepth,             8,     4,    12,    1) \
-    TP(BetaMargin,                  54,    20,   150,    6) \
+    TP(BetaPruningDepth,             9,     4,    12,    1) \
+    TP(BetaMargin,                  52,    20,   150,    6) \
     /* null move pruning, R = NMPBase + depth/NMPDepthDiv + min(NMPEvalMax,(eval-beta)/NMPEvalDiv) */ \
-    TP(defaultNullMoveDepth,         2,     1,     5,    1) \
-    TP(NMPBase,                      6,     2,     9,    1) \
+    TP(defaultNullMoveDepth,         3,     1,     5,    1) \
+    TP(NMPBase,                      5,     2,     9,    1) \
     TP(NMPDepthDiv,                  6,     3,    10,    1) \
     TP(NMPEvalDiv,                 193,   100,   400,   15) \
     TP(NMPEvalMax,                   3,     1,     6,    1) \
@@ -45,65 +45,65 @@
     /* internal iterative reduction */ \
     TP(IIRDepth,                     5,     3,    10,    1) \
     /* probcut */ \
-    TP(probCutDepth,                 6,     3,     8,    1) \
-    TP(probCutMargin,               89,    30,   200,    8) \
+    TP(probCutDepth,                 7,     3,     8,    1) \
+    TP(probCutMargin,               95,    30,   200,    8) \
     /* quiet futility pruning (history limits: NI = not improving, I = improving) */ \
     TP(FutilityPruningDepth,         8,     4,    12,    1) \
-    TP(FutilityMargin,              67,    30,   130,    5) \
-    TP(FutilityMarginNoHistory,    100,    40,   220,    9) \
-    TP(FutilityHistLimitNI,      12954,  4000, 20000,  800) \
-    TP(FutilityHistLimitI,        5910,     0, 14000,  700) \
+    TP(FutilityMargin,              65,    30,   130,    5) \
+    TP(FutilityMarginNoHistory,     92,    40,   220,    9) \
+    TP(FutilityHistLimitNI,      12966,  4000, 20000,  800) \
+    TP(FutilityHistLimitI,        5998,     0, 14000,  700) \
     /* counter / follow-up move history pruning */ \
-    TP(CounterMoveHistLimitNI,       -279, -3000,  2000,  250) \
-    TP(CounterMoveHistLimitI,    -1116, -4000,  1000,  250) \
-    TP(FollowUpHistLimitNI,       -424, -3500,  1500,  250) \
-    TP(FollowUpHistLimitI,       -1781, -4500,   500,  250) \
+    TP(CounterMoveHistLimitNI,       -451, -3000,  2000,  250) \
+    TP(CounterMoveHistLimitI,    -1027, -4000,  1000,  250) \
+    TP(FollowUpHistLimitNI,       -539, -3500,  1500,  250) \
+    TP(FollowUpHistLimitI,       -1735, -4500,   500,  250) \
     /* capture futility pruning */ \
     /* SEE pruning: quiet margin * depth, noisy margin * depth^2 - capture history / SEENoisyHistDiv */ \
     TP(SEEPruningDepth,              9,     5,    13,    1) \
-    TP(SEEQuietMargin,             -73,  -130,   -20,    5) \
-    TP(SEENoisyMargin,             -18,   -50,    -5,    2) \
-    TP(SEENoisyHistDiv,             64,    16,   256,   10) \
+    TP(SEEQuietMargin,             -75,  -130,   -20,    5) \
+    TP(SEENoisyMargin,             -19,   -50,    -5,    2) \
+    TP(SEENoisyHistDiv,             66,    16,   256,   10) \
     /* extensions; singular beta = ttValue - depth * SingularBetaMargin / 16 */ \
-    TP(SingularDepth,                10,     4,    14,    1) \
-    TP(SingularBetaMargin,          16,     8,    48,    2) \
-    TP(DoubleExtMargin,            128,    40,   250,   10) \
-    TP(TripleExtMargin,             64,     0,   200,    8) \
+    TP(SingularDepth,                 8,     4,    14,    1) \
+    TP(SingularBetaMargin,          17,     8,    48,    2) \
+    TP(DoubleExtMargin,            121,    40,   250,   10) \
+    TP(TripleExtMargin,             60,     0,   200,    8) \
     TP(MaxDoubleExtensions,          6,     2,    12,    1) \
     /* ttMoveHistory (singular double-extension margin scaling) */ \
-    TP(TTMoveHistoryMax,          8812,  4096, 16384,  500) \
-    TP(TTMoveHistoryScale,          42,    15,   100,    4) \
-    TP(TTMoveHistBonus,            955,   400,  1600,   60) \
-    TP(TTMoveHistMalus,            726,   300,  1400,   60) \
+    TP(TTMoveHistoryMax,          8700,  4096, 16384,  500) \
+    TP(TTMoveHistoryScale,          40,    15,   100,    4) \
+    TP(TTMoveHistBonus,            934,   400,  1600,   60) \
+    TP(TTMoveHistMalus,            780,   300,  1400,   60) \
     /* late move reductions, LMRTable = LMRBase/100 + ln(d)ln(m) / (LMRDivisor/100) */ \
-    TP(LMRBase,                     77,    25,   150,    6) \
-    TP(LMRDivisor,                 224,   150,   350,   10) \
-    TP(LMRQuietHistDiv,           4984,  2000, 10000,  400) \
-    TP(LMRNoisyHistDiv,           4873,  2000, 10000,  400) \
-    TP(AllNodeScale,               277,   100,   500,   20) \
-    TP(AllNodeBase,                288,   100,   500,   20) \
-    TP(LMRDeeperMargin,             37,    10,   100,    4) \
+    TP(LMRBase,                     79,    25,   150,    6) \
+    TP(LMRDivisor,                 226,   150,   350,   10) \
+    TP(LMRQuietHistDiv,           4994,  2000, 10000,  400) \
+    TP(LMRNoisyHistDiv,           4718,  2000, 10000,  400) \
+    TP(AllNodeScale,               274,   100,   500,   20) \
+    TP(AllNodeBase,                297,   100,   500,   20) \
+    TP(LMRDeeperMargin,             34,    10,   100,    4) \
     TP(LMRShallowerMargin,           7,     0,    20,    1) \
     /* quiet history update */ \
-    TP(HistMoveCountThreshold,        8,     4,    16,    1) \
-    TP(HistMoveCountBonusMul,      1272,   768,  2048,   60) \
-    TP(HistMalusDecay,              923,   800,  1000,   10) \
+    TP(HistMoveCountThreshold,        7,     4,    16,    1) \
+    TP(HistMoveCountBonusMul,      1292,   768,  2048,   60) \
+    TP(HistMalusDecay,              931,   800,  1000,   10) \
     /* history bonus, stat_bonus(d) = min(HistBonusMax, HistBonusQuad*d*d + HistBonusLinear*d - 118) */ \
     TP(HistBonusQuad,                 4,     0,    12,    1) \
-    TP(HistBonusLinear,             191,   120,   320,   10) \
-    TP(HistBonusMax,               1708,   800,  3000,  100) \
+    TP(HistBonusLinear,             203,   120,   320,   10) \
+    TP(HistBonusMax,               1740,   800,  3000,  100) \
     /* share of a quiet history update given to low-ply and pawn history (/1024) */ \
-    TP(LowPlyHistUpdate,            712,   256,  1536,   60) \
-    TP(PawnHistBonus,              1104,   512,  2048,   75) \
-    TP(PawnHistMalus,               459,   128,  1024,   45) \
+    TP(LowPlyHistUpdate,            706,   256,  1536,   60) \
+    TP(PawnHistBonus,              1110,   512,  2048,   75) \
+    TP(PawnHistMalus,               471,   128,  1024,   45) \
     /* quiet move ordering */ \
-    TP(GoodQuietThreshold,        -3000, -12000,    0,  600) \
-    TP(QuietCheckBonus,           16384,  4096, 32768, 1400) \
-    TP(QuietThreatMul,               20,     5,    40,    2) \
+    TP(GoodQuietThreshold,        -2886, -12000,    0,  600) \
+    TP(QuietCheckBonus,           16672,  4096, 32768, 1400) \
+    TP(QuietThreatMul,               21,     5,    40,    2) \
     /* correction history table weights (pawn, minor, non-pawn, continuation) */ \
-    TP(CorrPawnWeight,              128,    64,   256,   10) \
-    TP(CorrMinorWeight,              88,    32,   192,    8) \
-    TP(CorrNonPawnWeight,           108,    32,   192,    8) \
+    TP(CorrPawnWeight,              132,    64,   256,   10) \
+    TP(CorrMinorWeight,              90,    32,   192,    8) \
+    TP(CorrNonPawnWeight,           109,    32,   192,    8) \
     TP(ContCorrWeight,               73,    16,   160,    7)
 
 #ifdef TUNE
