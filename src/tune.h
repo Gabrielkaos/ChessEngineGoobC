@@ -27,11 +27,6 @@
     TP(AspWidening,                 45,    20,   150,    6) \
     /* hindsight depth adjustment */ \
     TP(HindsightMargin,            174,    60,   320,   12) \
-    /* razoring */ \
-    /* RazoringDepth 0 disables razoring */ \
-    TP(RazoringDepth,                0,     0,     6,    1) \
-    TP(RazorMarginBase,            232,   100,   450,   18) \
-    TP(RazorMarginCoeff,           172,    60,   320,   12) \
     /* reverse futility (beta) pruning */ \
     TP(BetaPruningDepth,             9,     4,    12,    1) \
     TP(BetaMargin,                  52,    20,   150,    6) \

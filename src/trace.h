@@ -23,9 +23,6 @@ typedef struct {
     uint64_t hindsight_ext;
     uint64_t hindsight_red;
 
-    uint64_t razoring_attempted;
-    uint64_t razoring_qs_called;
-    uint64_t razoring_cutoffs;
 
     uint64_t beta_prune_attempted;
     uint64_t beta_prune_cutoffs;

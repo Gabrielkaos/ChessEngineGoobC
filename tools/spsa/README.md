@@ -180,8 +180,8 @@ By default every constant in `tune.h` is tuned. Fewer constants converge with
 fewer games, so it usually pays to tune one group at a time:
 
 ```bash
-# only the pruning margins (the --exclude drops FutilityPruningDepth, RazoringDepth, ...)
-python3 tools/spsa/spsa.py run pruning1 --include 'Futility|SEE|Razor|BetaMargin|probCutMargin' --exclude 'Depth$'
+# only the pruning margins (the --exclude drops FutilityPruningDepth, SEEPruningDepth, ...)
+python3 tools/spsa/spsa.py run pruning1 --include 'Futility|SEE|BetaMargin|probCutMargin' --exclude 'Depth$'
 
 # only LMR
 python3 tools/spsa/spsa.py run lmr1 --include '^LMR|AllNode'
@@ -205,11 +205,13 @@ and are not touched by `apply`.
 
 Depth limits (`...Depth`) are small integers with
 `c_end = 1`: they move slowly and cost a lot when wrong, so leaving them out is
-a reasonable default. `RazoringDepth` may reach 0, which disables razoring.
+a reasonable default. A depth limit that tunes to the end of its range can
+mean the feature is not pulling its weight: the full run `full1` drove
+`RazoringDepth` to 0 (razoring off), and razoring was then deleted.
 
 When a tuned value ends up at its `min` or `max`, the range was too narrow:
 widen it in `tune.h` and tune again (this was done for `NMPBase`,
-`SingularDepth`, `RazoringDepth`, `BetaMargin` and `HistMoveCountBonusMul`).
+`SingularDepth`, the since-deleted `RazoringDepth`, `BetaMargin` and `HistMoveCountBonusMul`).
 
 ---
 

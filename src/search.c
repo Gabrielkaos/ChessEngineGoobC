@@ -445,23 +445,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
-    //RAZORING
-    //if staticEval is far below alpha, a full search is very unlikely to
-    //recover — verify with qsearch instead of expanding this node
-    if(!info->bruteForceMode && !pvNode && !inCheck && !excludedMove &&
-    depth <= RazoringDepth) {
-        TRACE_INC(pos, razoring_attempted);
-        if (eval < alpha - RazorMarginBase - RazorMarginCoeff * depth * depth){
-            TRACE_INC(pos, razoring_qs_called);
-            int r = Quiescence(alpha,beta,pos,info,table);
-            if(r <= alpha) {
-                TRACE_INC(pos, razoring_cutoffs);
-                return r;
-            }
-        }
-    }
-
-
     // seemargin for this depth
     seeMargin[0] = SEENoisyMargin * depth * depth;
     seeMargin[1] = SEEQuietMargin * depth;

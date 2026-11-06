@@ -82,20 +82,6 @@ HEURISTIC_RULES = [
         "advice_high": "NMP cutoff rate is very high (>75%). Ensure zugzwang and tactical safety checks are intact."
     },
     {
-        "key": "razoring",
-        "name": "Razoring",
-        "sub_key": "rate",
-        "min_pct": 1.5,
-        "max_pct": 10.0,
-        "constants": "RazoringDepth(1), RazorMarginBase(229), RazorMarginCoeff(166)",
-        "file": "src/tune.h:30-32",
-        "advice_low": (
-            "Razoring trigger rate is <1.5%. The margin is RazorMarginBase + RazorMarginCoeff * depth^2: "
-            "395 cp at depth 1. Smaller values razor more often."
-        ),
-        "advice_high": "Razoring rate is very high. Ensure it is not razoring tactical positions."
-    },
-    {
         "key": "probcut",
         "name": "ProbCut",
         "sub_key": "rate",
@@ -498,9 +484,6 @@ def print_trace_report(data: Dict[str, Any], title: str = "SEARCH HEURISTIC TRAC
     nmp_trig = nmp.get("direct_cutoffs", 0) + nmp.get("verification_passed", 0)
     print_row("Null Move Pruning", nmp.get("attempted", 0), nmp_trig, nmp_rate, 45, 75, "defaultNullMoveDepth(2)")
 
-    rz = h.get("razoring", {})
-    print_row("Razoring", rz.get("attempted", 0), rz.get("cutoffs", 0), rz.get("rate", 0)*100, 1.5, 10, "Depth(1), Base(229), Coeff(166)")
-
     pc = h.get("probcut", {})
     print_row("ProbCut", pc.get("attempted", 0), pc.get("cutoffs", 0), pc.get("rate", 0)*100, 15, 45, "Margin(89), Depth(6)")
 
@@ -708,7 +691,6 @@ def compare_traces(file1: str, file2: str):
     comparisons = [
         ("Beta Pruning (RFP)", "beta_pruning", "rate"),
         ("Null Move Pruning", "nmp", "rate"),
-        ("Razoring", "razoring", "rate"),
         ("ProbCut", "probcut", "rate"),
         ("IIR Reductions", "iir", "rate"),
         ("Futility (skipQuiets)", "futility_skip", "rate"),

@@ -627,6 +627,7 @@ After four rejected feature ports in a row (Rounds 20-23), every constant in `sr
 * **Match:** `run_sprt.sh GOOB-spsa-full1 GOOB-main-6122fa5 spsa-full1 5+0.05 10`, gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, 1 h 8 min. Pentanomial (0-2) `[25, 334, 748, 448, 29]`, nElo +23.95 ± 12.10, LOS 99.99%. Log: `tools/sprt/logs/spsa-full1.log`.
 * **Analysis:** The largest single gain in this report. Retuning everything together lets the pruning margins, depth limits and history thresholds move as a set, which the single-feature ports of Rounds 19-23 could not do. Disabling razoring is bundled into this result; whether it helps on its own (or whether the razoring code can be removed) needs a separate test.
 * **Verdict:** **ACCEPTED.** Branch `spsa/full1` (commit `a2a4abd`) fast-forwarded into `main`.
+* **Follow-up: razoring deleted.** With `RazoringDepth = 0` the razoring block could never run (depth-0 nodes go to quiescence before it unless in check, and razoring skips in-check nodes), so the block, its three `tune.h` parameters (`RazoringDepth`, `RazorMarginBase`, `RazorMarginCoeff`) and its trace counters were removed. Node-identical to `a2a4abd`: `bench.py 12` 1,083,787 nodes for both, and fixed-depth (16) searches on four positions give identical `info` lines and best moves, so no match was needed; the +13.39 Elo result carries over. Among the reference engines, Stockfish, Berserk, Schoenemann and c4ke razor (up to depth 5 with linear margins, or every depth in Stockfish), while Ethereal 12.75 / 14.00 do not.
 
 ---
 
@@ -651,7 +652,7 @@ After four rejected feature ports in a row (Rounds 20-23), every constant in `sr
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
 
-**Retuned in Round 24:** all 66 `src/tune.h` constants from the full SPSA run `full1` (+13.39 Elo, commit `a2a4abd`); razoring is disabled by `RazoringDepth = 0`.
+**Retuned in Round 24:** all 66 `src/tune.h` constants from the full SPSA run `full1` (+13.39 Elo, commit `a2a4abd`); razoring, disabled by the tune (`RazoringDepth = 0`), was then deleted (node-identical).
 
 ---
 

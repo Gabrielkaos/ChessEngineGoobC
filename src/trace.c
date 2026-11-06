@@ -51,9 +51,6 @@ void trace_aggregate_thread(const SearchTrace *thread_trace) {
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, hindsight_ext);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, hindsight_red);
 
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, razoring_attempted);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, razoring_qs_called);
-    ADD_TRACE_FIELD(&g_current_trace, thread_trace, razoring_cutoffs);
 
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, beta_prune_attempted);
     ADD_TRACE_FIELD(&g_current_trace, thread_trace, beta_prune_cutoffs);
@@ -149,9 +146,6 @@ void trace_finish_search(void) {
     ADD_TRACE_FIELD(dst, src, hindsight_ext);
     ADD_TRACE_FIELD(dst, src, hindsight_red);
 
-    ADD_TRACE_FIELD(dst, src, razoring_attempted);
-    ADD_TRACE_FIELD(dst, src, razoring_qs_called);
-    ADD_TRACE_FIELD(dst, src, razoring_cutoffs);
 
     ADD_TRACE_FIELD(dst, src, beta_prune_attempted);
     ADD_TRACE_FIELD(dst, src, beta_prune_cutoffs);
@@ -280,13 +274,6 @@ void trace_print(int current_only) {
     printf("    -> Verification        %12" PRIu64 " %12" PRIu64 " %8.2f%%   pass/(pass+fail)\n",
            t->nmp_verification_started, t->nmp_verification_passed,
            rate(t->nmp_verification_passed, t->nmp_verification_passed + t->nmp_verification_failed));
-    printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   RazoringDepth(%d), Base(%d), Coeff(%d)\n",
-           "Razoring (Cutoff)", t->razoring_attempted, t->razoring_cutoffs,
-           rate(t->razoring_cutoffs, t->razoring_attempted),
-           RazoringDepth, RazorMarginBase, RazorMarginCoeff);
-    printf("    -> QS Verification     %12" PRIu64 " %12" PRIu64 " %8.2f%%   eval < alpha - margin\n",
-           t->razoring_attempted, t->razoring_qs_called,
-           rate(t->razoring_qs_called, t->razoring_attempted));
     printf("  %-25s %12" PRIu64 " %12" PRIu64 " %8.2f%%   probCutDepth(%d), probCutMargin(%d)\n",
            "ProbCut", t->probcut_attempted, t->probcut_cutoffs,
            rate(t->probcut_cutoffs, t->probcut_attempted),
@@ -423,8 +410,6 @@ void trace_print_json(int current_only) {
     printf("    \"nmp\": {\"attempted\": %" PRIu64 ", \"direct_cutoffs\": %" PRIu64 ", \"verification_started\": %" PRIu64 ", \"verification_passed\": %" PRIu64 ", \"verification_failed\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->nmp_attempted, t->nmp_direct_cutoffs, t->nmp_verification_started, t->nmp_verification_passed, t->nmp_verification_failed,
            rate(t->nmp_direct_cutoffs + t->nmp_verification_passed, t->nmp_attempted) / 100.0);
-    printf("    \"razoring\": {\"attempted\": %" PRIu64 ", \"qs_called\": %" PRIu64 ", \"cutoffs\": %" PRIu64 ", \"rate\": %.4f},\n",
-           t->razoring_attempted, t->razoring_qs_called, t->razoring_cutoffs, rate(t->razoring_cutoffs, t->razoring_attempted) / 100.0);
     printf("    \"probcut\": {\"attempted\": %" PRIu64 ", \"moves_tried\": %" PRIu64 ", \"cutoffs\": %" PRIu64 ", \"rate\": %.4f},\n",
            t->probcut_attempted, t->probcut_moves_tried, t->probcut_cutoffs, rate(t->probcut_cutoffs, t->probcut_attempted) / 100.0);
     printf("    \"iir\": {\"attempted\": %" PRIu64 ", \"reduced\": %" PRIu64 ", \"rate\": %.4f},\n",
