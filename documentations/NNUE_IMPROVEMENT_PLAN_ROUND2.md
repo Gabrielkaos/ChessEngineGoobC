@@ -22,10 +22,11 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 (`AGENTS.md`, NNUE Protection).
 
 > **Status (fill in as phases complete):**
-> - Phase 0 (sync, freeze, back-fill R1 results): pending
-> - Phase 1 (Gen-2 data audit): pending
-> - Phase 2 (trainer and mixer support): pending
-> - Phase 3 (Gen-2 training, share at a fixed step count): pending
+> Results: [`nnue_results_log.md`](nnue_results_log.md).
+> - Phase 0 (sync, freeze, back-fill R1 results): done 2026-11-06. Production net is `exp_datagen_d1_50m` (D1 recipe on all of Gen-2), not D1; book split done; `tools/book.epd` is unbalanced (White +1 pawn)
+> - Phase 1 (Gen-2 data audit): done. Fitted K = 141 (not 400), so Phase 4 moves up
+> - Phase 2 (trainer and mixer support): done, plus datagen v2 flags (Phase 6.1); best-vs-last SPRT skipped (epochs 7 vs 8)
+> - Phase 3 (Gen-2 training, share at a fixed step count): dropped. The production net already used all of Gen-2, and an earlier run A (50% Gen-2) lost
 > - Phase 4 (WDL lambda): pending
 > - Phase 5 (search re-tune after the net change): pending
 > - Phase 6 (datagen v2, Gen-3): pending
