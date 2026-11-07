@@ -631,7 +631,23 @@ After four rejected feature ports in a row (Rounds 20-23), every constant in `sr
 
 ---
 
-## 27. Summary of All Merged Features on `main`
+## 27. Round 25: No Static Eval in Check (November 6-7, 2026)
+
+Tested against `main` at `7315a36` (binary `GOOB-main-norazor`, `bench.py 12` 1,083,787 nodes). Part of NNUE Round 2 (plan Phase 5.2).
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/incheck-no-eval`** | **NOT MERGED** | 8876 | 2057 - 2123 - 4696 | 49.63% | **-2.58 ± 3.99** | -2.95 | Rejected (H0 accepted) |
+
+* **Concept (Stockfish 19):** never call the net in check. The net is not trained on in-check positions, so the node takes `staticEval` from two plies earlier (`eval_stack[ply-2]`, 0 near the root) and stores `rawEval = VALUE_NONE`.
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, mate checks unchanged, 1- and 2-thread UCI searches normal. `bench.py 12`: 1,083,787 -> 838,540 nodes.
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`. Pentanomial (0-2) `[65, 1121, 2136, 1047, 69]`. Log: `tools/sprt/logs/incheck-no-eval.log`.
+* **Failure analysis:** The two-ply-old eval is a worse estimate than the net's own (if untrained) in-check eval for GOOB, whose pruning margins were tuned with the real eval in check (Round 24). The result is close to zero, so a retry would need the dependent margins retuned with it.
+* **Verdict:** **REJECTED.** Branch `search/incheck-no-eval` (commit `42c0a32`) kept locally only, never pushed.
+
+---
+
+## 28. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -656,7 +672,7 @@ After four rejected feature ports in a row (Rounds 20-23), every constant in `sr
 
 ---
 
-## 28. Closing Instructions for GitHub PRs
+## 29. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

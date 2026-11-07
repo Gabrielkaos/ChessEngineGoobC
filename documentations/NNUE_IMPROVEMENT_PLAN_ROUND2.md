@@ -27,8 +27,8 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 > - Phase 1 (Gen-2 data audit): done. Fitted K = 141 (not 400), so Phase 4 moves up
 > - Phase 2 (trainer and mixer support): done, plus datagen v2 flags (Phase 6.1); best-vs-last SPRT skipped (epochs 7 vs 8)
 > - Phase 3 (Gen-2 training, share at a fixed step count): dropped. The production net already used all of Gen-2, and an earlier run A (50% Gen-2) lost
-> - Phase 4 (WDL lambda): pending
-> - Phase 5 (search re-tune after the net change): pending
+> - Phase 4 (WDL lambda): λ 1.0 no gain (0.0 ± 2.7 at the 20k cap); λ 0.5 running
+> - Phase 5 (search re-tune after the net change): 5.1 done by the full SPSA retune (search Round 24); 5.2 in-check static eval rejected (H0, -2.6 ± 4.0, search Round 25)
 > - Phase 6 (datagen v2, Gen-3): pending
 > - Phase 7 (8 king buckets): pending
 > - Phase 8 (generation loop): pending

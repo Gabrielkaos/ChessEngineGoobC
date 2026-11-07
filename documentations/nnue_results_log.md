@@ -80,3 +80,25 @@ little for an SPRT to resolve within the 20k-game cap, so data experiments use
 `--select-by last` as the plan's default.
 
 ---
+
+## Phase 4: WDL lambda (2026-11-06/07)
+
+Both runs warm-start from the production net `exp_datagen_d1_50m/nnue.pt` on its
+own training set `data_mixed/train_d1_50m.bin`, so λ is the only change:
+400M samples, `--lr-schedule step-cosine` 1e-4 → 1e-5, AdamW (weight decay 0,
+bucket decay 1e-4), batch 8192, `--select-by last`, seed 0, extra validation set
+`data_mixed/val_gen_50m.bin`. About 25 minutes each on the GPU. Output:
+`checkpoints/exp_r2_lambda/{L10,L05}/`. Engines are built with
+`EVALFILE=<quantised.bin>` after `make -C src clean`.
+
+| Run | λ | Lichess val | Gen-2 val | `bench.py 12` | Games | Record (W - L - D) | Elo | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| L10 | 1.0 (pure eval) | 0.004522 | 0.002157 | 1,081,236 | 20000 (cap) | 4913 - 4916 - 10171 | -0.05 ± 2.70 | -2.45 | No verdict at the cap: **no gain, rejected** |
+| L05 | 0.5 | 0.004934 | 0.003514 (eval MSE) | 1,064,435 | running | | | | |
+
+SPRT conditions: gainer `[0, 3]` vs `GOOB-main-norazor`, fastchess
+pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games,
+`tools/book_test.epd`. L10 pentanomial (0-2) `[157, 2488, 4747, 2417, 191]`.
+
+* **λ 1.0 changes nothing measurable.** Despite K = 141 (Phase 1), training on search scores alone is worth 0.0 ± 2.7 Elo, so the WDL share at 0.75 is not costing strength.
+* The L05 SPRT was paused at 766 games on 2026-11-07 for a power brownout (the machine then rebooted) and resumed from fastchess's autosave. The Phase 0 manifest and both engines' benches were checked unchanged after the reboot.
