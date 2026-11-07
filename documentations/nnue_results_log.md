@@ -94,11 +94,13 @@ bucket decay 1e-4), batch 8192, `--select-by last`, seed 0, extra validation set
 | Run | λ | Lichess val | Gen-2 val | `bench.py 12` | Games | Record (W - L - D) | Elo | LLR | Verdict |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | L10 | 1.0 (pure eval) | 0.004522 | 0.002157 | 1,081,236 | 20000 (cap) | 4913 - 4916 - 10171 | -0.05 ± 2.70 | -2.45 | No verdict at the cap: **no gain, rejected** |
-| L05 | 0.5 | 0.004934 | 0.003514 (eval MSE) | 1,064,435 | running | | | | |
+| L05 | 0.5 | 0.004934 | 0.003514 (eval MSE) | 1,064,435 | 1688 | 361 - 463 - 864 | **-21.02 ± 9.34** | -2.94 | **Rejected (H0 accepted)** |
 
 SPRT conditions: gainer `[0, 3]` vs `GOOB-main-norazor`, fastchess
 pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games,
-`tools/book_test.epd`. L10 pentanomial (0-2) `[157, 2488, 4747, 2417, 191]`.
+`tools/book_test.epd`. Pentanomial (0-2): L10 `[157, 2488, 4747, 2417, 191]`, L05 `[23, 246, 393, 174, 8]`.
 
 * **λ 1.0 changes nothing measurable.** Despite K = 141 (Phase 1), training on search scores alone is worth 0.0 ± 2.7 Elo, so the WDL share at 0.75 is not costing strength.
+* **λ 0.5 is clearly worse** (-21 Elo). More weight on game results hurts: Gen-2's results are skewed by the unbalanced book (62.7% White wins) and the 1500 cp resignation rule, and Lichess records have no result at all, so a larger WDL share mostly adds label noise.
+* **Decision:** keep λ 0.75. `NNUE_SCALE` stays 400. The production net generates Gen-3.
 * The L05 SPRT was paused at 766 games on 2026-11-07 for a power brownout (the machine then rebooted) and resumed from fastchess's autosave. The Phase 0 manifest and both engines' benches were checked unchanged after the reboot.
