@@ -104,3 +104,31 @@ pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games,
 * **λ 0.5 is clearly worse** (-21 Elo). More weight on game results hurts: Gen-2's results are skewed by the unbalanced book (62.7% White wins) and the 1500 cp resignation rule, and Lichess records have no result at all, so a larger WDL share mostly adds label noise.
 * **Decision:** keep λ 0.75. `NNUE_SCALE` stays 400. The production net generates Gen-3.
 * The L05 SPRT was paused at 766 games on 2026-11-07 for a power brownout (the machine then rebooted) and resumed from fastchess's autosave. The Phase 0 manifest and both engines' benches were checked unchanged after the reboot.
+
+---
+
+## Phase 6: Gen-3 datagen (2026-11-07/08)
+
+Generated from the production net (verified embedded in a clean `make -C src datagen` build, frozen as
+`r2/datagen_gen3`) with the v2 flags: `run_datagen.py --workers 12 --positions 50000000 --nodes 5000
+--seed 20261107 --book tools/book_datagen.epd --max-fifty 30 --max-open-eval 500 --draw-abs --index`,
+into `data_gen3/`. 50,000,542 records in 15.1 h (921 positions/s). Files made read-only and hashed
+(`r2/gen3_manifest.sha256`). v2 is judged as part of the Gen-3 net's SPRT; the separate 10M v1-vs-v2
+measurement (plan 12.4) was not done.
+
+| Statistic | Gen-3 | Gen-2 |
+| :--- | :--- | :--- |
+| Games: 1-0 / 0-1 / draw | 50.8% / 20.9% / 28.3% | 62.7% / 17.4% / 19.9% |
+| W / D / B per record | 48.8% / 29.6% / 21.7% | 55.6% / 24.9% / 19.5% |
+| \|eval\| >= 500 / 1500 | 29.8% / 2.7% | 37.9% / 3.3% |
+| Resigned with <= 20 records | 0.7% | 4.5% |
+| Records per game (mean) | 69.9 | 64.9 |
+| Fitted scale K | 152.5 (per bucket 145-163) | 141 |
+| Duplicates (5M sample) | 0.54% | 0.67% |
+| Smallest 8-bucket king bucket | 3.3% | 3.8% |
+| Openings rejected (`--max-open-eval 500`) | 295,759 (29% of attempts) | n/a |
+| Quiet positions dropped (`--max-fifty 30`) | 2,581,319 | n/a |
+
+Full report: `r2/audit_gen3.txt`. Hold-out: `r2/val_gen3.bin` (50,000 random Gen-3 records, seed 20261108).
+Training mix (planned, not yet built): all Gen-3 minus the hold-out + 10M Gen-2 (minus `val_gen_50m.bin`)
+at a 25% generated share with Lichess, 239.8M records, `r2/train_gen3.bin`; same recipe as Phase 4 with λ 0.75.
