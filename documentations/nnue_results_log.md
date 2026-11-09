@@ -130,5 +130,45 @@ measurement (plan 12.4) was not done.
 | Quiet positions dropped (`--max-fifty 30`) | 2,581,319 | n/a |
 
 Full report: `r2/audit_gen3.txt`. Hold-out: `r2/val_gen3.bin` (50,000 random Gen-3 records, seed 20261108).
-Training mix (planned, not yet built): all Gen-3 minus the hold-out + 10M Gen-2 (minus `val_gen_50m.bin`)
-at a 25% generated share with Lichess, 239.8M records, `r2/train_gen3.bin`; same recipe as Phase 4 with λ 0.75.
+### Gen-3 net (`checkpoints/exp_r2_gen3/A`)
+
+**Training file** `r2/train_gen3.bin`, 239,789,892 records, built with `mix_data.py --gen-data ../data_gen3
+--gen-data ../data_gen:10000000 --exclude ../r2/val_gen3.bin --exclude ../data_mixed/val_gen_50m.bin
+--base-data ../data/train.bin --gen-share 0.25 --seed 3`:
+
+| Source | Records | Share |
+| :--- | ---: | ---: |
+| Gen-3 (minus the hold-out and its 3,069 duplicates) | 49,947,473 | 20.8% |
+| Gen-2 (random 10M, minus `val_gen_50m.bin`) | 10,000,000 | 4.2% |
+| Lichess (`data/train.bin`) | 179,842,419 | 75.0% |
+
+The first build stalled (random-order reads of `data/train.bin` with too little free page cache: 970 GB
+read for about 1 GB written in 38 minutes). `mix_data.py` now reads the sampled base records in file order
+(commit `8c969d1`; same records for the same seed, only the output order differs); the rebuild took 20 minutes.
+
+**Training:** warm start from the production net, the Phase 4 recipe with λ 0.75: `--total-samples 400000000`
+(1.67 epochs), AdamW (weight decay 0, bucket decay 1e-4), batch 8192, step-cosine 1e-4 → 1e-5, `--select-by last`,
+seed 0, 25 minutes on the GPU.
+
+| Validation MSE | after 16M samples | final |
+| :--- | ---: | ---: |
+| Lichess `data/val.bin` (curve subset) | 0.003892 | 0.003817 |
+| `r2/val_gen3.bin` blended / pure eval | 0.007782 / 0.002839 | 0.007308 / 0.002685 |
+| `data_mixed/val_gen_50m.bin` (Gen-2) blended / pure eval | 0.005571 / 0.002825 | 0.005698 / 0.002898 |
+
+Full-set Lichess val MSE at the end: 0.004681. Export and `check_net.py --pipeline` clean (no clip or
+overflow warnings). Engine `GOOB-r2-gen3-A` (clean build with `EVALFILE`), `bench.py 12` 887,490; mates,
+TT tests and UCI normal.
+
+| Run | Games | Record (W - L - D) | Score | Elo | LLR | Verdict |
+| :--- | ---: | :---: | ---: | :---: | :---: | :--- |
+| **Gen-3 net vs production (STC)** | 7012 | 1789 - 1650 - 3573 | 50.99% | **+6.89 ± 4.58** | +2.95 | **Accepted (H1)** |
+
+Gainer SPRT `[0, 3]` vs `GOOB-main-norazor`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash,
+10 concurrent games, `tools/book_test.epd`, 2 h 22 min. Pentanomial (0-2) `[59, 801, 1655, 924, 67]`,
+nElo +12.23 ± 8.13, LOS 99.84%. Log: `tools/sprt/logs/r2-gen3-A.log`.
+
+* **First Elo gain of Round 2.** Fresh labels from the stronger production net, balanced openings and the
+  v2 filters gain about +7 Elo at the same recipe and step count that gave nothing for λ changes.
+* Not promoted: `src/weights/quantised.bin` is unchanged (promotion is the user's decision). LTC confirmation
+  (`MODE=nonreg`, 30+0.3) follows.
