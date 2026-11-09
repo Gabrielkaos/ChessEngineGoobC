@@ -266,13 +266,17 @@ def main():
         train_gen_indices = perm_gen[:n_gen_needed]
 
     sampled_gen = gen_concat[train_gen_indices]
+    # free the pool: the page cache needs the RAM for reading the base file
+    del gen_concat, gen_parts, perm_gen, train_gen_indices
 
     # Sample base records
     print(f"Reading base dataset ({n_base_needed:,} records)...")
     base_mm = np.memmap(args.base_data, dtype=np.uint8, mode="r", shape=(total_base_records, RECORD_SIZE))
     base_indices = None
     if n_base_needed < total_base_records:
-        base_indices = rng.choice(total_base_records, size=n_base_needed, replace=False)
+        # read in file order: random reads of 68-byte records from a file larger than the page
+        # cache re-read whole pages per record (the output is shuffled afterwards anyway)
+        base_indices = np.sort(rng.choice(total_base_records, size=n_base_needed, replace=False))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     print(f"Writing mixed dataset to '{args.out}'...")
 

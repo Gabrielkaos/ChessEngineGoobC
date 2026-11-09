@@ -102,7 +102,14 @@ comparable bit for bit warm-start with `--init`.
 python3 data_stats.py --data ../data_gen --log-dir ../data_gen           # audit a generation
 python3 mix_data.py --gen-data ../data_gen3 --gen-data ../data_gen:10000000 --exclude ../r2/val_gen3.bin \
     --base-data ../data/train.bin --gen-share 0.25 --out ../data_mixed/<new>.bin
-python3 test_r2_tools.py --gen ../data_gen/<file>.bin --base ../data/train.bin \
+```
+
+`mix_data.py` reads the sampled base records in file order, then shuffles the output.
+Random-order reads of a base file larger than the free page cache re-read a whole page
+per 68-byte record: a 240M-record mix wrote under 1 GB per 30 minutes that way.
+
+```bash
+PYTHONPATH=$PWD python3 test_r2_tools.py --gen ../data_gen/<file>.bin --base ../data/train.bin \
     --old-train <train.py before Round 2> --work <new empty dir>
 ```
 
