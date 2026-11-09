@@ -170,5 +170,8 @@ nElo +12.23 ± 8.13, LOS 99.84%. Log: `tools/sprt/logs/r2-gen3-A.log`.
 
 * **First Elo gain of Round 2.** Fresh labels from the stronger production net, balanced openings and the
   v2 filters gain about +7 Elo at the same recipe and step count that gave nothing for λ changes.
-* Not promoted: `src/weights/quantised.bin` is unchanged (promotion is the user's decision). LTC confirmation
-  (`MODE=nonreg`, 30+0.3) follows.
+* **LTC confirmation cancelled by the user** after 744 games (`MODE=nonreg` `[-3, 1]`, 30+0.3, same conditions
+  otherwise): 193 - 184 - 367 (50.6%), last report +4.83 ± 13.57 Elo, LLR +0.49 at 720 games, no verdict.
+  The user accepted the net on its STC result. Log: `tools/sprt/logs/r2-gen3-A-ltc.log`.
+* **Accepted net of Round 2 so far.** `src/weights/quantised.bin` is unchanged; the Gen-3 net is used through
+  `EVALFILE=` (plan Phase 8 rule 1). It generates Gen-4.

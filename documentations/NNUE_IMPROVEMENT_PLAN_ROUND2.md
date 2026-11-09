@@ -29,9 +29,9 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 > - Phase 3 (Gen-2 training, share at a fixed step count): dropped. The production net already used all of Gen-2, and an earlier run A (50% Gen-2) lost
 > - Phase 4 (WDL lambda): done. λ 1.0 no gain (0.0 ± 2.7 at the 20k cap), λ 0.5 rejected (-21.0 ± 9.3); λ stays 0.75
 > - Phase 5 (search re-tune after the net change): 5.1 done by the full SPSA retune (search Round 24); 5.2 in-check static eval rejected (H0, -2.6 ± 4.0, search Round 25)
-> - Phase 6 (datagen v2, Gen-3): Gen-3 net accepted at STC (+6.9 ± 4.6, 7,012 games); LTC pending; not promoted
+> - Phase 6 (datagen v2, Gen-3): done. Gen-3 net accepted at STC (+6.9 ± 4.6, 7,012 games); LTC cancelled by the user (744 games, +4.8 ± 13.6); not copied into `src/weights/`
 > - Phase 7 (8 king buckets): pending
-> - Phase 8 (generation loop): pending
+> - Phase 8 (generation loop): started. Gen-4 from the Gen-3 net
 
 ---
 
