@@ -234,3 +234,54 @@ LOS 53.75%. Log: `tools/sprt/logs/r2-gen4-A.log`.
   lacks. The net fits Gen-4 (hold-out eval MSE 0.00298 → 0.00285) without playing better.
 * **Decision (user):** do not accept Gen-4, and move to Phase 7 (8 king buckets) on top of the Gen-3 net.
   The planned cheap Gen-4 training variants and Gen-5 are not run. The Gen-3 net stays the accepted net.
+
+## Phase 7: 8 king buckets (2026-11-10)
+
+Code on branch `nnue/r2-kb8` (commit `54e7edd`, not merged): `KING_BUCKET_8` table (plan 13.3, no merge
+needed: smallest bucket 3.3% of Gen-3 records), `train.py --king-buckets 8 --init-rebucket
+--bucket-parent 0,1,1,2,2,3,3,3`, `NNUE_KING_BUCKETS=8` in the engine, `scripts/test_kb8.py`, and an
+8-bucket king walk in `tools/test_incremental.c`.
+
+**Exact warm start (13.4), verified before any training step:** the Gen-3 net mapped onto 8 buckets
+gives bit-identical float outputs on 20,000 Gen-4 records. Every quantised 8-bucket block equals its
+parent block. `check_net.py` and the engine give identical evals on 30 positions with kings in every
+bucket, and `bench.py 12` gives exactly the Gen-3 node count (887,490). The bucket tables in `model.py`,
+`check_net.py`, `data_stats.py` and `src/nnue_loader.h` agree. `test_incremental` passes 16/16 for both
+`NNUE_KING_BUCKETS=8` and `=4`.
+
+**Cost:** paired NPS (15 alternating `bench.py 12` pairs, 1 thread) 8-bucket / 4-bucket = 0.990 ± 0.011.
+The training step costs about 1.1x, and the net file is 12,617,792 bytes.
+
+**Run K8** (`checkpoints/exp_r2_kb8/A`): `r2/train_gen4.bin`, `--init-rebucket` from the Gen-3 net, and
+otherwise exactly the Gen-4 recipe (400M samples, seed 0). The Gen-4 net is therefore the same-recipe
+K4 control; it scored +0.1 ± 2.9 against Gen-3.
+
+| Validation MSE, final | K8 | K4 (Gen-4 net) |
+| :--- | ---: | ---: |
+| Lichess `data/val.bin` (curve subset / full) | 0.003765 / 0.004664 | 0.003815 / 0.004711 |
+| `r2/val_gen4.bin` pure eval | 0.002805 | 0.002848 |
+| `r2/val_gen3.bin` pure eval | 0.002779 | 0.002790 |
+
+Export and `check_net.py --pipeline` are clean (max output weight 127). Engine `GOOB-r2-kb8-A`:
+- evals equal `check_net.py` on the 30 bucket positions, with sibling buckets now different (about 0.6M of
+  0.79M weights differ per pair);
+- `test_incremental` 16/16 with the trained net;
+- bench 867,768; mates, TT tests and UCI are normal.
+
+| Run | Games | Record (W - L - D) | Score | Elo | LLR | Verdict |
+| :--- | ---: | :---: | ---: | :---: | :---: | :--- |
+| **K8 vs Gen-3 net (STC)** | 4270 | 976 - 1059 - 2235 | 49.03% | **−6.75 ± 5.66** | −2.96 | **Rejected (H0)** |
+
+Gainer SPRT `[0, 3]` vs `GOOB-r2-gen3-A`: fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent
+games, `tools/book_test.epd`. It ran 1 h 28 min. Pentanomial (0-2) `[31, 553, 1045, 480, 26]`, nElo −12.44 ± 10.42,
+LOS 0.96%. Log: `tools/sprt/logs/r2-kb8-A.log`.
+
+* **8 buckets lose.** Per plan 13.6 the engine keeps 4 buckets, and the K8-vs-K4 and LTC runs are not needed.
+  The SPRT was against the accepted Gen-3 engine. The K4 control (the Gen-4 net) is level with Gen-3, so K8
+  is also behind K4.
+* The 1% NPS cost explains about 1 Elo at most. The rest is the net itself: it has **lower** error on all
+  three validation sets and still plays worse. This is the clearest case so far in Round 2 that validation MSE
+  on these sets does not predict playing strength. The extra bucket corrections fit the training distribution,
+  but the corrections they learned make search decisions worse.
+* The plan's one allowed retry needs the learning curves to show that the run was limited by steps. They flatten
+  together with the step-cosine LR, as the K4 curves do, so they do not show this. No retry.

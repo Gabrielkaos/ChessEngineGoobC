@@ -30,7 +30,7 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 > - Phase 4 (WDL lambda): done. λ 1.0 no gain (0.0 ± 2.7 at the 20k cap), λ 0.5 rejected (-21.0 ± 9.3); λ stays 0.75
 > - Phase 5 (search re-tune after the net change): 5.1 done by the full SPSA retune (search Round 24); 5.2 in-check static eval rejected (H0, -2.6 ± 4.0, search Round 25)
 > - Phase 6 (datagen v2, Gen-3): done. Gen-3 net accepted at STC (+6.9 ± 4.6, 7,012 games); LTC cancelled by the user (744 games, +4.8 ± 13.6); not copied into `src/weights/`
-> - Phase 7 (8 king buckets): started 2026-11-10, warm start from the Gen-3 net
+> - Phase 7 (8 king buckets): rejected. Exact warm start verified, but K8 lost to the Gen-3 net (H0, −6.8 ± 5.7, 4,270 games); 4 buckets stay. Code on branch `nnue/r2-kb8`
 > - Phase 8 (generation loop): Gen-4 rejected (+0.1 ± 2.9 vs the Gen-3 net, 17,526 games, stopped by the user). Loop paused; the Gen-3 net stays accepted
 
 ---
