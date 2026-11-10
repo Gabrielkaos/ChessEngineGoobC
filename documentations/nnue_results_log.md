@@ -285,3 +285,31 @@ LOS 0.96%. Log: `tools/sprt/logs/r2-kb8-A.log`.
   but the corrections they learned make search decisions worse.
 * The plan's one allowed retry needs the learning curves to show that the run was limited by steps. They flatten
   together with the step-cosine LR, as the K4 curves do, so they do not show this. No retry.
+
+## Round 2 close (2026-11-10)
+
+The user closed Round 2 after Phase 7 and asked to promote the Gen-3 net.
+
+* **Promoted:** `src/weights/quantised.bin` is now the Gen-3 net (`checkpoints/exp_r2_gen3/A/quantised.bin`,
+  sha256 `7f18a0fb…`). The previous production net (`exp_datagen_d1_50m`, sha256 `657ae4c5…`) is kept as
+  `src/weights/quantised_d1_50m_old.bin` (read-only). `src/weights/` is not tracked by git, so that file is the only copy
+  besides its checkpoint.
+* **Checks:** the default build (`make -C src native`) is byte-identical to `tools/sprt/bin/GOOB-r2-gen3-A`, the engine
+  that passed the SPRT. Its `bench.py 12` gives 887,490 nodes (the previous net gave 1,083,787); mates, TT tests, UCI and
+  `test_incremental` (15/15) pass. `tools/datagen` is rebuilt with the new net. New NNUE and search SPRTs should use the
+  new default build as their baseline; `GOOB-main-norazor` is the previous net.
+* `r2/phase0_manifest.sha256` still lists the old `src/weights/quantised.bin` hash. That line now fails by design; the
+  old file is unchanged under its new name.
+
+| Phase | Outcome |
+| :--- | :--- |
+| 0–2 | State frozen, data audited (K = 141), trainer, mixer and datagen v2 support |
+| 3 | Dropped (already covered by the production net) |
+| 4 | λ 1.0 no gain, λ 0.5 −21 Elo; λ stays 0.75 |
+| 5 | SPSA retune done (search Round 24); no-eval-in-check rejected |
+| 6 | **Gen-3 net +6.9 ± 4.6 Elo (H1, STC), promoted** |
+| 7 | 8 king buckets −6.8 ± 5.7 (H0), rejected |
+| 8 | Gen-4 net +0.1 ± 2.9 at 17.5k games, rejected |
+
+Not run: Gen-5 with a larger node budget, SPSA after a second accepted net, the Lichess taper test and the
+from-scratch budget check (plan section 14). These are the natural starting points for a Round 3.

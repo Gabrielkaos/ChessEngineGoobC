@@ -140,7 +140,8 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
 * **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
-  * `quantised.bin`: Production network (`GOOBNNUE` v2, 6,326,336 bytes, horizontal king mirroring `NNUE_MIRROR=1` + 4 factorized king buckets `NNUE_KING_BUCKETS=4`), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime.
+  * `quantised.bin`: Production network (`GOOBNNUE` v2, 6,326,336 bytes, horizontal king mirroring `NNUE_MIRROR=1` + 4 factorized king buckets `NNUE_KING_BUCKETS=4`), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime. Since 2026-11-10 this is the NNUE Round 2 Gen-3 net (`tools/nnue_project/checkpoints/exp_r2_gen3/A`, sha256 `7f18a0fb…`, +6.9 ± 4.6 Elo over the previous net; `bench.py 12` 887,490 nodes).
+  * `quantised_d1_50m_old.bin`: Previous production network until 2026-11-10 (`exp_datagen_d1_50m`, same architecture, 6,326,336 bytes, read-only; `bench.py 12` 1,083,787 nodes).
   * `quantised_mirror_1bkt_old.bin`: Previous Phase 3 accepted network (`NNUE_MIRROR=1, NNUE_KING_BUCKETS=1`, 1,607,744 bytes).
   * `quantised_phase1_control.bin`: Previous Phase 1 control fine-tuned unmirrored network (`NNUE_MIRROR=0, NNUE_KING_BUCKETS=1`).
   * `quantised_228_old.bin`: Original unmirrored 228M Lichess network (`NNUE_MIRROR=0, NNUE_KING_BUCKETS=1`).
