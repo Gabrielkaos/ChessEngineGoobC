@@ -175,3 +175,62 @@ nElo +12.23 ± 8.13, LOS 99.84%. Log: `tools/sprt/logs/r2-gen3-A.log`.
   The user accepted the net on its STC result. Log: `tools/sprt/logs/r2-gen3-A-ltc.log`.
 * **Accepted net of Round 2 so far.** `src/weights/quantised.bin` is unchanged; the Gen-3 net is used through
   `EVALFILE=` (plan Phase 8 rule 1). It generates Gen-4.
+
+## Phase 8: Generation loop, Gen-4 (2026-11-09/10)
+
+**Gen-4 data**, generated from the accepted Gen-3 net (verified embedded in a clean `make -C src datagen
+EVALFILE=…` build, frozen as `r2/datagen_gen4`). Same v2 flags as Gen-3 with `--seed 20261109`, into `data_gen4/`.
+It took 14.6 h for 50,000,415 records (958 positions/s). The files are read-only and hashed in `r2/gen4_manifest.sha256`.
+
+| Statistic | Gen-4 | Gen-3 |
+| :--- | :--- | :--- |
+| Games: 1-0 / 0-1 / draw | 49.7% / 20.9% / 29.4% | 50.8% / 20.9% / 28.3% |
+| W / D / B per record | 47.4% / 31.1% / 21.5% | 48.8% / 29.6% / 21.7% |
+| \|eval\| >= 500 / 1500 | 29.9% / 2.7% | 29.8% / 2.7% |
+| Resigned with <= 20 records | 0.7% | 0.7% |
+| Records per game (mean) | 69.2 | 69.9 |
+| Fitted scale K | 164.2 | 152.5 |
+| Duplicates (5M sample) | 0.51% | 0.54% |
+| Openings rejected / quiet positions dropped | 318,335 / 2,755,540 | 295,759 / 2,581,319 |
+
+Full report: `r2/audit_gen4.txt`. Hold-out: `r2/val_gen4.bin` (50,000 random Gen-4 records, seed 20261110).
+
+### Gen-4 net (`checkpoints/exp_r2_gen4/A`)
+
+**Training file** `r2/train_gen4.bin`, 259,795,112 records (`mix_data.py --gen-data ../data_gen4
+--gen-data ../data_gen3:10000000 --gen-data ../data_gen:5000000`, excluding all three hold-outs,
+`--gen-share 0.25 --seed 4`):
+
+| Source | Records | Share |
+| :--- | ---: | ---: |
+| Gen-4 (minus the hold-out and its duplicates) | 49,948,778 | 19.2% |
+| Gen-3 (random 10M) | 10,000,000 | 3.8% |
+| Gen-2 (random 5M) | 5,000,000 | 1.9% |
+| Lichess (`data/train.bin`) | 194,846,334 | 75.0% |
+
+**Training:** warm start from the accepted Gen-3 net with the same recipe as Gen-3 (400M samples, 1.54 epochs).
+
+| Validation MSE | after 16M samples | final |
+| :--- | ---: | ---: |
+| Lichess `data/val.bin` (curve subset) | 0.003870 | 0.003815 |
+| `r2/val_gen4.bin` pure eval | 0.002979 | 0.002848 |
+| `r2/val_gen3.bin` pure eval | 0.002790 | 0.002791 |
+
+Full-set Lichess val MSE at the end was 0.004711. Export and `check_net.py --pipeline` are clean.
+Engine `GOOB-r2-gen4-A`: `bench.py 12` 1,020,799; mates, TT tests and UCI are normal.
+
+| Run | Games | Record (W - L - D) | Score | Elo | LLR | Verdict |
+| :--- | ---: | :---: | ---: | :---: | :---: | :--- |
+| **Gen-4 net vs Gen-3 net (STC)** | 17526 | 4149 - 4142 - 9235 | 50.02% | **+0.14 ± 2.89** | −1.88 | **Rejected (stopped, no verdict)** |
+
+Gainer SPRT `[0, 3]` vs `GOOB-r2-gen3-A`: fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent
+games, `tools/book_test.epd`. It ran 6 h 0 min. Pentanomial (0-2) `[149, 2152, 4167, 2133, 162]`, nElo +0.25 ± 5.14,
+LOS 53.75%. Log: `tools/sprt/logs/r2-gen4-A.log`.
+
+* **No gain.** The match was stopped by the user at 17,526 games, short of the 20k cap. The LLR had drifted toward H0
+  (lowest −2.20) and the Elo sat at 0.0 ± 2.9. At this point a +3 Elo net is very unlikely. **Not accepted.**
+* The second generation from the same recipe gave nothing, after Gen-3 gave +6.9. The likely reason is that one
+  more round of 50M self-play positions at 25% share and 5,000 nodes no longer adds information the Gen-3 net
+  lacks. The net fits Gen-4 (hold-out eval MSE 0.00298 → 0.00285) without playing better.
+* **Decision (user):** do not accept Gen-4, and move to Phase 7 (8 king buckets) on top of the Gen-3 net.
+  The planned cheap Gen-4 training variants and Gen-5 are not run. The Gen-3 net stays the accepted net.
