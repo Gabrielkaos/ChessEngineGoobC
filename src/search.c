@@ -702,6 +702,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
         pawnHist = (quietMove && depth >= 2 && Legal >= 1 + rootNode) ? getPawnHistory(pos, moveInLoop) : 0;
+        int badSee = (quietMove && !isSpecial && depth > 2 && Legal >= 1
+                      && (mp->threats & (1ULL << TOSQ(moveInLoop)))
+                      && !StaticExchangeEvaluation(pos, moveInLoop, 0));
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -779,6 +782,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
 
             R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
+
+            //increase reduction for quiet moves that lose material (negative SEE)
+            if (badSee) {
+                R++;
+            }
 
             //scale up reduction further at expected all-nodes, proportional to
             //existing R rather than a flat bump, so it doesn't dominate at low depth
