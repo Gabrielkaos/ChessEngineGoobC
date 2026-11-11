@@ -647,7 +647,23 @@ Tested against `main` at `7315a36` (binary `GOOB-main-norazor`, `bench.py 12` 1,
 
 ---
 
-## 28. Summary of All Merged Features on `main`
+## 28. Round 26: Negative SEE Reduction in Quiet LMR (November 11, 2026)
+
+Tested against `main` at `88c6e79` (baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 887,490 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/lmr-negative-see`** | **NOT MERGED** | 7078 | 1639 - 1674 - 3765 | 49.75% | **-1.72 ± 4.39** | -1.93 | Stopped, rejected |
+
+* **Concept:** In `AlphaBeta()`, before making a move, if a quiet non-special move lands on an attacked square (`mp->threats & (1ULL << to)`) and loses material on the exchange (`!StaticExchangeEvaluation(pos, move, 0)`), flag it as `badSee`. During Late Move Reduction (LMR), increase reduction by 1 ply (`R++`) for these moves.
+* **Correctness checks:** `perfttest` 33/33, TT replacement tests pass, `test_incremental` 14/14, 1- and 2-thread UCI searches normal. `bench.py 12`: 887,490 -> 784,113 nodes (-11.6%).
+* **Match:** gainer SPRT `[0, 3]`, fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book.epd`, ~1 h 40 min. Pentanomial (0-2) `[44, 880, 1727, 843, 45]`, LOS 22.1%. Log: `tools/sprt/logs/lmr-neg-see.log`.
+* **Failure analysis:** While saving 11.6% bench nodes by reducing quiet blunders/sacrifices, the extra 1-ply reduction caused tactical oversights where quiet piece sacrifices or dynamic counter-sacrifices were pruned too deeply without triggering the re-search threshold. The performance remained neutral-to-slight-negative (-1.7 Elo) across >7k games, with LLR drifting downward toward $H_0$ (-1.93).
+* **Verdict:** **REJECTED.** Branch `search/lmr-negative-see` (commit `98dfb2d`) kept locally only, not merged into `main`.
+
+---
+
+## 29. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -672,7 +688,7 @@ Tested against `main` at `7315a36` (binary `GOOB-main-norazor`, `bench.py 12` 1,
 
 ---
 
-## 29. Closing Instructions for GitHub PRs
+## 30. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -688,6 +704,12 @@ For each rejected PR on GitHub:
 - `search/singular-margin-triple-ext`
 - `search/is-shuffling`
 - `search/se-shuffling`
+- `search/cutoff-cnt`
+- `search/prior-cm-bonus`
+- `search/tt-cutoff-hist`
+- `search/rfp-opp-worsening`
+- `search/incheck-no-eval`
+- `search/lmr-negative-see`
 
 Leave a closing note and close the PR:
 
