@@ -46,6 +46,9 @@ tools/nnue_project/data_gen_10m/*
 tools/nnue_project/data_mixed/*
 tools/nnue_project/data_gen3/*
 tools/nnue_project/data_gen4/*
+tools/nnue_project/data_gen5/
+tools/nnue_project/data_gen*/
+tools/nnue_project/mix_buckets_*
 tools/nnue_project/r2/
 tools/nnue_project/checkpoints/*
 tools/nnue_project/scripts/__pycache__/
