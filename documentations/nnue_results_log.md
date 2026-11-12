@@ -310,9 +310,10 @@ The user closed Round 2 after Phase 7 and asked to promote the Gen-3 net.
 | 6 | **Gen-3 net +6.9 ± 4.6 Elo (H1, STC), promoted** |
 | 7 | 8 king buckets −6.8 ± 5.7 (H0), rejected |
 | 8 | Gen-4 net +0.1 ± 2.9 at 17.5k games, rejected |
+| 9 | Gen-5 net (10k nodes) −2.2 ± 3.8 (H0), rejected |
 
-Not run: Gen-5 with a larger node budget, SPSA after a second accepted net, the Lichess taper test and the
-from-scratch budget check (plan section 14). These are the natural starting points for a Round 3.
+Not run: SPSA after a second accepted net, the Lichess taper test and the
+from-scratch budget check (plan section 14).
 
 ---
 

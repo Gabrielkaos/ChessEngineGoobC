@@ -32,7 +32,8 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 > - Phase 6 (datagen v2, Gen-3): done. Gen-3 net accepted at STC (+6.9 ± 4.6, 7,012 games); LTC cancelled by the user (744 games, +4.8 ± 13.6); promoted to `src/weights/quantised.bin` on 2026-11-10 (previous net kept as `quantised_d1_50m_old.bin`)
 > - Phase 7 (8 king buckets): rejected. Exact warm start verified, but K8 lost to the Gen-3 net (H0, −6.8 ± 5.7, 4,270 games); 4 buckets stay. Code on branch `nnue/r2-kb8`
 > - Phase 8 (generation loop): Gen-4 rejected (+0.1 ± 2.9 vs the Gen-3 net, 17,526 games, stopped by the user). Loop stopped; the Gen-3 net stays accepted
-> - **Round 2 closed 2026-11-10 by the user**: Gen-3 net promoted to production. Not run: Gen-5 (larger node budget), SPSA after a second accepted net, Lichess taper, budget check
+> - Phase 9 (Gen-5 datagen with 10k nodes, 2026-11-12/13): 50M records at 10,000 nodes/move using Gen-3 net into `data_gen5/` (601 pos/s, fitted K = 153.3). Mixed 260M records (`r2/train_gen5.bin`, 25% selfplay: 49.95M Gen-5 + 10M Gen-4 + 5M Gen-3; 75% Lichess). Trained 400M samples on GTX 1660 SUPER (val MSE: Lichess 0.004738, Gen-5 eval 0.002944). Candidate `GOOB-r2-gen5-A` rejected at STC vs `GOOB-r2-gen3-A` (H0 passed, -2.16 ± 3.77 Elo, LLR -2.96, 10,132 games). Gen-3 net remains the accepted production net
+> - **Round 2 closed**: Gen-3 net remains promoted in production. Remaining future investigations: SPSA after a second accepted net, Lichess taper, from-scratch budget check (plan section 14)
 
 ---
 
