@@ -313,3 +313,18 @@ The user closed Round 2 after Phase 7 and asked to promote the Gen-3 net.
 
 Not run: Gen-5 with a larger node budget, SPSA after a second accepted net, the Lichess taper test and the
 from-scratch budget check (plan section 14). These are the natural starting points for a Round 3.
+
+---
+
+## Phase 9: Gen-5 net evaluation (10k-node datagen)
+
+* **Data:** 50,000,483 records generated at 10,000 nodes/move using accepted Gen-3 net into `data_gen5/` (601 pos/s).
+* **Train mix:** `r2/train_gen5.bin`, 259,795,484 records (25% self-play: 49.95M Gen-5 + 10M Gen-4 + 5M Gen-3; 75% Lichess).
+* **Training:** 400M samples (1.54 epochs) on GTX 1660 SUPER. Final val MSE: Lichess 0.004738, Gen-5 eval 0.002944.
+* **SPRT Match:** `GOOB-r2-gen5-A` vs `GOOB-r2-gen3-A` (STC 5+0.05s, `book_test.epd`, 10 concurrency).
+
+| Games | Record (W - L - D) | Score | Elo | LLR | Verdict |
+| :---: | :---: | :---: | :---: | :---: | :--- |
+| 10132 | 2408 - 2471 - 5253 | 5034.5 / 10132 | **-2.16 +/- 3.77, nElo: -3.87 +/- 6.77** | -2.96 (-100.4%) (-2.94, 2.94) [0.00, 3.00] | **Rejected (H0 passed)** |
+
+**Decision:** REJECTED. Gen-3 net remains the accepted production net.
