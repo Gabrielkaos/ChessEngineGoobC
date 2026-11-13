@@ -663,7 +663,22 @@ Tested against `main` at `88c6e79` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 29. Summary of All Merged Features on `main`
+## 29. Round 27: X-Ray Queen Fix in `StaticExchangeEvaluation()` (November 13, 2026)
+
+Tested against `main` at `60f5e1b` (baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 887,490 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/see-xray-queens`** | **ACCEPTED** | 9462 | 2210 - 2158 - 5094 | 50.27% | **+1.91 ± 3.87** | +2.97 | H1 accepted (`nonreg`) |
+
+* **Concept:** In `StaticExchangeEvaluation()` (`src/search.c`), `bishops` and `rooks` were initialized without `pos->byTypeBB[QUEEN]`, causing x-ray queens behind pawns, bishops, rooks, or other queens to be excluded when discovering hidden x-ray attackers during SEE exchanges. Adding `| pos->byTypeBB[QUEEN]` to both `bishops` and `rooks` matches standard swap-loop x-ray discovery.
+* **Correctness checks:** `perfttest` 33/33 passed, TT replacement tests 5/5 passed, 2-thread UCI search normal, and a targeted x-ray SEE unit test passed for orthogonal queen behind rook, diagonal queen behind bishop, and diagonal queen behind pawn. `bench.py 12`: 887,490 -> 893,154 nodes.
+* **Match:** non-regression SPRT `[-3.00, 1.00]`, fastchess pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/sprt/book.epd` (`book.epd`), `03:15:34`. nElo `+3.45 ± 7.00`, LOS `83.30%`, Pentanomial (0-2) `[73, 1144, 2232, 1222, 60]`, WL/DD Ratio `0.64`. Log: `tools/sprt/logs/see-xray-queens.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Correctness fix verified non-regressive (and `+1.91` Elo point estimate) in `fix/see-xray-queens`.
+
+---
+
+## 30. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -688,7 +703,7 @@ Tested against `main` at `88c6e79` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 30. Closing Instructions for GitHub PRs
+## 31. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

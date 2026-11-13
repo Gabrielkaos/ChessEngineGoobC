@@ -1023,8 +1023,8 @@ int StaticExchangeEvaluation(S_BOARD *pos,int move,int threshold){
     balance -= SEEPieceValues[nextVictim];
     if(balance >= 0)return 1;
 
-    bishops = pos->byTypeBB[BISHOP];
-    rooks   = pos->byTypeBB[ROOK];
+    bishops = pos->byTypeBB[BISHOP] | pos->byTypeBB[QUEEN];
+    rooks   = pos->byTypeBB[ROOK]   | pos->byTypeBB[QUEEN];
 
     occupied = pos->byTypeBB[ALL_PIECES];
     occupied = (occupied ^ (1ull << from)) | (1ull << to);
