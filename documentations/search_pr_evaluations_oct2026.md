@@ -669,12 +669,12 @@ Tested against `main` at `60f5e1b` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 | Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`fix/see-xray-queens`** | **ACCEPTED** | 9462 | 2210 - 2158 - 5094 | 50.27% | **+1.91 ± 3.87** | +2.97 | H1 accepted (`nonreg`) |
+| **`fix/see-xray-queens`** | **MERGED** | 9462 | 2210 - 2158 - 5094 | 50.27% | **+1.91 ± 3.87** | +2.97 | H1 accepted (`nonreg`) |
 
 * **Concept:** In `StaticExchangeEvaluation()` (`src/search.c`), `bishops` and `rooks` were initialized without `pos->byTypeBB[QUEEN]`, causing x-ray queens behind pawns, bishops, rooks, or other queens to be excluded when discovering hidden x-ray attackers during SEE exchanges. Adding `| pos->byTypeBB[QUEEN]` to both `bishops` and `rooks` matches standard swap-loop x-ray discovery.
 * **Correctness checks:** `perfttest` 33/33 passed, TT replacement tests 5/5 passed, 2-thread UCI search normal, and a targeted x-ray SEE unit test passed for orthogonal queen behind rook, diagonal queen behind bishop, and diagonal queen behind pawn. `bench.py 12`: 887,490 -> 893,154 nodes.
 * **Match:** non-regression SPRT `[-3.00, 1.00]`, fastchess pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/sprt/book.epd` (`book.epd`), `03:15:34`. nElo `+3.45 ± 7.00`, LOS `83.30%`, Pentanomial (0-2) `[73, 1144, 2232, 1222, 60]`, WL/DD Ratio `0.64`. Log: `tools/sprt/logs/see-xray-queens.log`.
-* **Verdict:** **ACCEPTED (`nonreg` H1).** Correctness fix verified non-regressive (and `+1.91` Elo point estimate) in `fix/see-xray-queens`.
+* **Verdict:** **MERGED (`nonreg` H1).** Correctness fix verified non-regressive (and `+1.91` Elo point estimate); merged into `main` from `fix/see-xray-queens`.
 
 ---
 
@@ -695,6 +695,7 @@ Tested against `main` at `60f5e1b` (baseline binary `GOOB-base`, Gen-3 net, `ben
 13. `search/hist-order-bonus`: Position-dependent history malus decay by search order and move-count bonus scaling for late quiet refutations (+2.1 Elo, commit `885291b`).
 14. `search/cuckoo-upcoming-repetition`: Marcel van Kervinck's 8,192-entry Cuckoo hash table (`InitCuckoo()`) and 1-move upcoming repetition cycle detection (`upcoming_repetition()`, +6.1 Elo, -2.7% bench nodes).
 15. `search/se-excluded`: Stockfish/Berserk/Ethereal-style `excludedMove` recursive singular verification search at `(depth - 1) / 2`, `is_shuffling()` piece-shuffle singular extension guard, `dextensions <= 6` extension cap, and quiet non-PV triple extensions (+1.6 Elo, bounded seldepth 28 vs 43 on shuffling endgames).
+16. `fix/see-xray-queens`: Include `pos->byTypeBB[QUEEN]` in `bishops` and `rooks` within `StaticExchangeEvaluation()` so x-ray queens behind pawns and sliders are discovered (+1.91 ± 3.87 Elo, `nonreg` H1 accepted, `9405cc1`).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
