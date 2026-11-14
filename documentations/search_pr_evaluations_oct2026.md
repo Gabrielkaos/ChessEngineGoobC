@@ -678,7 +678,25 @@ Tested against `main` at `60f5e1b` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 30. Summary of All Merged Features on `main`
+## 30. Round 28: Full 63-Parameter Gen-3 SPSA Retune (`full2`) (November 13-14, 2026)
+
+Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 63 remaining constants in `src/tune.h` were retuned together starting from the `full1` defaults (`main` `d5c8f07`).
+
+* **SPSA run:** `tools/spsa/spsa.py run full2` at `5+0.05`, 15,000 iterations (60,000 games; 2 pairs/iteration; 16 MB hash; `tools/book.epd`), 18.3 h, plus-minus W/L/D `14407/14324/31269`. Run directory `tools/spsa/runs/full2/` (git-ignored). 52 of the 63 defaults changed.
+* **Depth / count changes (`main` -> tuned):** `BetaPruningDepth` 9 -> 8, `NMPDepthDiv` 6 -> 5, `probCutDepth` 7 -> 8 (theta 7.86, near upper bound 8), `SEEPruningDepth` 9 -> 8, `MaxDoubleExtensions` 6 -> 5.
+* **Largest margin / history changes (`main` -> tuned):** `FutilityMarginNoHistory` 92 -> 80, `probCutMargin` 95 -> 105, `QSSeeMargin` 99 -> 105, `HindsightMargin` 174 -> 180, `DoubleExtMargin` 121 -> 116, `AllNodeScale` 274 -> 266, `FutilityHistLimitNI` 12966 -> 13577, `FutilityHistLimitI` 5998 -> 6229, `CounterMoveHistLimitNI` -451 -> -243, `FollowUpHistLimitI` -1735 -> -2004, `LMRQuietHistDiv` 4994 -> 4733, `GoodQuietThreshold` -2886 -> -2732, `QuietCheckBonus` 16672 -> 16941.
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`spsa/full2`** | **NOT MERGED** | 22638 | 5388 - 5348 - 11902 | 50.09% | **+0.61 ± 2.48** | -1.66 | Stopped, not kept |
+
+* **Match:** gainer SPRT `[0.00, 3.00]` logistic, fastchess pentanomial, `5+0.05`, 1 thread, 32 MB hash, 11 concurrent games, `tools/book.epd`. Last logged summary at 22,638 games: `nElo +1.12 ± 4.53`, `LOS 68.61%`, `DrawRatio 48.67%`, `LLR -1.66 (-56.3%)`, Pentanomial (0-2) `[168, 2715, 5509, 2763, 164]`, `WL/DD Ratio 0.72` (saved state at stop in `tools/sprt/logs/spsa-full2.state.json`: 22,656 games, `5393 - 5350 - 11913`). Log: `tools/sprt/logs/spsa-full2.log`.
+* **Analysis:** Despite Gen-3's modest WDL scale shift (`K = 141 -> 152.5`) and `fix/see-xray-queens`, retuning from the already-converged `full1` baseline produced mostly small 1–3 unit shifts and remained essentially elo-neutral (`+0.61 ± 2.48` Elo; `LLR` peaked at `+0.41` around 18,000 games before dropping to `-1.66`). Consistent with Round 18 (`spsa-pruning1`), a sub-1 Elo SPSA drift over >22k games is within tuning noise and not worth perturbing 52 parameters.
+* **Verdict:** **NOT MERGED.** `src/tune.h` was reverted to the `main` (`full1`) defaults.
+
+---
+
+## 31. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -704,7 +722,7 @@ Tested against `main` at `60f5e1b` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 31. Closing Instructions for GitHub PRs
+## 32. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
