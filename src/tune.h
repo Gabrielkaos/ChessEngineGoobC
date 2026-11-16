@@ -71,13 +71,13 @@
     TP(TTMoveHistBonus,            934,   400,  1600,   60) \
     TP(TTMoveHistMalus,            780,   300,  1400,   60) \
     /* late move reductions, LMRTable = LMRBase/100 + ln(d)ln(m) / (LMRDivisor/100) */ \
-    TP(LMRBase,                     79,    25,   150,    6) \
-    TP(LMRDivisor,                 226,   150,   350,   10) \
-    TP(LMRQuietHistDiv,           4994,  2000, 10000,  400) \
-    TP(LMRNoisyHistDiv,           4718,  2000, 10000,  400) \
-    TP(AllNodeScale,               274,   100,   500,   20) \
-    TP(AllNodeBase,                297,   100,   500,   20) \
-    TP(LMRDeeperMargin,             34,    10,   100,    4) \
+    TP(LMRBase,                     80,    25,   150,    6) \
+    TP(LMRDivisor,                 228,   150,   350,   10) \
+    TP(LMRQuietHistDiv,           5021,  2000, 10000,  400) \
+    TP(LMRNoisyHistDiv,           4829,  2000, 10000,  400) \
+    TP(AllNodeScale,               273,   100,   500,   20) \
+    TP(AllNodeBase,                295,   100,   500,   20) \
+    TP(LMRDeeperMargin,             33,    10,   100,    4) \
     TP(LMRShallowerMargin,           7,     0,    20,    1) \
     /* quiet history update */ \
     TP(HistMoveCountThreshold,        7,     4,    16,    1) \

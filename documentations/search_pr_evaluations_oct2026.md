@@ -696,7 +696,31 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 
 ---
 
-## 31. Summary of All Merged Features on `main`
+## 31. Round 29: Dead `AllNodeScale` LMR Bug & Fixed-Point (`1024`-Scaled) LMR (November 14–15, 2026)
+
+### Dead `allNode` LMR Bug Verification (`main` `cb9987a`)
+* **Bug (`src/search.c:785` on `cb9987a`):** `if (allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);` (`AllNodeScale = 274`, `AllNodeBase = 297`) was ported from Stockfish 19's `r * 276 / (256 * depth + 268)` onto GOOB's **unscaled integer `R`** (`1..6` plies) rather than `1024`-scaled `r`.
+* **Algebraic & empirical proof:** For `AllNodeScale = 274, AllNodeBase = 297`, `R * 274 / (256 * depth + 297) >= 1` requires `R >= ceil((256 * depth + 297) / 274)`, which is already `>= depth` for all `depth <= 16` (`R >= 4` at `d=3`, `R >= 11` at `d=10`, `R >= 17` at `d=16`) and `>= 18..33` at higher depths. Any hit is therefore already clamped to `depth - 1` by `R = MIN(depth - 1, MAX(R, 1))` beforehand.
+  * Instrumented `bench.py 12`: out of `147,002` `allNode` entries, only `3,816` (`2.6%`) produced `delta = 1` (`0` non-clamped hits across `d=3..39`).
+  * Removing `allNode` completely from `cb9987a` left `bench.py 12` **bit-for-bit identical** across all 16 positions (`893,154` nodes).
+
+### Fixed-Point (`1024`-Scaled) LMR Experiment
+* **Change (`src/search.c`):** Scaled `LMRTable[64][64]` by `1024` (`initLMRTable()`, with `/ 1024` at the Futility and CounterMove/FollowUp pruning read sites) and accumulated `1024`-scaled `r` in both quiet and noisy LMR loops—fixing `(hist + pawnHist) * 1024 / LMRQuietHistDiv` and `hist * 1024 / LMRNoisyHistDiv` truncation (previously zero inside `±4993`) and making `allNode` scaling active (`if (allNode && r > 0) r += r * AllNodeScale / (256 * depth + AllNodeBase);`) before `R = MIN(depth - 1, MAX(r / 1024, 1))`.
+* **Correctness & bench (`GOOB-lmr-fixedpoint` vs `GOOB-base-cb9987a`):** `perfttest` 33/33 passed (`1,225,549,258` nodes), Mate-1/2/3, 4-thread SMP, TT reuse, and `movetime 250` passed. `bench.py 12`: `893,154` (`481 ms`) -> **`667,853` nodes** (`362 ms`, **-25.2% nodes**).
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/lmr-fixedpoint` (un-retuned)** | **SUPERSEDED BY `lmr_fp1`** | 24438 | 5728 - 5680 - 13030 | 50.10% | **+0.68 ± 2.37** | -1.68 | Stopped `[0, 3]`; SPSA next |
+| **`fix/lmr-fixedpoint` + `lmr_fp1`** | **ACCEPTED (`nonreg` H1)** | 10952 | 2577 - 2531 - 5844 | 50.21% | **+1.46 ± 3.56** | +2.98 | H1 accepted (`[-3.00, 1.00]`) |
+
+* **Pre-tune match (`fix/lmr-fixedpoint`):** gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `6+0.06`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`. Last logged summary at `24,438` games: `nElo +1.26 ± 4.36`, `LOS 71.41%`, `DrawRatio 49.10%`, `LLR -1.68 (-57.2%)`, Pentanomial (0-2) `[166, 2918, 6000, 2972, 163]`, `WL/DD Ratio 0.68`. Log: `tools/sprt/logs/lmr-fixedpoint.log`.
+* **Targeted SPSA (`lmr_fp1`):** `tools/spsa/spsa.py run lmr_fp1 --include '^LMR|AllNode'` at `5+0.05`, `3,000` iterations (`12,000` games; 10 workers; 4.0 h). Applied changes in `src/tune.h`: `LMRBase` 79 -> 80, `LMRDivisor` 226 -> 228, `LMRQuietHistDiv` 4994 -> 5021, `LMRNoisyHistDiv` 4718 -> 4829, `AllNodeScale` 274 -> 273, `AllNodeBase` 297 -> 295, `LMRDeeperMargin` 34 -> 33 (`LMRShallowerMargin` unchanged at 7). Post-tune `bench.py 12`: `726,116` nodes (`415 ms`, `-18.7%` vs `cb9987a`).
+* **Post-tune SPRT (`spsa-pruning1`):** non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `book.epd`, `03:45:12`. Completed with `10,952` games (`2577 - 2531 - 5844`, `50.21%`), Elo **`+1.46 ± 3.56`**, `nElo +2.67 ± 6.51`, `LOS 78.92%`, `DrawRatio 48.94%`, `PairsRatio 1.03`, Pentanomial (0-2) `[78, 1299, 2680, 1337, 82]`, `WL/DD Ratio 0.67`, `LLR +2.98 (101.3%)`. Log: `tools/sprt/logs/spsa-pruning1.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Fixed-point `1024`-scaled LMR fixes the dead `AllNodeScale` bug and eliminates integer truncation of history/fractional LMR terms without regression (`+1.46 ± 3.56` Elo against baseline) while establishing clean fixed-point infrastructure for future fractional LMR signals.
+
+---
+
+## 32. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -714,6 +738,7 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 14. `search/cuckoo-upcoming-repetition`: Marcel van Kervinck's 8,192-entry Cuckoo hash table (`InitCuckoo()`) and 1-move upcoming repetition cycle detection (`upcoming_repetition()`, +6.1 Elo, -2.7% bench nodes).
 15. `search/se-excluded`: Stockfish/Berserk/Ethereal-style `excludedMove` recursive singular verification search at `(depth - 1) / 2`, `is_shuffling()` piece-shuffle singular extension guard, `dextensions <= 6` extension cap, and quiet non-PV triple extensions (+1.6 Elo, bounded seldepth 28 vs 43 on shuffling endgames).
 16. `fix/see-xray-queens`: Include `pos->byTypeBB[QUEEN]` in `bishops` and `rooks` within `StaticExchangeEvaluation()` so x-ray queens behind pawns and sliders are discovered (+1.91 ± 3.87 Elo, `nonreg` H1 accepted, `9405cc1`).
+17. `fix/lmr-fixedpoint`: Fixed-point `1024`-scaled LMR (`LMRTable`, smooth history divisors, active `AllNodeScale`/`AllNodeBase` fixing dead `allNode` scaling) plus `lmr_fp1` 8-parameter SPSA retune (+1.46 ± 3.56 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 10,952 games).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -722,7 +747,7 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 
 ---
 
-## 32. Closing Instructions for GitHub PRs
+## 33. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

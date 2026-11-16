@@ -28,12 +28,12 @@
 */
 
 
-int LMRTable[64][64];
+int LMRTable[64][64]; // fixed-point 1024-scaled (1024 = 1 ply)
 void initLMRTable(){
     int i,j;
     for(i=1;i<64;++i){
         for(j=1;j<64;++j){
-            LMRTable[i][j]=LMRBase / 100.0 + log(i) * log(j) / (LMRDivisor / 100.0);
+            LMRTable[i][j] = (int)((LMRBase / 100.0 + log(i) * log(j) / (LMRDivisor / 100.0)) * 1024.0);
         }
     }
 }
@@ -620,7 +620,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //Quiet late Move pruning
         if (!rootNode && !info->bruteForceMode && quietMove && bestScore > -ISMATE){
 
-            int lmrDepth = MAX(0, depth - LMRTable[MIN(depth, 63)][MIN(Legal, 63)]);
+            int lmrDepth = MAX(0, depth - LMRTable[MIN(depth, 63)][MIN(Legal, 63)] / 1024);
 
             //Futility pruning
             //checking if this position is likely to improve
@@ -655,7 +655,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             //check the countermove and follow up moves
             //prune them if they have a low history performance
-            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
+            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)] / 1024;
 
             if (!isSpecial && depth - R <= CounterMovePruningDepth[improving]) {
                 TRACE_INC(pos, countermove_attempted);
@@ -765,26 +765,25 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //we prune if the move is unlikely promising
         if (quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             TRACE_INC(pos, lmr_quiet_attempted);
-            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
+            int r = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
-            R += !improving + !pvNode + extension;
+            r += (!improving + !pvNode + extension) * 1024;
 
-            R += inCheck && pieceKing[pos->pieces[TOSQ(moveInLoop)]];
+            r += (inCheck && pieceKing[pos->pieces[TOSQ(moveInLoop)]]) * 1024;
 
-            R -= isSpecial;
+            r -= isSpecial * 1024;
 
-            R += cutNode;
+            r += cutNode * 1024;
 
-            R += ttCapture;
+            r += ttCapture * 1024;
 
-
-            R -= MAX(-2, MIN(2, (hist + pawnHist) / LMRQuietHistDiv));
+            r -= MAX(-2048, MIN(2048, ((hist + pawnHist) * 1024) / LMRQuietHistDiv));
 
             //scale up reduction further at expected all-nodes, proportional to
-            //existing R rather than a flat bump, so it doesn't dominate at low depth
-            if(allNode) R += R * AllNodeScale / (256 * depth + AllNodeBase);
+            //existing r rather than a flat bump, so it doesn't dominate at low depth
+            if(allNode && r > 0) r += r * AllNodeScale / (256 * depth + AllNodeBase);
 
-            R = MIN(depth - 1, MAX(R, 1));
+            R = MIN(depth - 1, MAX(r / 1024, 1));
             if (R > 1) {
                 TRACE_INC(pos, lmr_quiet_reduced);
             }
@@ -793,11 +792,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //we reduce search based on their performance history (more granular)
         else if (!quietMove && depth > 2 && Legal > 1 && !info->bruteForceMode){
             TRACE_INC(pos, lmr_noisy_attempted);
-            R = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
-            R += !pvNode;
-            R += ttCapture;
-            R -= MAX(-2, MIN(2, hist / LMRNoisyHistDiv));
-            R = MIN(depth - 1, MAX(R, 1));
+            int r = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
+            r += !pvNode * 1024;
+            r += ttCapture * 1024;
+            r -= MAX(-2048, MIN(2048, (hist * 1024) / LMRNoisyHistDiv));
+            R = MIN(depth - 1, MAX(r / 1024, 1));
             if (R > 1) {
                 TRACE_INC(pos, lmr_noisy_reduced);
             }

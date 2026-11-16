@@ -106,7 +106,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.
     * Singular Extensions ($D \ge 8$, non-mate/TB TT move, verified via `excludedMove` recursive `AlphaBeta` at `(depth - 1) / 2`), double and quiet non-PV triple extensions (capped at `dextensions <= 6` and guarded against back-and-forth piece shuffling via `is_shuffling()`), negative extensions, and multicut.
     * Check extensions.
-    * Late Move Reduction (LMR) table with adjustments for check evasions, PV, improving, tactical TT moves (`ttCapture`), and history.
+    * Late Move Reduction (LMR) fixed-point (`1024`-scaled, `1024 = 1 ply`) table (`LMRTable[64][64]`) with smooth history scaling, `allNode` scaling (`AllNodeScale`/`AllNodeBase`), and adjustments for check evasions, PV, improving, cut nodes, and tactical TT moves (`ttCapture`).
     * Post-LMR re-search depth adjustments: $+1$ ply when beating the previous best score by `LMRDeeperMargin`, $-1$ ply when barely scraping past by less than `LMRShallowerMargin`.
     * Post-LMR re-search history penalty: quiet moves that trigger a full-depth re-search but fail low (`Score <= alpha`) receive a continuation history malus (`-stat_bonus(resDepth)`), penalizing false alarms.
   * [`Quiescence()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/search.c#L141): Stand-pat with 50-move deflation, delta pruning, and SEE-gated noisy move picking.
