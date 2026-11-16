@@ -33,7 +33,7 @@ accepted engine, net changes get an LTC confirmation, and nothing existing in
 > - Phase 7 (8 king buckets): rejected. Exact warm start verified, but K8 lost to the Gen-3 net (H0, −6.8 ± 5.7, 4,270 games); 4 buckets stay. Code on branch `nnue/r2-kb8`
 > - Phase 8 (generation loop): Gen-4 rejected (+0.1 ± 2.9 vs the Gen-3 net, 17,526 games, stopped by the user). Loop stopped; the Gen-3 net stays accepted
 > - Phase 9 (Gen-5 datagen with 10k nodes, 2026-11-12/13): 50M records at 10,000 nodes/move using Gen-3 net into `data_gen5/` (601 pos/s, fitted K = 153.3). Mixed 260M records (`r2/train_gen5.bin`, 25% selfplay: 49.95M Gen-5 + 10M Gen-4 + 5M Gen-3; 75% Lichess). Trained 400M samples on GTX 1660 SUPER (val MSE: Lichess 0.004738, Gen-5 eval 0.002944). Candidate `GOOB-r2-gen5-A` rejected at STC vs `GOOB-r2-gen3-A` (H0 passed, -2.16 ± 3.77 Elo, LLR -2.96, 10,132 games). Gen-3 net remains the accepted production net
-> - **Round 2 closed**: Gen-3 net remains promoted in production. Remaining future investigations: SPSA after a second accepted net, Lichess taper, from-scratch budget check (plan section 14)
+> - **Round 2 closed**: Gen-3 net remains promoted in production. Remaining future investigations: SPSA after a second accepted net, Lichess taper. From-scratch budget check (plan section 14) done 2026-11-16: 3B samples from scratch on the Gen-3 mix lost −44.5 ± 12.8 Elo (H0), so the accepted net depends on its warm-start history (see `nnue_results_log.md`)
 
 ---
 

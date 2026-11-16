@@ -329,3 +329,52 @@ from-scratch budget check (plan section 14).
 | 10132 | 2408 - 2471 - 5253 | 5034.5 / 10132 | **-2.16 +/- 3.77, nElo: -3.87 +/- 6.77** | -2.96 (-100.4%) (-2.94, 2.94) [0.00, 3.00] | **Rejected (H0 passed)** |
 
 **Decision:** REJECTED. Gen-3 net remains the accepted production net.
+
+---
+
+## Budget check: from-scratch net on the Gen-3 mix (2026-11-16)
+
+Plan section 14 "Budget check", run after Round 2 closed. Question: is the accepted net's strength
+reproducible from zero, or does it depend on the chain of warm starts (and were Gen-4/Gen-5 flat because
+a low-LR fine-tune barely moves the net)?
+
+**Training** (`checkpoints/exp_r3_scratch/A`, scripts `train_A.sh` / `train_A_resume.sh` beside it):
+`r2/train_gen3.bin` (the Gen-3 net's own mix) with the Gen-3 recipe except for three changes: **no `--init`**
+(random init), **lr 1e-3 → 1e-6** step-cosine, **3B samples** (366,210 steps, 12.5 epochs). Mirror, 4 king
+buckets, AdamW (wd 0, bucket decay 1e-4), batch 8192, λ 0.75, `--select-by last`, seed 0, clip 1.98.
+About 3 h on the GTX 1660 SUPER (~285k samples/s).
+
+* **Crash and resume.** Epoch 3 crashed at batch ~28,600: record 13,170,027 had square f8 = 128 (one flipped
+  bit, `0x00 → 0x80`). The file's size and mtime were unchanged, the same record read with `O_DIRECT` was
+  correct on disk, and every record had been read without error by earlier runs. The flip was in the page
+  cache (RAM). After `posix_fadvise(DONTNEED)` a full scan of the training and validation files was clean,
+  and the run resumed exactly from its batch-28,000 checkpoint. No kernel MCE/EDAC/NVMe errors were logged.
+  **The machine has non-ECC RAM that flipped a bit; a memtest is advisable.**
+
+| Validation MSE, final | Scratch | Gen-3 net |
+| :--- | ---: | ---: |
+| Lichess `data/val.bin` (full) | 0.004918 | 0.004681 |
+| `r2/val_gen3.bin` blended / pure eval | 0.007044 / 0.002940 | 0.007308 / 0.002685 |
+| `data_mixed/val_gen_50m.bin` blended / pure eval | 0.006302 / 0.003363 | 0.005698 / 0.002898 |
+
+The learning curve was flat over the last two epochs. Export and `check_net.py --pipeline` are clean (max output
+weight 127, accumulator [-16,172, 9,780]), net sha256 `cf09adfc…`. Engine `GOOB-r3-scratch-A` (clean build with
+`EVALFILE`): `test_incremental` 14/14, `bench.py 12` 920,249, mate-in-1 for both colours found.
+
+| Run | Games | Record (W - L - D) | Score | Elo | LLR | Verdict |
+| :--- | ---: | :---: | ---: | :---: | :---: | :--- |
+| **Scratch net vs Gen-3 net (STC)** | 1006 | 198 - 326 - 482 | 43.64% | **−44.45 ± 12.76** | −2.95 | **Rejected (H0)** |
+
+Gainer SPRT `[0, 3]` vs `GOOB-r3-base-804e53e` (main `804e53e` with the production Gen-3 net, bench 726,116):
+fastchess pentanomial, 5+0.05, 1 thread, 32 MB hash, 10 concurrent games, `tools/book_test.epd`, 20 min.
+Pentanomial (0-2) `[25, 170, 223, 78, 7]`, nElo −75.66 ± 21.47, LOS 0.00%. Log: `tools/sprt/logs/r3-scratch-A.log`.
+
+* **The accepted net cannot be reproduced from zero inside this budget.** 3B samples on 240M positions
+  reach a higher error on every validation set and play about 44 Elo weaker. Per section 14 this is the
+  "clearly worse" outcome: the strength depends on the warm-start history (the chain has seen far more
+  samples than any single run).
+* **Consequence for the next round:** do not build new nets from scratch at this budget, and do not test
+  architecture changes (wider L1, hidden layers) as from-scratch runs: they would start about 44 Elo behind.
+  Architecture changes need an exact warm start from the accepted net, or a much larger from-scratch budget
+  tested first on the current architecture.
+* **Not accepted.** The Gen-3 net stays the production net.
