@@ -1,6 +1,7 @@
 // src/nnue_loader.c
 // NNUE inference implementation (see nnue_loader.h for architecture and licensing details)
 
+#define INCBIN_SILENCE_BITCODE_WARNING
 #include "incbin.h"
 
 #ifndef EVALFILE

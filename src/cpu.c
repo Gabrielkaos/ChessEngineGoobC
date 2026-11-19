@@ -8,7 +8,7 @@ const char *g_cpu_tier_name = "x86-64";
 const char *g_cpu_simd_name = "Scalar / SSE2";
 
 static int has_slow_bmi2(void) {
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && (defined(__GNUC__) || defined(__clang__))
     return __builtin_cpu_is("amd")
         && (__builtin_cpu_is("bdver4") || __builtin_cpu_is("znver1") || __builtin_cpu_is("znver2"));
 #else
@@ -17,7 +17,7 @@ static int has_slow_bmi2(void) {
 }
 
 void init_cpu_features(void) {
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && (defined(__GNUC__) || defined(__clang__))
     __builtin_cpu_init();
 
     int sse42   = __builtin_cpu_supports("sse4.2");
@@ -90,6 +90,12 @@ void init_cpu_features(void) {
 #endif
 #endif
 
+#elif defined(__aarch64__) || defined(__ARM_NEON)
+    g_cpu_tier      = ARCH_BASELINE;
+    g_has_popcnt    = 1;
+    g_use_pext      = 0;
+    g_cpu_tier_name = "ARM64";
+    g_cpu_simd_name = "Scalar / NEON";
 #else
     g_cpu_tier      = ARCH_BASELINE;
     g_has_popcnt    = 0;

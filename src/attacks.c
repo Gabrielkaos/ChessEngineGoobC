@@ -3,16 +3,14 @@
 #include "attacks.h"
 #include "validate.h"
 
-#ifdef USE_PEXT
+#if defined(USE_PEXT) && defined(__BMI2__)
 #include <immintrin.h>
+#define PEXT_ATTACKS 1
 #endif
 
 //BMI2 pext index: identical table layout/sizes as the magic index, so the
 //same packed tables are filled at init and looked up with one instruction.
 //Guarded on __BMI2__ so -DUSE_PEXT without BMI2 codegen falls back safely.
-#if defined(USE_PEXT) && defined(__BMI2__)
-#define PEXT_ATTACKS 1
-#endif
 
 //CMK attacks.c
 
@@ -401,6 +399,7 @@ U64 set_occupancy(int index,int bits_in_mask,U64 attack_mask){
 
 
 
+#if defined(UNIVERSAL_BUILD) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
 static inline uint64_t do_pext(uint64_t val, uint64_t mask) {
 #if defined(__BMI2__)
     return _pext_u64(val, mask);
@@ -410,6 +409,7 @@ static inline uint64_t do_pext(uint64_t val, uint64_t mask) {
     return res;
 #endif
 }
+#endif
 
 void initSliderPiecesAttacks(int bishop){
     int sq,index;
@@ -439,7 +439,7 @@ void initSliderPiecesAttacks(int bishop){
             if(bishop){
 #if defined(PEXT_ATTACKS)
                 int magic_index=(int)_pext_u64(occupancy,attack_mask);
-#elif defined(UNIVERSAL_BUILD)
+#elif defined(UNIVERSAL_BUILD) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
                 int magic_index = g_use_pext ? (int)do_pext(occupancy, attack_mask)
                                              : (int)((occupancy*bishop_magic_numbers[sq]) >> (64-bishop_relevant_bits[sq]));
 #else
@@ -451,7 +451,7 @@ void initSliderPiecesAttacks(int bishop){
             else{
 #if defined(PEXT_ATTACKS)
                 int magic_index=(int)_pext_u64(occupancy,attack_mask);
-#elif defined(UNIVERSAL_BUILD)
+#elif defined(UNIVERSAL_BUILD) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
                 int magic_index = g_use_pext ? (int)do_pext(occupancy, attack_mask)
                                              : (int)((occupancy*rook_magic_numbers[sq]) >> (64-rook_relevant_bits[sq]));
 #else

@@ -125,7 +125,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 * **[`uci.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.h) / [`uci.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/uci.c):** Universal Chess Interface loop. Parses commands (`position`, `go`, `setoption`, `ucinewgame`, `stop`, `ponderhit`, `evaluate`, `perft`, `trace`), formats search output, and computes Win-Draw-Loss (WDL) probabilities via a 3rd-order polynomial fit.
 * **[`trace.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.h) / [`trace.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/trace.c):** Comprehensive telemetry system tracking over 50 search counters (AB/QS nodes, TT hits/cutoffs, RFP, NMP, IIR, ProbCut, LMP, LMR, Surprise-SRD, move ordering cutoff stages, and NNUE accumulator refreshes `nnue_refresh_mg` / `nnue_refresh_eg`). Formats outputs in plain text and JSON.
 * **[`perft.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.h) / [`perft.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/perft.c):** Standard and bulk move generation testing (`perft`, `uperft`, and `perfttest` test suites).
-* **[`cpu.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.h) / [`cpu.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.c):** Runtime CPU instruction set detection (POPCNT, BMI2, AVX2, AVX-512) for dynamic dispatch.
+* **[`cpu.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.h) / [`cpu.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/cpu.c):** Runtime CPU instruction set detection (POPCNT, BMI2, AVX2, AVX-512 on x86-64; hardware popcount and NEON/scalar reporting on ARM64).
 * **[`thread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/thread.h), [`tinycthread.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.h) / [`tinycthread.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/tinycthread.c):** Cross-platform C11 threads emulation on POSIX `pthread` and Windows Win32 thread APIs.
 * **[`recog.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h):** Draw recognition used by the search ([`recog_draw()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L108) and Cuckoo 1-move cycle detection [`upcoming_repetition()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/recog.h#L17)): fifty-move rule (when `useFiftyMoveRule` is on), Stockfish-style repetition (a 2-fold inside the search tree or any 3-fold), insufficient material (bare kings, a lone minor, two knights) and the wrong-coloured-bishop / rook-pawn fortress once the defending king reaches the promotion corner.
 * **[`io.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.h) / [`io.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/io.c):** Formatting and parsing for moves, squares, and FEN strings.
@@ -139,6 +139,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ## Subdirectories & Assets
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
+* **`bin/mac/`:** Output directory for compiled macOS binaries (e.g., `GOOB-2.2-BETA-apple-silicon`, `GOOB-2.2-BETA-native`).
 * **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
   * `quantised.bin`: Production network (`GOOBNNUE` v2, 6,326,336 bytes, horizontal king mirroring `NNUE_MIRROR=1` + 4 factorized king buckets `NNUE_KING_BUCKETS=4`), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime. Since 2026-11-10 this is the NNUE Round 2 Gen-3 net (`tools/nnue_project/checkpoints/exp_r2_gen3/A`, sha256 `7f18a0fb…`, +6.9 ± 4.6 Elo over the previous net; `bench.py 12` 887,490 nodes).
   * `quantised_d1_50m_old.bin`: Previous production network until 2026-11-10 (`exp_datagen_d1_50m`, same architecture, 6,326,336 bytes, read-only; `bench.py 12` 1,083,787 nodes).
@@ -156,12 +157,14 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 
 | Target | Description | Recommended Usage |
 | :--- | :--- | :--- |
-| `make universal` | Multi-ISA binary with runtime CPU dispatch (SSE4.2 $\to$ AVX2 $\to$ AVX-512) | **Default distribution binary** |
-| `make native` | Optimized specifically for the host CPU using `-march=native` | Local performance & benchmarking |
+| `make universal` | Multi-ISA binary with runtime CPU dispatch (SSE4.2 $\to$ AVX2 $\to$ AVX-512) | **Default distribution binary (Linux / Windows)** |
+| `make mac` / `make apple-silicon` | Apple Silicon `arm64` build (`-arch arm64 -mcpu=apple-m1`, `-flto`, `-DPLATFORM_MAC`) | **Default distribution binary (macOS M1–M5+)** |
+| `make native` | Optimized specifically for the host CPU (`-mcpu=native` on Apple Silicon, `-march=native` on x86-64) | Local performance & benchmarking (e.g. M5 Mac) |
 | `make x86-64-v4` | Requires AVX-512 (F, BW, VL, DQ) | High-end server / modern Intel & AMD Zen 4/5 |
 | `make x86-64-v3` | Requires AVX2 + BMI2 (PEXT enabled) | Haswell / Zen 1 and newer |
 | `make x86-64-v2` | Requires SSE4.2 + POPCNT | Nehalem and newer |
 | `make x86-64` | Baseline 64-bit x86 (SSE2) | Legacy compatibility fallback |
+| `make pgo` | Profile-Guided Optimization for `native` (GCC PGO on Linux/Windows, Clang `llvm-profdata` on macOS) | Maximum local NPS |
 | `make trace` | Builds `native` with `-DTRACE` for search telemetry | Use with `tools/trace_search.py` |
 | `make tune` | Builds `native` with `-DTUNE` (`GOOB-2.2-BETA-native-tune`): `tune.h` constants become UCI options | SPSA tuning with `tools/spsa/spsa.py` |
 | `make datagen` | Builds `tools/datagen` linked against native engine objects | Native self-play data generation (`tools/run_datagen.py`) |
@@ -170,6 +173,12 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 ```bash
 # Build native binary for local testing (default: NNUE_MIRROR=1, NNUE_KING_BUCKETS=4):
 make -C src native
+
+# Build portable Apple Silicon macOS binary (outputs src/bin/mac/GOOB-2.2-BETA-apple-silicon):
+make mac
+
+# Build host-tuned macOS binary (e.g. Apple M5, outputs src/bin/mac/GOOB-2.2-BETA-native):
+make native
 
 # Build native binary with a 1-bucket mirrored network:
 make -C src native NNUE_MIRROR=1 NNUE_KING_BUCKETS=1 EVALFILE=weights/quantised_mirror_1bkt_old.bin

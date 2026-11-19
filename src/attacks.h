@@ -33,7 +33,7 @@ INLINE U64 get_bishop_attacks(int square, U64 occupancy){
     ASSERT(square >= 0 && square < BOARD_NUMS_SQ);
 #if defined(PEXT_ATTACKS)
     return bishop_attacks_table[bishop_offset[square] + _pext_u64(occupancy, bishop_masks[square])];
-#elif defined(UNIVERSAL_BUILD)
+#elif defined(UNIVERSAL_BUILD) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     if (__builtin_expect(g_use_pext, 1)) {
         uint64_t idx;
         __asm__ ("pext %2, %1, %0" : "=r"(idx) : "r"(occupancy), "r"(bishop_masks[square]));
@@ -56,7 +56,7 @@ INLINE U64 get_rook_attacks(int square, U64 occupancy){
     ASSERT(square >= 0 && square < BOARD_NUMS_SQ);
 #if defined(PEXT_ATTACKS)
     return rook_attacks_table[rook_offset[square] + _pext_u64(occupancy, rook_masks[square])];
-#elif defined(UNIVERSAL_BUILD)
+#elif defined(UNIVERSAL_BUILD) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     if (__builtin_expect(g_use_pext, 1)) {
         uint64_t idx;
         __asm__ ("pext %2, %1, %0" : "=r"(idx) : "r"(occupancy), "r"(rook_masks[square]));

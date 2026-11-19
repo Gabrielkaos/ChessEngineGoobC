@@ -311,19 +311,20 @@ enum {
 extern int g_has_popcnt;
 
 static inline int count_bits(uint64_t x) {
-#if defined(__POPCNT__)
+#if defined(__POPCNT__) || defined(__aarch64__) || defined(__ARM_NEON)
     return __builtin_popcountll(x);
 #else
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && (defined(__GNUC__) || defined(__clang__))
     if (__builtin_expect(g_has_popcnt, 1)) {
         uint64_t res;
         __asm__ ("popcnt %1, %0" : "=r"(res) : "r"(x));
         return (int)res;
-    } else {
-        x = x - ((x >> 1) & 0x5555555555555555ULL);
-        x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
-        x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
-        return (int)((x * 0x0101010101010101ULL) >> 56);
     }
+#endif
+    x = x - ((x >> 1) & 0x5555555555555555ULL);
+    x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+    x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+    return (int)((x * 0x0101010101010101ULL) >> 56);
 #endif
 }
 

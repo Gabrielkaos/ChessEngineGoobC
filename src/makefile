@@ -17,26 +17,33 @@
 #            bin/windows/GOOB-2.2-BETA-x86-64-v4.exe
 #            bin/windows/GOOB-2.2-BETA-native.exe
 #
+#   macOS  : bin/mac/GOOB-2.2-BETA-apple-silicon   (Apple Silicon arm64, M1-M5+)
+#            bin/mac/GOOB-2.2-BETA-native          (host-tuned, e.g. M5)
+#
 # ISA tier summary
 # -----------------------------------------------------------------------------
-#  universal: Single binary containing AVX-512, AVX2, BMI2, SSE4.2, and baseline
-#             code paths; autodetects host CPU hardware at runtime (Stockfish style).
-#  x86-64   : baseline SSE2 – widest compatibility, magic slider fallback.
-#  x86-64-v2: + SSE4.2 / POPCNT.
-#  x86-64-v3: + AVX2 / BMI2.  attacks.c switches to PEXT.
-#  x86-64-v4: + AVX-512 (BW, F, VL, DQ).
-#  native   : tuned to the host CPU; for local benchmarking.
-#  tune     : native build with the search constants of tune.h exposed as UCI
-#             options, for SPSA tuning (bin/linux/GOOB-2.2-BETA-native-tune).
+#  universal    : Single binary containing AVX-512, AVX2, BMI2, SSE4.2, and
+#                 baseline code paths; autodetects host CPU hardware at runtime
+#                 (Stockfish style).
+#  x86-64       : baseline SSE2 – widest compatibility, magic slider fallback.
+#  x86-64-v2    : + SSE4.2 / POPCNT.
+#  x86-64-v3    : + AVX2 / BMI2.  attacks.c switches to PEXT.
+#  x86-64-v4    : + AVX-512 (BW, F, VL, DQ).
+#  apple-silicon: Apple Silicon arm64 (-arch arm64 -mcpu=apple-m1), runs on all
+#                 M-series Macs (M1-M5+) with hardware popcount & auto-vectorized NEON.
+#  native       : tuned to the host CPU (-mcpu=native on Apple Silicon,
+#                 -march=native on x86-64); for local benchmarking.
+#  tune         : native build with the search constants of tune.h exposed as UCI
+#                 options, for SPSA tuning (bin/<os>/GOOB-2.2-BETA-native-tune).
 #
 # Key design decisions
 # -----------------------------------------------------------------------------
 #  * Each tier gets its own obj subdirectory so parallel builds never clobber
-#    each other (obj/x86-64, obj/x86-64-v2, …).
-#  * USE_PEXT is passed for all tiers.  attacks.c gates actual PEXT use on
+#    each other (obj/x86-64, obj/x86-64-v2, obj/apple-silicon, …).
+#  * USE_PEXT is passed for x86 tiers.  attacks.c gates actual PEXT use on
 #    __BMI2__ which is only set when -march implies BMI2 (v3 / native).
-#    On x86-64 / v2 it silently falls back to classic magics – no extra flag.
-#  * On Linux we link with -pthread (tinycthread wraps pthreads).
+#    On x86-64 / v2 / ARM64 it silently falls back to classic magics.
+#  * On Linux/macOS we link with -pthread (tinycthread wraps pthreads).
 #    On Windows we link without -pthread (tinycthread uses Win32 API directly),
 #    with -static (no missing DLL dependencies), and with a 16MB stack.
 #  * tbprobe.c detects _WIN32 at compile time for its own platform paths.
@@ -45,15 +52,24 @@
 # ---------------------------------------------------------------------------
 # Target platform detection
 # ---------------------------------------------------------------------------
+UNAME_S := $(shell uname -s 2>/dev/null)
+UNAME_M := $(shell uname -m 2>/dev/null)
+
 TARGET ?=
 ifeq ($(TARGET),)
     ifneq ($(findstring mingw,$(CC)),)
         TARGET := windows
     else ifeq ($(OS),Windows_NT)
         TARGET := windows
+    else ifeq ($(UNAME_S),Darwin)
+        TARGET := mac
     else
         TARGET := linux
     endif
+else ifeq ($(TARGET),macos)
+    TARGET := mac
+else ifeq ($(TARGET),darwin)
+    TARGET := mac
 endif
 
 # ---------------------------------------------------------------------------
@@ -91,7 +107,18 @@ ifeq ($(TARGET),windows)
     THREAD_FLAGS   :=
     PLATFORM_FLAGS := -DPLATFORM_WINDOWS
     OUTDIR         := bin/windows
-    LDFLAGS        := -lm -flto=auto -static -Wl,--stack,16777216
+    LTO_FLAG       := -flto=auto
+    LDFLAGS        := -lm $(LTO_FLAG) -static -Wl,--stack,16777216
+else ifeq ($(TARGET),mac)
+    ifeq ($(origin CC),default)
+        CC := cc
+    endif
+    EXE            :=
+    THREAD_FLAGS   := -pthread
+    PLATFORM_FLAGS := -DPLATFORM_MAC
+    OUTDIR         := bin/mac
+    LTO_FLAG       := -flto
+    LDFLAGS        := -lm $(LTO_FLAG)
 else
     ifeq ($(origin CC),default)
         CC := cc
@@ -100,7 +127,8 @@ else
     THREAD_FLAGS   := -pthread
     PLATFORM_FLAGS := -DPLATFORM_LINUX
     OUTDIR         := bin/linux
-    LDFLAGS        := -lm -flto=auto
+    LTO_FLAG       := -flto=auto
+    LDFLAGS        := -lm $(LTO_FLAG)
 endif
 
 # ---------------------------------------------------------------------------
@@ -117,8 +145,8 @@ NNUE_KING_BUCKETS ?= 4
 # ---------------------------------------------------------------------------
 # -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
 #               path; the inner #ifdef __BMI2__ guard makes it a no-op on
-#               CPUs that do not have BMI2.
-BASE_CFLAGS := -O3 -flto=auto $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\" -DNNUE_MIRROR=$(NNUE_MIRROR) -DNNUE_KING_BUCKETS=$(NNUE_KING_BUCKETS)
+#               CPUs that do not have BMI2 (including non-x86 targets).
+BASE_CFLAGS := -O3 $(LTO_FLAG) $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\" -DNNUE_MIRROR=$(NNUE_MIRROR) -DNNUE_KING_BUCKETS=$(NNUE_KING_BUCKETS)
 
 # Trace search heuristic tracking
 TRACE ?= 0
@@ -140,14 +168,23 @@ ifeq ($(TUNE),1)
 endif
 
 # ---------------------------------------------------------------------------
-# Per-ISA march flags
+# Per-ISA march / mcpu flags
 # ---------------------------------------------------------------------------
-MARCH_universal := -march=x86-64 -DUNIVERSAL_BUILD
-MARCH_x86-64    := -march=x86-64
-MARCH_x86-64-v2 := -march=x86-64-v2
-MARCH_x86-64-v3 := -march=x86-64-v3
-MARCH_x86-64-v4 := -march=x86-64-v4
-MARCH_native    := -march=native
+MARCH_universal     := -march=x86-64 -DUNIVERSAL_BUILD
+MARCH_x86-64        := -march=x86-64
+MARCH_x86-64-v2     := -march=x86-64-v2
+MARCH_x86-64-v3     := -march=x86-64-v3
+MARCH_x86-64-v4     := -march=x86-64-v4
+MARCH_apple-silicon := -arch arm64 -mcpu=apple-m1
+ifeq ($(TARGET),mac)
+    ifeq ($(UNAME_M),arm64)
+        MARCH_native := -mcpu=native
+    else
+        MARCH_native := -march=native
+    endif
+else
+    MARCH_native := -march=native
+endif
 
 # ---------------------------------------------------------------------------
 # Build rule generator macro
@@ -186,7 +223,11 @@ $(1): $$(BIN_$(1))
 endef
 
 # Expand rules for every architecture tier
-ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
+ifeq ($(TARGET),mac)
+    ARCHS := apple-silicon native
+else
+    ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
+endif
 $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 
 .PHONY: trace
@@ -203,21 +244,38 @@ datagen: native
 	@echo "  LD  ../tools/datagen"
 
 # ---------------------------------------------------------------------------
-# Default target – build universal binary (or all with 'make all')
+# Default target – build universal (x86-64) or apple-silicon (macOS)
 # ---------------------------------------------------------------------------
 .PHONY: all universal-default
-.DEFAULT_GOAL := universal
+ifeq ($(TARGET),mac)
+    ifeq ($(UNAME_M),arm64)
+        .DEFAULT_GOAL := apple-silicon
+    else
+        .DEFAULT_GOAL := native
+    endif
+else
+    .DEFAULT_GOAL := universal
+endif
 all: $(ALL_BINS)
 
 # ---------------------------------------------------------------------------
 # OS explicit targets
 # ---------------------------------------------------------------------------
-.PHONY: windows win linux
+.PHONY: windows win linux mac macos
 windows win:
 	$(MAKE) TARGET=windows universal
 
 linux:
 	$(MAKE) TARGET=linux universal
+
+mac macos:
+	$(MAKE) TARGET=mac apple-silicon
+
+ifneq ($(TARGET),mac)
+.PHONY: apple-silicon
+apple-silicon:
+	$(MAKE) TARGET=mac apple-silicon
+endif
 
 # ---------------------------------------------------------------------------
 # Output directory
@@ -233,6 +291,7 @@ clean:
 	@$(call RMDIR_CMD,obj)
 	@$(call RMDIR_CMD,bin/windows)
 	@$(call RMDIR_CMD,bin/linux)
+	@$(call RMDIR_CMD,bin/mac)
 	@$(call RM_CMD,.depend)
 
 # ---------------------------------------------------------------------------
@@ -245,12 +304,20 @@ rebuild: clean all
 # Profile-Guided Optimization (PGO) — native tier only
 # Three-phase build: instrument → profile → optimise.  Yields ~5-10% NPS.
 # ---------------------------------------------------------------------------
-PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate
-PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use -fno-peel-loops -fno-tracer
 PGO_OBJS_GEN    := $(patsubst %.c, obj/pgo-gen/%.o, $(SRCS))
 PGO_OBJS_USE    := $(patsubst %.c, obj/pgo-use/%.o, $(SRCS))
 PGO_BIN_GEN     := $(OUTDIR)/$(NAME)-pgo-gen$(EXE)
 PGO_BIN         := $(OUTDIR)/$(NAME)-native$(EXE)
+
+ifeq ($(TARGET),mac)
+    PGO_PROFRAW     := obj/pgo-gen/default.profraw
+    PGO_PROFDATA    := obj/pgo-gen/default.profdata
+    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-generate
+    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-use=$(PGO_PROFDATA)
+else
+    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate
+    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use -fno-peel-loops -fno-tracer
+endif
 
 .PHONY: pgo
 pgo:
@@ -260,7 +327,12 @@ pgo:
 	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo-gen/$(basename $(src)).o;)
 	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS_GEN) -o $(PGO_BIN_GEN) $(LDFLAGS)
 	@echo "=== PGO Phase 2: collecting profile ==="
+ifeq ($(TARGET),mac)
+	LLVM_PROFILE_FILE=$(PGO_PROFRAW) $(PGO_BIN_GEN) bench || true
+	xcrun llvm-profdata merge -output=$(PGO_PROFDATA) $(PGO_PROFRAW)
+else
 	$(PGO_BIN_GEN) bench || true
+endif
 	@echo "=== PGO Phase 3: optimised build ==="
 	@$(call MKDIR_CMD,obj/pgo-use)
 	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo-use/$(basename $(src)).o;)
