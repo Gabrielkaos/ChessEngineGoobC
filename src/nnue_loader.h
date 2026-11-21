@@ -166,6 +166,14 @@ static inline int nnue_king_needs_refresh(int side, int from, int to) {
 #endif
 #endif
 
+/* ARM64 (Apple Silicon, aarch64 Linux): hand-written NEON output layer only.
+ * The accumulator kernels stay scalar; clang/GCC already auto-vectorize those
+ * int16 add/sub loops to the same code a NEON version would produce. */
+#if (defined(__aarch64__) || defined(_M_ARM64)) && defined(__ARM_NEON) && !defined(NNUE_NO_SIMD)
+#include <arm_neon.h>
+#define NNUE_USE_NEON 1
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define NNUE_UNROLL _Pragma("GCC unroll 16")
 #else
@@ -626,6 +634,54 @@ static inline int32_t nnue_forward_exact_avx2(const int16_t *us, const int16_t *
 }
 #endif /* NNUE_HAVE_AVX2_DISPATCH */
 
+/* ── NEON forward pass (ARM64) ────────────────────────────────────────────
+ * Same trick as the AVX2/AVX-512 fast kernels: (w * v) is formed in int16
+ * (fits because |w| <= NNUE_FAST_OUT_W_LIMIT and v in [0, QA]), then a
+ * widening multiply-accumulate by v gives w * v^2 in int32. Results are
+ * bit-identical to nnue_forward_scalar. */
+#if defined(NNUE_USE_NEON)
+static inline int32_t nnue_forward_neon(const int16_t *us, const int16_t *them, int bucket) {
+    const int16x8_t zero = vdupq_n_s16(0);
+    const int16x8_t qa = vdupq_n_s16(NNUE_QA);
+    const int16_t *w_us = g_weights->out_w[bucket];
+    const int16_t *w_them = g_weights->out_w[bucket] + NNUE_HIDDEN_SIZE;
+    int32x4_t s0 = vdupq_n_s32(0), s1 = s0, s2 = s0, s3 = s0;
+
+    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
+        int16x8_t u = vminq_s16(vmaxq_s16(vld1q_s16(us + i), zero), qa);
+        int16x8_t t = vminq_s16(vmaxq_s16(vld1q_s16(them + i), zero), qa);
+        int16x8_t uw = vmulq_s16(u, vld1q_s16(w_us + i));
+        int16x8_t tw = vmulq_s16(t, vld1q_s16(w_them + i));
+        s0 = vmlal_s16(s0, vget_low_s16(uw), vget_low_s16(u));
+        s1 = vmlal_high_s16(s1, uw, u);
+        s2 = vmlal_s16(s2, vget_low_s16(tw), vget_low_s16(t));
+        s3 = vmlal_high_s16(s3, tw, t);
+    }
+    return nnue_finish(vaddvq_s32(vaddq_s32(vaddq_s32(s0, s1), vaddq_s32(s2, s3))), bucket);
+}
+
+/* Exact variant for nets with |out_w| > 128: v^2 (<= 65025) is widened to
+ * 32 bits and multiplied by the sign-extended weight. */
+static inline int32_t nnue_forward_exact_neon(const int16_t *us, const int16_t *them, int bucket) {
+    const int16x8_t zero = vdupq_n_s16(0);
+    const int16x8_t qa = vdupq_n_s16(NNUE_QA);
+    const int16_t *acc[2] = { us, them };
+    int32x4_t s0 = vdupq_n_s32(0), s1 = s0;
+    for (int side = 0; side < 2; side++) {
+        const int16_t *a = acc[side];
+        const int16_t *w = g_weights->out_w[bucket] + side * NNUE_HIDDEN_SIZE;
+        for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
+            uint16x8_t c = vreinterpretq_u16_s16(vminq_s16(vmaxq_s16(vld1q_s16(a + i), zero), qa));
+            uint16x8_t sq = vmulq_u16(c, c);              /* v^2 as unsigned 16-bit */
+            int16x8_t wv = vld1q_s16(w + i);
+            s0 = vmlaq_s32(s0, vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(sq))), vmovl_s16(vget_low_s16(wv)));
+            s1 = vmlaq_s32(s1, vreinterpretq_s32_u32(vmovl_high_u16(sq)), vmovl_high_s16(wv));
+        }
+    }
+    return nnue_finish(vaddvq_s32(vaddq_s32(s0, s1)), bucket);
+}
+#endif /* NNUE_USE_NEON */
+
 /* ── Scalar (exact reference; compilers auto-vectorize these) ────────────── */
 static inline void nnue_acc_apply_scalar(int16_t *dst, const int16_t *src,
                                          const int16_t *const *adds, int n_add,
@@ -736,6 +792,9 @@ static inline int32_t nnue_forward(const int16_t *us, const int16_t *them, int b
 #elif defined(NNUE_USE_AVX512)
     return g_out_needs_exact ? nnue_forward_exact_avx512(us, them, bucket)
                              : nnue_forward_avx512(us, them, bucket);
+#elif defined(NNUE_USE_NEON)
+    return g_out_needs_exact ? nnue_forward_exact_neon(us, them, bucket)
+                             : nnue_forward_neon(us, them, bucket);
 #else
 #if defined(NNUE_HAVE_AVX2_DISPATCH)
     if (cpu_supports_avx2())

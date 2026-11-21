@@ -95,7 +95,7 @@ void init_cpu_features(void) {
     g_has_popcnt    = 1;
     g_use_pext      = 0;
     g_cpu_tier_name = "ARM64";
-    g_cpu_simd_name = "Scalar / NEON";
+    g_cpu_simd_name = "NEON (128-bit)";
 #else
     g_cpu_tier      = ARCH_BASELINE;
     g_has_popcnt    = 0;

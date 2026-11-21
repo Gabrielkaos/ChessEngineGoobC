@@ -720,7 +720,24 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 
 ---
 
-## 32. Summary of All Merged Features on `main`
+## 32. Round 30: NEON Output Layer for ARM64 / Apple Silicon (November 21, 2026)
+
+Tested against `main` at `5967aaa` (baseline binary `GOOB-base-5967aaa`, `make apple-silicon`, Apple clang 21, same net).
+
+* **Change (`src/nnue_loader.h`):** ARM64 builds previously ran the scalar NNUE kernels and relied on auto-vectorization. Profiling a 1-thread search on Apple Silicon showed NNUE at ~46% of search time (`nnue_eval` ~39%, `nnue_refresh_perspective` ~5%, `nnue_update_accumulator_step` ~2%). The int16 accumulator add/sub loops already auto-vectorize to the same code hand-written NEON gives (microbenchmark 30.1 vs 29.5 ns), but the scalar output layer could not use the int16 SCReLU trick. Added `nnue_forward_neon()` (int16 `w * v` via `vmulq_s16`, then `vmlal_s16`/`vmlal_high_s16` widening multiply-accumulate by `v`, like the AVX2 kernel) and `nnue_forward_exact_neon()` for nets with `|out_w| > NNUE_FAST_OUT_W_LIMIT`; dispatch in `nnue_forward()` under `NNUE_USE_NEON`. `cpu.c` now reports `NEON (128-bit)`.
+* **Correctness:** Both NEON kernels bit-identical to `nnue_forward_scalar()` on the embedded net (all 8 buckets; 20,000 random accumulators in `[-2000, 2000]`, 20,000 in `[0, 255]`, 2,000 at int16 extremes) and the exact kernel on synthetic `|w| <= 1000` weights (20,000 iterations). `bench` 150,622 nodes and `bench.py 12` 726,116 nodes unchanged (node-identical search). Kiwipete `perft 4` = 4,085,603; mate-in-2 found with `score mate 2`.
+* **Speed:** `tools/sprt/compare_nps.py`, depth 16, 12 paired rounds, 1 thread, 64 MB hash: base 2,384,288 ± 53,885 vs NEON 2,512,874 ± 22,531 nps (**+5.39%**); swapped order: NEON 2,469,626 vs base 2,325,204 (**+6.2%** for NEON). Output-layer microbenchmark ~115–130 ns -> ~77 ns (~1.5x).
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **NEON output layer (`GOOB-neon-fwd`)** | **KEPT (node-identical speedup)** | 1280 | 298 - 265 - 717 | 51.29% | **+8.96 ± 9.95** | +1.54 | Stopped, inconclusive |
+
+* **Match:** non-regression SPRT `[-3.00, 1.00]` logistic, fastchess pentanomial, `6+0.06`, 1 thread, 32 MB hash, 8 concurrent games (Apple Silicon, 4P + 6E cores), `tools/book.epd`. Stopped by request at 1,280 games: `nElo +17.15 ± 19.03`, `LOS 96.13%`, `DrawRatio 51.72%`, `PairsRatio 1.21`, Pentanomial (0-2) `[5, 135, 331, 160, 9]`, `WL/DD Ratio 0.57`, `LLR +1.54 (52.4%)`. Log: `tools/sprt/logs/neon-fwd.log`.
+* **Verdict:** **KEPT without an SPRT verdict.** The SPRT was stopped at LLR +1.54 and is recorded as inconclusive. The change was kept on the grounds that the search is node-identical (same bench signatures, bit-identical evaluations) and only faster (+5.4–6.2% NPS), so it cannot change which move is played at a fixed node count. Affects ARM64 builds only; x86 builds are unchanged.
+
+---
+
+## 33. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -739,6 +756,7 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 15. `search/se-excluded`: Stockfish/Berserk/Ethereal-style `excludedMove` recursive singular verification search at `(depth - 1) / 2`, `is_shuffling()` piece-shuffle singular extension guard, `dextensions <= 6` extension cap, and quiet non-PV triple extensions (+1.6 Elo, bounded seldepth 28 vs 43 on shuffling endgames).
 16. `fix/see-xray-queens`: Include `pos->byTypeBB[QUEEN]` in `bishops` and `rooks` within `StaticExchangeEvaluation()` so x-ray queens behind pawns and sliders are discovered (+1.91 ± 3.87 Elo, `nonreg` H1 accepted, `9405cc1`).
 17. `fix/lmr-fixedpoint`: Fixed-point `1024`-scaled LMR (`LMRTable`, smooth history divisors, active `AllNodeScale`/`AllNodeBase` fixing dead `allNode` scaling) plus `lmr_fp1` 8-parameter SPSA retune (+1.46 ± 3.56 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 10,952 games).
+18. NEON output layer (ARM64 only): `nnue_forward_neon()` / `nnue_forward_exact_neon()`, bit-identical to the scalar kernel, +5.4–6.2% NPS on Apple Silicon (node-identical; SPRT stopped at LLR +1.54, inconclusive; see Section 32).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -747,7 +765,7 @@ Following promotion of the Gen-3 net and `fix/see-xray-queens` (Round 27), all 6
 
 ---
 
-## 33. Closing Instructions for GitHub PRs
+## 34. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
