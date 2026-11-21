@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
 """
 Tests for the Round 2 trainer and mixer flags (NNUE_IMPROVEMENT_PLAN_ROUND2.md 8.6).
 

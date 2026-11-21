@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
 """
 EPD Test Suite & Elo Estimator for GOOB Chess Engine
 Evaluates chess engine playing strength, tactical solving, and strategic understanding

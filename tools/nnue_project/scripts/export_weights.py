@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Export a trained Schoenemann NNUE checkpoint to a binary weight file (quantised.bin).
 Compatible with GOOB engine (48-byte GOOBNNUE v2 format trailer).

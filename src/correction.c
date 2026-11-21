@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 // correction.c
 //
 // Stockfish-style correction history: four tables blended into one

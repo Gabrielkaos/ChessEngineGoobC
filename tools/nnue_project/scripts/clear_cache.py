@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Repair a record cache written by the ORIGINAL prepare_data.py, without
 downloading the dataset again.

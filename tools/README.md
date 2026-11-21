@@ -19,6 +19,7 @@ This directory contains the complete offline training, data generation, tuning, 
    * [Workflow H: Tune Search Constants with SPSA](#workflow-h-tune-search-constants-with-spsa)
    * [Workflow I: Estimate Engine Elo Strength via EPD Test Suites](#workflow-i-estimate-engine-elo-strength-via-epd-test-suites)
 5. [Data Formats & Specifications](#data-formats--specifications)
+6. [License Headers](#license-headers)
 
 ---
 
@@ -480,3 +481,16 @@ Total size: **1,607,744 bytes** (~1.53 MB):
 | `1,574,912..1,607,679` | Output Weights (`output_weights`) | `int16[8 * 2048]` | $\times 64$ (`QB`) |
 | `1,607,680..1,607,695` | Output Biases (`output_biases`) | `int16[8]` | $\times 16320$ (`QA * QB`) |
 | `1,607,696..1,607,743` | Architecture Trailer | `bytes[48]` | `GOOBNNUE` v2 trailer (`<8sIIIII20s`: magic `"GOOBNNUE"`, version `2`, flags `bit 0 = mirror`, `king_buckets`, `hidden_size`, `output_buckets`, 20 zero bytes) or legacy `b"bullet" * 8` |
+
+---
+
+## License Headers
+
+Every GOOB-authored script and C source in `tools/` (`*.py`, `*.sh`, `*.c`) starts with a two-line [SPDX](https://spdx.org/licenses/) header, placed after the shebang line where there is one:
+
+```python
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+```
+
+New tool scripts should start with the same header. The project licence is GPLv3 (see [`LICENSE`](../LICENSE)); see the "License Headers" section of [`src/README.md`](../src/README.md) for how third-party and adapted engine files are handled.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
 
 #include "stdio.h"
 #include <string.h>

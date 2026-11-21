@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 //Runtime-tunable search parameters, only compiled into -DTUNE builds.
 //See tune.h for the parameter table and tools/spsa/README.md for the tuner.
 #ifdef TUNE

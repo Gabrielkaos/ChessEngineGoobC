@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
 # One-command engine match: NEW engine vs BASE engine, SPRT or fixed length.
 #
 #   tools/sprt/run_sprt.sh <new-binary> <base-binary> [name] [tc] [concurrency]

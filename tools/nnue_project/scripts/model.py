@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 NNUE Architecture: Schoenemann-0.5.0 / Bullet style + Horizontal King Mirroring + Factorized King Buckets.
 Topology: (768xK -> 1024)x2 -> 1x8  (K = 1 or 4 king buckets)

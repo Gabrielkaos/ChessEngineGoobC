@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
 """
 Read-only statistics for 68-byte NNUE record files (Round 2, Phase 1).
 

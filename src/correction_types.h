@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 #ifndef CORRECTION_TYPES_H
 #define CORRECTION_TYPES_H
 

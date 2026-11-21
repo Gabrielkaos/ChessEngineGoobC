@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Stream Lichess/chess-position-evaluations from Hugging Face and write a
 compact fixed-record binary cache for fast NNUE training.

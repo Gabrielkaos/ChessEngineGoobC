@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later AND AGPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 /*
  * nnue_loader.h / nnue_loader.c
  * ==============================

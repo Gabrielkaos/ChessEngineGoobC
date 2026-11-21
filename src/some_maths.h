@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
 
 #ifndef SOME_MATH_H
 #define SOME_MATH_H

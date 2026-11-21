@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Prepare binary NNUE training dataset (train.bin / val.bin) directly from a local
 Lichess evaluations JSONL file (e.g., lichess_db_eval.jsonl.zst).

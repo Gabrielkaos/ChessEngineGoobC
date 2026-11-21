@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Append new positions to an existing NNUE training dataset (train.bin / val.bin),
 scraping off MultiPV lines and guaranteeing zero duplicate positions.

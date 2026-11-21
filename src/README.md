@@ -11,6 +11,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 4. [Compilation & Multi-ISA Build System](#compilation--multi-isa-build-system)
 5. [UCI Protocol & Supported Options](#uci-protocol--supported-options)
 6. [Design Details & Key Invariants](#design-details--key-invariants)
+7. [License Headers](#license-headers)
 
 ---
 
@@ -261,3 +262,18 @@ GOOB communicates using standard UCI protocol commands (`uci`, `isready`, `ucine
    Surprise-SRD, the TT research-margin cutoff, history extensions, the gives-check LMR reduction and capture futility pruning were removed after one-at-a-time removal SPRTs showed no measurable benefit (see `documentations/search_pr_evaluations_oct2026.md`, Round 17). [`SURPRISE_SRD.md`](../SURPRISE_SRD.md) is kept as a historical design note.
 5. **LMR-Scaled Futility Pruning:**
    Instead of checking futility pruning conditions against the raw root `depth`, GOOB checks against the predicted `lmrDepth` (the depth after Late Move Reductions). This safely applies aggressive futility margins to moves deep in the move list which are already heavily reduced, generating significant node savings in wide branches.
+
+---
+
+## License Headers
+
+GOOB is licensed under GPLv3 (see [`LICENSE`](../LICENSE)). Every GOOB-authored source file starts with a two-line [SPDX](https://spdx.org/licenses/) header:
+
+```c
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+```
+
+* `nnue_loader.c` / `nnue_loader.h` are tagged `GPL-3.0-or-later AND AGPL-3.0-or-later`, because their inference code is adapted from Schoenemann (AGPL-3.0-or-later). Their full attribution block follows the SPDX line.
+* Third-party files keep their original headers and are **not** relabelled: `incbin.h` (Dale Weiler), `tinycthread.c` / `tinycthread.h` (Marcus Geelnard, Evan Nemerson), and the Fathom files `tbprobe.c`, `tbprobe.h`, `tbconfig.h`, `tbchess.inc`, `stdendian.h`.
+* New GOOB source files should start with the same header. Code adapted from another engine should also credit its source and license, as `search.h` does for Ethereal.

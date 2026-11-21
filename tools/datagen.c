@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 /*
  * Native C Self-Play Dataset Generator for GOOB NNUE Training (Phase 2)
  *

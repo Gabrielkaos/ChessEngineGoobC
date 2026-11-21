@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
 """SPSA tuner for GOOB's search constants (src/tune.h).
 
 Each iteration perturbs every parameter by +-c_k in a random direction, plays a

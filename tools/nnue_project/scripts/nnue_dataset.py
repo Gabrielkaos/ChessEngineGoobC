@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 PyTorch Dataset over the binary record cache (train.bin, val.bin).
 Compatible with 68-byte records:

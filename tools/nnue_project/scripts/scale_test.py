@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-2026 Gabriel Montes
+
 """
 Quantization headroom of a checkpoint: the largest QA / QB that would still
 fit the engine's integer inference, next to the QA / QB actually used.

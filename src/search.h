@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2022-2026 Gabriel Montes
+
 #ifndef SEARCH_H
 #define SEARCH_H
 #include "defs.h"
@@ -5,6 +8,7 @@
 //NOTE
 /*
     Some variables shamelessly copied from Ethereal
+    (Andrew Grant, GPL-3.0-or-later, https://github.com/AndyGrant/Ethereal)
 */
 #include "tune.h"
 
