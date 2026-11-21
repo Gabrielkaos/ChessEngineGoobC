@@ -7,6 +7,7 @@
 #include "bitboards.h"
 #include "init.h"
 #include "attacks.h"
+#include "some_maths.h"
 
 INLINE int is_repetition(const S_BOARD *pos) {
     return pos->st->repetition && pos->st->repetition < pos->ply;
