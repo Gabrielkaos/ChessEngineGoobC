@@ -40,9 +40,13 @@
 # -----------------------------------------------------------------------------
 #  * Each tier gets its own obj subdirectory so parallel builds never clobber
 #    each other (obj/x86-64, obj/x86-64-v2, obj/apple-silicon, …).
-#  * USE_PEXT is passed for x86 tiers.  attacks.c gates actual PEXT use on
-#    __BMI2__ which is only set when -march implies BMI2 (v3 / native).
-#    On x86-64 / v2 / ARM64 it silently falls back to classic magics.
+#  * USE_PEXT is passed for x86 tiers only (not apple-silicon, not native on an
+#    ARM64 host).  attacks.c gates actual PEXT use on __BMI2__ which is only
+#    set when -march implies BMI2 (v3 / native); x86-64 / v2 and ARM64 use
+#    classic magics.
+#  * macOS: Apple Silicon hosts get apple-silicon + native; Intel Macs get the
+#    full x86 tier list (default: universal) plus an apple-silicon cross-build.
+#    `-arch arm64` is only passed when $(CC) is clang (GCC rejects it).
 #  * On Linux/macOS we link with -pthread (tinycthread wraps pthreads).
 #    On Windows we link without -pthread (tinycthread uses Win32 API directly),
 #    with -static (no missing DLL dependencies), and with a 16MB stack.
@@ -131,6 +135,18 @@ else
     LDFLAGS        := -lm $(LTO_FLAG)
 endif
 
+# ARM64 host (Apple Silicon, aarch64 Linux): no x86 tiers on macOS and no
+# -DUSE_PEXT for the native tier.
+ifneq ($(filter arm64 aarch64,$(UNAME_M)),)
+    HOST_ARM64 := 1
+else
+    HOST_ARM64 := 0
+endif
+
+# Apple's -arch flag is only understood by clang (Apple clang reports itself as
+# "Apple clang", including when invoked as cc or gcc).
+CC_IS_CLANG := $(if $(findstring clang,$(shell $(CC) --version 2>/dev/null)),1,0)
+
 # ---------------------------------------------------------------------------
 # Source / name settings
 # ---------------------------------------------------------------------------
@@ -143,10 +159,7 @@ NNUE_KING_BUCKETS ?= 4
 # ---------------------------------------------------------------------------
 # Common compiler flags (ISA-neutral)
 # ---------------------------------------------------------------------------
-# -DUSE_PEXT  – tells attacks.c to include <immintrin.h> and define the PEXT
-#               path; the inner #ifdef __BMI2__ guard makes it a no-op on
-#               CPUs that do not have BMI2 (including non-x86 targets).
-BASE_CFLAGS := -O3 $(LTO_FLAG) $(THREAD_FLAGS) -DUSE_PEXT -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\" -DNNUE_MIRROR=$(NNUE_MIRROR) -DNNUE_KING_BUCKETS=$(NNUE_KING_BUCKETS)
+BASE_CFLAGS := -O3 $(LTO_FLAG) $(THREAD_FLAGS) -MMD -MP $(PLATFORM_FLAGS) -DEVALFILE=\"$(EVALFILE)\" -DNNUE_MIRROR=$(NNUE_MIRROR) -DNNUE_KING_BUCKETS=$(NNUE_KING_BUCKETS)
 
 # Trace search heuristic tracking
 TRACE ?= 0
@@ -170,20 +183,29 @@ endif
 # ---------------------------------------------------------------------------
 # Per-ISA march / mcpu flags
 # ---------------------------------------------------------------------------
-MARCH_universal     := -march=x86-64 -DUNIVERSAL_BUILD
-MARCH_x86-64        := -march=x86-64
-MARCH_x86-64-v2     := -march=x86-64-v2
-MARCH_x86-64-v3     := -march=x86-64-v3
-MARCH_x86-64-v4     := -march=x86-64-v4
-MARCH_apple-silicon := -arch arm64 -mcpu=apple-m1
-ifeq ($(TARGET),mac)
-    ifeq ($(UNAME_M),arm64)
+# -DUSE_PEXT  – x86 tiers only.  Tells attacks.c to include <immintrin.h> and
+#               define the PEXT path; the inner #ifdef __BMI2__ guard makes it
+#               a no-op on x86 CPUs without BMI2 (x86-64 / v2).
+PEXT_FLAG := -DUSE_PEXT
+
+MARCH_universal     := -march=x86-64 -DUNIVERSAL_BUILD $(PEXT_FLAG)
+MARCH_x86-64        := -march=x86-64 $(PEXT_FLAG)
+MARCH_x86-64-v2     := -march=x86-64-v2 $(PEXT_FLAG)
+MARCH_x86-64-v3     := -march=x86-64-v3 $(PEXT_FLAG)
+MARCH_x86-64-v4     := -march=x86-64-v4 $(PEXT_FLAG)
+ifeq ($(CC_IS_CLANG),1)
+    MARCH_apple-silicon := -arch arm64 -mcpu=apple-m1
+else
+    MARCH_apple-silicon := -mcpu=apple-m1
+endif
+ifeq ($(HOST_ARM64),1)
+    ifeq ($(TARGET),mac)
         MARCH_native := -mcpu=native
     else
         MARCH_native := -march=native
     endif
 else
-    MARCH_native := -march=native
+    MARCH_native := -march=native $(PEXT_FLAG)
 endif
 
 # ---------------------------------------------------------------------------
@@ -223,10 +245,18 @@ $(1): $$(BIN_$(1))
 endef
 
 # Expand rules for every architecture tier
+X86_ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
 ifeq ($(TARGET),mac)
-    ARCHS := apple-silicon native
+    ifeq ($(HOST_ARM64),1)
+        ARCHS       := apple-silicon native
+        MAC_DEFAULT := apple-silicon
+    else
+        # Intel Mac: full x86 tier list, plus an arm64 cross-build (clang only)
+        ARCHS       := $(X86_ARCHS) apple-silicon
+        MAC_DEFAULT := universal
+    endif
 else
-    ARCHS := universal x86-64 x86-64-v2 x86-64-v3 x86-64-v4 native
+    ARCHS := $(X86_ARCHS)
 endif
 $(foreach arch,$(ARCHS),$(eval $(call ISA_RULES,$(arch))))
 
@@ -248,11 +278,7 @@ datagen: native
 # ---------------------------------------------------------------------------
 .PHONY: all universal-default
 ifeq ($(TARGET),mac)
-    ifeq ($(UNAME_M),arm64)
-        .DEFAULT_GOAL := apple-silicon
-    else
-        .DEFAULT_GOAL := native
-    endif
+    .DEFAULT_GOAL := $(MAC_DEFAULT)
 else
     .DEFAULT_GOAL := universal
 endif
@@ -269,7 +295,7 @@ linux:
 	$(MAKE) TARGET=linux universal
 
 mac macos:
-	$(MAKE) TARGET=mac apple-silicon
+	$(MAKE) TARGET=mac
 
 ifneq ($(TARGET),mac)
 .PHONY: apple-silicon

@@ -158,8 +158,9 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 | Target | Description | Recommended Usage |
 | :--- | :--- | :--- |
 | `make universal` | Multi-ISA binary with runtime CPU dispatch (SSE4.2 $\to$ AVX2 $\to$ AVX-512) | **Default distribution binary (Linux / Windows)** |
-| `make mac` / `make apple-silicon` | Apple Silicon `arm64` build (`-arch arm64 -mcpu=apple-m1`, `-flto`, `-DPLATFORM_MAC`) | **Default distribution binary (macOS M1–M5+)** |
-| `make native` | Optimized specifically for the host CPU (`-mcpu=native` on Apple Silicon, `-march=native` on x86-64) | Local performance & benchmarking (e.g. M5 Mac) |
+| `make apple-silicon` | Apple Silicon `arm64` build (`-mcpu=apple-m1`, `-flto`, `-DPLATFORM_MAC`; `-arch arm64` added only when `$(CC)` is clang, since GCC rejects it; no `-DUSE_PEXT`) | **Default distribution binary (macOS M1–M5+)**; also a clang cross-build on Intel Macs |
+| `make mac` | Builds the macOS default for the host: `apple-silicon` on Apple Silicon, `universal` on an Intel Mac (which gets the full x86 tier list) | macOS convenience target |
+| `make native` | Optimized specifically for the host CPU (`-mcpu=native` on Apple Silicon, `-march=native` elsewhere; `-DUSE_PEXT` only on x86 hosts) | Local performance & benchmarking (e.g. M5 Mac) |
 | `make x86-64-v4` | Requires AVX-512 (F, BW, VL, DQ) | High-end server / modern Intel & AMD Zen 4/5 |
 | `make x86-64-v3` | Requires AVX2 + BMI2 (PEXT enabled) | Haswell / Zen 1 and newer |
 | `make x86-64-v2` | Requires SSE4.2 + POPCNT | Nehalem and newer |
@@ -174,8 +175,9 @@ The build system is managed via [`src/makefile`](file:///home/gabriel/Desktop/Ch
 # Build native binary for local testing (default: NNUE_MIRROR=1, NNUE_KING_BUCKETS=4):
 make -C src native
 
-# Build portable Apple Silicon macOS binary (outputs src/bin/mac/GOOB-2.2-BETA-apple-silicon):
-make mac
+# Build portable Apple Silicon macOS binary (outputs src/bin/mac/GOOB-2.2-BETA-apple-silicon;
+# `make mac` builds this on Apple Silicon and `universal` on an Intel Mac):
+make apple-silicon
 
 # Build host-tuned macOS binary (e.g. Apple M5, outputs src/bin/mac/GOOB-2.2-BETA-native):
 make native
