@@ -131,11 +131,8 @@ INLINE U64 pawnRightAttacks(U64 pawns, U64 targets, int colour) {
 INLINE U64 attackersToKingSq(const S_BOARD *pos, int side) {
     ASSERT(SideValid(side));
 
-    U64 kbb = pos->byColorBB[side] & pos->byTypeBB[KING];
-    ASSERT(kbb);
-    if (!kbb) return 0ULL;
-
-    int ksq = LSBINDEX(kbb);
+    int ksq = pos->kingSq[side];
+    if (ksq >= NO_SQ) return 0ULL;
     U64 occ = pos->byTypeBB[ALL_PIECES];
     int them = side ^ 1;
     U64 enemyBB = pos->byColorBB[them];

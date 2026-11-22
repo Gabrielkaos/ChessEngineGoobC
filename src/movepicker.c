@@ -304,10 +304,9 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     }
 
                     int enemy = pos->side ^ 1;
-                    U64 enemyKingBB = pieces_cp(pos, enemy, KING);
+                    int enemyKingSq = pos->kingSq[enemy];
                     U64 checkSquares[6] = {0ULL};
-                    if(enemyKingBB){
-                        int enemyKingSq = LSBINDEX(enemyKingBB);
+                    if(enemyKingSq < NO_SQ){
                         U64 occ = pos->byTypeBB[ALL_PIECES];
                         U64 myBishopsOrQueens = pieces_cp(pos, pos->side, BISHOP) | pieces_cp(pos, pos->side, QUEEN);
                         U64 myRooksOrQueens   = pieces_cp(pos, pos->side, ROOK)   | pieces_cp(pos, pos->side, QUEEN);

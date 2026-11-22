@@ -43,6 +43,7 @@ INLINE void putPiece(S_BOARD *pos, int pce, int sq) {
     pos->byColorBB[col] |= mask;
     pos->byTypeBB[pt] |= mask;
     pos->byTypeBB[ALL_PIECES] |= mask;
+    if (pt == KING) pos->kingSq[col] = (uint8_t)sq;
 }
 
 INLINE void removePiece(S_BOARD *pos, int sq) {
@@ -71,16 +72,15 @@ INLINE void movePiece(S_BOARD *pos, int from, int to) {
     pos->byColorBB[col] ^= mask;
     pos->byTypeBB[pt] ^= mask;
     pos->byTypeBB[ALL_PIECES] ^= mask;
+    if (pt == KING) pos->kingSq[col] = (uint8_t)to;
 }
 
-void update_slider_blockers(S_BOARD *pos, int c) {
-    U64 kbb = pos->byColorBB[c] & pos->byTypeBB[KING];
-    if (!kbb) {
-        pos->st->blockersForKing[c] = 0ULL;
-        pos->st->pinners[c ^ 1] = 0ULL;
+void update_slider_blockers(const S_BOARD *pos, int c) {
+    int ksq = pos->kingSq[c];
+    if (ksq >= NO_SQ) {
+        pos->st->blockersForKing = 0ULL;
         return;
     }
-    int ksq = LSBINDEX(kbb);
 
     int them = c ^ 1;
     U64 themPieces = pos->byColorBB[them];
@@ -89,16 +89,14 @@ void update_slider_blockers(S_BOARD *pos, int c) {
                   & themPieces;
 
     if (!snipers) {
-        pos->st->blockersForKing[c] = 0ULL;
-        pos->st->pinners[them] = 0ULL;
+        pos->st->blockersForKing = 0ULL;
         return;
     }
 
-    //accumulate in locals: pos->st may alias the board, so in-place |= would
+    //accumulate in local: pos->st may alias the board, so in-place |= would
     //reload and store on every sniper
     U64 occ = pos->byTypeBB[ALL_PIECES];
-    U64 ours = pos->byColorBB[c];
-    U64 blockers = 0ULL, pinners = 0ULL;
+    U64 blockers = 0ULL;
 
     while (snipers) {
         int sniperSq = LSBINDEX(snipers);
@@ -106,20 +104,17 @@ void update_slider_blockers(S_BOARD *pos, int c) {
         U64 b = BetweenBB[ksq][sniperSq] & occ;
         if (b && !(b & (b - 1))) {
             blockers |= b;
-            if (b & ours) {
-                pinners |= (1ULL << sniperSq);
-            }
         }
     }
 
-    pos->st->blockersForKing[c] = blockers;
-    pos->st->pinners[them] = pinners;
+    pos->st->blockersForKing = blockers;
 }
 
 void set_check_info(S_BOARD *pos) {
     pos->st->checkersBB = attackersToKingSq(pos, pos->side);
-    update_slider_blockers(pos, WHITE);
-    update_slider_blockers(pos, BLACK);
+    pos->st->checkersComputed = 1;
+    update_slider_blockers(pos, pos->side);
+    pos->st->pinsComputed = 1;
 }
 
 
@@ -136,10 +131,10 @@ int MoveExists(S_BOARD *pos, const int move){
     return FALSE;
 }
 
-void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
+INLINE void makeMoveImpl(S_BOARD *pos, int move, StateInfo *newSt, int computeCheckers){
     ASSERT(moveValid(move));
 
-    *newSt = *(pos->st);
+    memcpy(newSt, pos->st, offsetof(StateInfo, repetition));
     newSt->previous = pos->st;
     pos->st = newSt;
 
@@ -153,17 +148,18 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
     pos->search->moveStack[pos->ply] = move;
     pos->search->pieceStack[pos->ply] = PTYPE_OF(pce);
 
-    pos->st->capturedPiece = captured;
+    pos->st->capturedPiece = (uint8_t)captured;
 
-    DirtyPiece *dp = &newSt->dirtyPiece;
+    int childPly = pos->ply + 1;
+    DirtyPiece dummyDp;
+    DirtyPiece *dp = (pos->search && childPly < MAXDEPTH)
+                   ? &pos->search->dirtyPieces[childPly]
+                   : &dummyDp;
     dp->remove_count = 0;
     dp->add_count = 0;
-    dp->king_moved[WHITE] = 0;
-    dp->king_moved[BLACK] = 0;
     dp->refresh[WHITE] = 0;
     dp->refresh[BLACK] = 0;
     if (pt == KING) {
-        dp->king_moved[side] = 1;
         if (nnue_king_needs_refresh(side, from, to)) {
             dp->refresh[side] = 1;
         }
@@ -179,24 +175,25 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         pos->st->enPas = NO_SQ;
     }
 
-    HASH_CA;
-    pos->st->castleRights &= castlePerm[from];
-    pos->st->castleRights &= castlePerm[to];
-    HASH_CA;
+    if (pos->st->castleRights) {
+        HASH_CA;
+        pos->st->castleRights &= (uint8_t)(castlePerm[from] & castlePerm[to]);
+        HASH_CA;
+    }
 
     if (move & MVFLAGEP) {
         int capsq = (side == WHITE) ? (to - 8) : (to + 8);
         int capPce = pos->pieces[capsq];
-        pos->st->capturedPiece = capPce;
+        pos->st->capturedPiece = (uint8_t)capPce;
 
-        dp->piece_remove[0] = pce;
-        dp->from[0] = from;
-        dp->piece_remove[1] = capPce;
-        dp->from[1] = capsq;
+        dp->piece_remove[0] = (uint8_t)pce;
+        dp->from[0] = (uint8_t)from;
+        dp->piece_remove[1] = (uint8_t)capPce;
+        dp->from[1] = (uint8_t)capsq;
         dp->remove_count = 2;
 
-        dp->piece_add[0] = pce;
-        dp->to[0] = to;
+        dp->piece_add[0] = (uint8_t)pce;
+        dp->to[0] = (uint8_t)to;
         dp->add_count = 1;
 
         HASH_PCE(capPce, capsq);
@@ -210,10 +207,10 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         movePiece(pos, from, to);
     }
     else if (move & MVFLAGCA) {
-        dp->piece_remove[0] = pce;
-        dp->from[0] = from;
-        dp->piece_add[0] = pce;
-        dp->to[0] = to;
+        dp->piece_remove[0] = (uint8_t)pce;
+        dp->from[0] = (uint8_t)from;
+        dp->piece_add[0] = (uint8_t)pce;
+        dp->to[0] = (uint8_t)to;
 
         HASH_PCE(pce, from);
         HASH_PCE(pce, to);
@@ -232,10 +229,10 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         }
         int rookPce = pos->pieces[rfrom];
 
-        dp->piece_remove[1] = rookPce;
-        dp->from[1] = rfrom;
-        dp->piece_add[1] = rookPce;
-        dp->to[1] = rto;
+        dp->piece_remove[1] = (uint8_t)rookPce;
+        dp->from[1] = (uint8_t)rfrom;
+        dp->piece_add[1] = (uint8_t)rookPce;
+        dp->to[1] = (uint8_t)rto;
         dp->remove_count = 2;
         dp->add_count = 2;
 
@@ -249,15 +246,15 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
         int promotedPiece = PROMOTED(move);
         int placedPiece = (promotedPiece != EMPTY) ? promotedPiece : pce;
 
-        dp->piece_remove[0] = pce;
-        dp->from[0] = from;
-        dp->piece_add[0] = placedPiece;
-        dp->to[0] = to;
+        dp->piece_remove[0] = (uint8_t)pce;
+        dp->from[0] = (uint8_t)from;
+        dp->piece_add[0] = (uint8_t)placedPiece;
+        dp->to[0] = (uint8_t)to;
         dp->add_count = 1;
 
         if (captured != EMPTY) {
-            dp->piece_remove[1] = captured;
-            dp->from[1] = to;
+            dp->piece_remove[1] = (uint8_t)captured;
+            dp->from[1] = (uint8_t)to;
             dp->remove_count = 2;
 
             int capPt = TYPE_OF(captured);
@@ -304,7 +301,7 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
             movePiece(pos, from, to);
 
             if (pt == PAWN && (move & MVFLAGPS)) {
-                pos->st->enPas = (side == WHITE) ? (from + 8) : (from - 8);
+                pos->st->enPas = (uint8_t)((side == WHITE) ? (from + 8) : (from - 8));
                 HASH_EP;
             }
         }
@@ -312,7 +309,7 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
 
     pos->st->pliesFromNull++;
     pos->hisPly++;
-    pos->ply++;
+    pos->ply = childPly;
     pos->side ^= 1;
     HASH_SIDE;
 
@@ -324,21 +321,33 @@ void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
             if (!stp || !stp->previous || !stp->previous->previous) break;
             stp = stp->previous->previous;
             if (stp->posKey == newSt->posKey) {
-                newSt->repetition = stp->repetition ? -i : i;
+                newSt->repetition = (int16_t)(stp->repetition ? -i : i);
                 break;
             }
         }
     }
 
-    int childPly = pos->ply;
     if (pos->search && childPly < MAXDEPTH) {
-        pos->search->dirtyPieces[childPly] = newSt->dirtyPiece;
+        pos->search->accIdx[childPly] = (uint8_t)childPly;
         pos->search->nnue_accumulators[childPly].computed[WHITE] = 0;
         pos->search->nnue_accumulators[childPly].computed[BLACK] = 0;
     }
 
-    pos->st->checkersBB = attackersToKingSq(pos, pos->side);
-    update_slider_blockers(pos, pos->side);
+    pos->st->pinsComputed = 0;
+    if (computeCheckers) {
+        pos->st->checkersBB = attackersToKingSq(pos, pos->side);
+        pos->st->checkersComputed = 1;
+    } else {
+        pos->st->checkersComputed = 0;
+    }
+}
+
+void makeMove(S_BOARD *pos, int move, StateInfo *newSt){
+    makeMoveImpl(pos, move, newSt, 1);
+}
+
+void makeMoveQSearch(S_BOARD *pos, int move, StateInfo *newSt){
+    makeMoveImpl(pos, move, newSt, 0);
 }
 
 void takeMove(S_BOARD *pos) {
@@ -386,20 +395,15 @@ void takeMove(S_BOARD *pos) {
 }
 
 void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
-    *newSt = *(pos->st);
+    memcpy(newSt, pos->st, offsetof(StateInfo, repetition));
     newSt->previous = pos->st;
     pos->st = newSt;
 
-    DirtyPiece *dp = &newSt->dirtyPiece;
-    dp->remove_count = 0;
-    dp->add_count = 0;
-    dp->king_moved[WHITE] = 0;
-    dp->king_moved[BLACK] = 0;
-    dp->refresh[WHITE] = 0;
-    dp->refresh[BLACK] = 0;
+    int parentPly = pos->ply;
+    int childPly = parentPly + 1;
 
-    pos->search->moveStack[pos->ply] = NULLMOVE;
-    pos->ply++;
+    pos->search->moveStack[parentPly] = NULLMOVE;
+    pos->ply = childPly;
 
     if (pos->st->enPas != NO_SQ) {
         HASH_EP;
@@ -412,15 +416,19 @@ void makeNullMove(S_BOARD *pos, StateInfo *newSt) {
     HASH_SIDE;
 
     newSt->repetition = 0;
+    newSt->capturedPiece = EMPTY;
+    newSt->checkersBB = 0ULL;
+    newSt->checkersComputed = 1;
+    newSt->pinsComputed = 0;
 
-    pos->st->checkersBB = 0ULL;
-    update_slider_blockers(pos, pos->side);
-
-    int childPly = pos->ply;
     if (pos->search && childPly < MAXDEPTH) {
-        pos->search->dirtyPieces[childPly] = newSt->dirtyPiece;
-        pos->search->nnue_accumulators[childPly].computed[WHITE] = 0;
-        pos->search->nnue_accumulators[childPly].computed[BLACK] = 0;
+        DirtyPiece *dp = &pos->search->dirtyPieces[childPly];
+        dp->remove_count = 0;
+        dp->add_count = 0;
+        dp->refresh[WHITE] = 0;
+        dp->refresh[BLACK] = 0;
+        // Null move leaves all pieces untouched: alias parent's accumulator slot (zero copy)
+        pos->search->accIdx[childPly] = pos->search->accIdx[parentPly];
     }
 }
 

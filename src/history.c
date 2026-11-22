@@ -13,8 +13,8 @@
 //what was learned into a fresh bucket. Strip the two king keys back out.
 int pawnHistIndex(const S_BOARD *pos){
     U64 key = pos->st->pkHash
-            ^ pieceKeys[wK][LSBINDEX(pieces_cp(pos, WHITE, KING))]
-            ^ pieceKeys[bK][LSBINDEX(pieces_cp(pos, BLACK, KING))];
+            ^ pieceKeys[wK][pos->kingSq[WHITE]]
+            ^ pieceKeys[bK][pos->kingSq[BLACK]];
     return (int)(key & (PAWN_HIST_SIZE - 1));
 }
 

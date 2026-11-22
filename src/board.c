@@ -27,6 +27,7 @@ void initStacks(S_BOARD *pos){
         pos->search->moveStack[index] =NOMOVE;
         pos->search->pieceStack[index]=0;
         pos->search->reduction_stack[index]=0;
+        pos->search->accIdx[index]=(uint8_t)index;
         pos->search->nnue_accumulators[index].computed[WHITE]=0;
         pos->search->nnue_accumulators[index].computed[BLACK]=0;
         pos->search->nnue_accumulators[index].flip[WHITE]=0;
@@ -88,6 +89,8 @@ int checkBoard(const S_BOARD *pos){
     //kings
     ASSERT(COUNTBIT(pieces_cp(pos, WHITE, KING)) == 1);
     ASSERT(COUNTBIT(pieces_cp(pos, BLACK, KING)) == 1);
+    ASSERT(pos->kingSq[WHITE] == LSBINDEX(pieces_cp(pos, WHITE, KING)));
+    ASSERT(pos->kingSq[BLACK] == LSBINDEX(pieces_cp(pos, BLACK, KING)));
 
     return TRUE;
 }
@@ -166,6 +169,9 @@ void HMirrorBoard(S_BOARD *pos){
 void updateListMaterial(S_BOARD *pos){
     int piece,sq,index,color,pt;
 
+    pos->kingSq[WHITE] = NO_SQ;
+    pos->kingSq[BLACK] = NO_SQ;
+
     for(index=0;index<BOARD_NUMS_SQ;++index){
         sq=index;
         piece=pos->pieces[index];
@@ -176,6 +182,7 @@ void updateListMaterial(S_BOARD *pos){
             U64 mask = 1ULL << sq;
             pos->byColorBB[color] |= mask;
             pos->byTypeBB[pt] |= mask;
+            if (pt == KING) pos->kingSq[color] = (uint8_t)sq;
         }
     }
     //update occupancy for both
@@ -289,10 +296,11 @@ int ParseFEN(char *fen ,S_BOARD *pos){
     }
 
     //-------- fifty move counter / fullmove number --------
-    pos->st->fiftyMove=0;
+    int fifty=0;
     int fullmove=0;
-    sscanf(fen, " %d %d", &pos->st->fiftyMove, &fullmove);
-    if(pos->st->fiftyMove < 0) pos->st->fiftyMove=0;
+    sscanf(fen, " %d %d", &fifty, &fullmove);
+    if(fifty < 0) fifty=0;
+    pos->st->fiftyMove=(int16_t)fifty;
     pos->gamePlyOffset = (fullmove > 0) ? (fullmove - 1) * 2 + (pos->side == BLACK ? 1 : 0) : 0;
 
     updateListMaterial(pos);
@@ -358,12 +366,15 @@ void ResetBoard(S_BOARD *pos){
     //making the pieces value 0 in bitboards
     for(index=0;index<COLOR_NB;++index){
         pos->byColorBB[index]=0ULL;
+        pos->kingSq[index]=NO_SQ;
     }
 
     pos->side=BOTH;
     pos->st->enPas=NO_SQ;
     pos->st->fiftyMove=0;
     pos->st->pliesFromNull=0;
+    pos->st->checkersComputed=1;
+    pos->st->pinsComputed=1;
 
     pos->st->castleRights=0;
     pos->ply=0;

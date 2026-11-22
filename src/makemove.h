@@ -49,25 +49,32 @@ INLINE int MoveBestCaseValue(const S_BOARD *pos) {
     return value;
 }
 
-// Fast inlined legality validator with non-pinned fast path
+// Fast inlined legality validator with lazy check/pin calculation and non-pinned fast path
 INLINE int legal(const S_BOARD *pos, int move) {
     int us = pos->side;
     int from = FROMSQ(move);
+    int ksq = pos->kingSq[us];
+
+    if (__builtin_expect(!pos->st->checkersComputed, 0)) {
+        pos->st->checkersBB = attackersToKingSq(pos, us);
+        pos->st->checkersComputed = 1;
+    }
+    if (__builtin_expect(!pos->st->pinsComputed, 0)) {
+        update_slider_blockers(pos, us);
+        pos->st->pinsComputed = 1;
+    }
 
     // Fast path: ordinary moves (not EP, not castling) when not in check
     if (__builtin_expect(!(move & (MVFLAGEP | MVFLAGCA)), 1)) {
         if (!pos->st->checkersBB) {
-            if (!(pos->st->blockersForKing[us] & (1ULL << from))) {
-                U64 kbb = pos->byColorBB[us] & pos->byTypeBB[KING];
-                if (from != LSBINDEX(kbb)) return TRUE;
+            if (!(pos->st->blockersForKing & (1ULL << from))) {
+                if (from != ksq) return TRUE;
             }
         }
     }
 
     int them = us ^ 1;
     int to = TOSQ(move);
-    U64 kbb = pos->byColorBB[us] & pos->byTypeBB[KING];
-    int ksq = LSBINDEX(kbb);
 
     // En passant capture
     if (move & MVFLAGEP) {
@@ -126,18 +133,19 @@ INLINE int legal(const S_BOARD *pos, int move) {
         if (!((1ULL << to) & targetMask))
             return FALSE;
 
-        if (pos->st->blockersForKing[us] & (1ULL << from)) {
+        if (pos->st->blockersForKing & (1ULL << from)) {
             return (LineBB[from][to] & (1ULL << ksq)) != 0;
         }
         return TRUE;
     }
 
     // Not in check: non-king moves
-    return !(pos->st->blockersForKing[us] & (1ULL << from)) || ((LineBB[from][to] & (1ULL << ksq)) != 0);
+    return !(pos->st->blockersForKing & (1ULL << from)) || ((LineBB[from][to] & (1ULL << ksq)) != 0);
 }
 
 // makemove.c exports
 extern void makeMove(S_BOARD *pos, int move, StateInfo *newSt);
+extern void makeMoveQSearch(S_BOARD *pos, int move, StateInfo *newSt);
 extern void takeMove(S_BOARD *pos);
 extern void takeNullMove(S_BOARD *pos);
 extern void makeNullMove(S_BOARD *pos, StateInfo *newSt);

@@ -258,7 +258,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         if(!legal(pos, moveInLoop)) continue;
 
         StateInfo st;
-        makeMove(pos, moveInLoop, &st);
+        makeMoveQSearch(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
         value=-Quiescence(-beta,-alpha,pos,info,table);
         takeMove(pos);

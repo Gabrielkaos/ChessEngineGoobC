@@ -25,13 +25,12 @@
 #endif
 
 typedef struct {
-    int piece_remove[2];
-    int from[2];
-    int piece_add[2];
-    int to[2];
-    int remove_count;
-    int add_count;
-    int king_moved[COLOR_NB];
+    uint8_t piece_remove[2];
+    uint8_t from[2];
+    uint8_t piece_add[2];
+    uint8_t to[2];
+    uint8_t remove_count;
+    uint8_t add_count;
     uint8_t refresh[COLOR_NB];  /* 1 when side's king crossed a mirror or king-bucket boundary */
 } DirtyPiece;
 
@@ -70,6 +69,7 @@ typedef struct {
     int capturesTried[MAXDEPTH][MAXPOSMOVES];
     S_MOVEPICKER movePickers[MAXDEPTH];
     S_MOVEPICKER singularMovePickers[MAXDEPTH];
+    uint8_t accIdx[MAXDEPTH];   /* accumulator slot index per ply; null moves alias their parent */
     ALIGN64 NNUE_Accumulator nnue_accumulators[MAXDEPTH];
     DirtyPiece dirtyPieces[MAXDEPTH];
     int ttMoveHistory;
@@ -82,7 +82,10 @@ typedef struct {
 static inline S_SEARCH_THREAD* alloc_search_thread(void) {
     size_t size = (sizeof(S_SEARCH_THREAD) + 63) & ~(size_t)63;
     S_SEARCH_THREAD *ptr = (S_SEARCH_THREAD*) goob_aligned_alloc(64, size);
-    if (ptr) memset(ptr, 0, sizeof(S_SEARCH_THREAD));
+    if (ptr) {
+        memset(ptr, 0, sizeof(S_SEARCH_THREAD));
+        for (int i = 0; i < MAXDEPTH; ++i) ptr->accIdx[i] = (uint8_t)i;
+    }
     return ptr;
 }
 
@@ -106,20 +109,22 @@ typedef struct {
 } S_SHARED_TABLES;
 
 typedef struct StateInfo {
+    /* Persistent prefix copied by makeMove / makeNullMove (up to repetition) */
     U64 posKey;
     U64 pkHash;
     U64 npHash[COLOR_NB];
     U64 minorHash;
-    int castleRights;
-    int fiftyMove;
-    int pliesFromNull;
-    int enPas;
-    int repetition;
+    int16_t fiftyMove;
+    int16_t pliesFromNull;
+    uint8_t castleRights;
+    uint8_t enPas;
+    /* Per-ply state recomputed or populated lazily (NOT copied from parent) */
+    int16_t repetition;
+    uint8_t capturedPiece;
+    uint8_t checkersComputed;
+    uint8_t pinsComputed;
     U64 checkersBB;
-    U64 blockersForKing[COLOR_NB];
-    U64 pinners[COLOR_NB];
-    int capturedPiece;
-    DirtyPiece dirtyPiece;
+    U64 blockersForKing;
     struct StateInfo *previous;
 } StateInfo;
 
@@ -129,6 +134,7 @@ typedef struct S_BOARD {
     int8_t pieces[BOARD_NUMS_SQ]; // pieces stored in 64 square board array (values 0..15 fit)
     U64 byTypeBB[PIECE_TYPE_NB];  // bitboards by piece type: ALL_PIECES=0, PAWN=1..KING=6
     U64 byColorBB[COLOR_NB];      // occupancy for WHITE=0, BLACK=1
+    uint8_t kingSq[COLOR_NB];     // cached king squares (0..63, or NO_SQ if absent)
     int side; //side to move
     StateInfo *st;
     StateInfo stateTable[MAXGAMESMOVES];
@@ -181,7 +187,7 @@ extern void PrintBoard(const S_BOARD *pos);
 extern void updateListMaterial(S_BOARD *pos);
 extern void MirrorBoard(S_BOARD *pos);
 extern void HMirrorBoard(S_BOARD *pos);
-extern void update_slider_blockers(S_BOARD *pos, int c);
+extern void update_slider_blockers(const S_BOARD *pos, int c);
 extern void set_check_info(S_BOARD *pos);
 extern void compactStateHistory(S_BOARD *pos);
 

@@ -329,40 +329,41 @@ rebuild: clean all
 # ---------------------------------------------------------------------------
 # Profile-Guided Optimization (PGO) — native tier only
 # Three-phase build: instrument → profile → optimise.  Yields ~5-10% NPS.
+# Note: GCC mangles the .o path into each .gcda filename, so Phase 1 and
+# Phase 3 MUST compile into the same object directory (obj/pgo/).
 # ---------------------------------------------------------------------------
-PGO_OBJS_GEN    := $(patsubst %.c, obj/pgo-gen/%.o, $(SRCS))
-PGO_OBJS_USE    := $(patsubst %.c, obj/pgo-use/%.o, $(SRCS))
+PGO_OBJS        := $(patsubst %.c, obj/pgo/%.o, $(SRCS))
 PGO_BIN_GEN     := $(OUTDIR)/$(NAME)-pgo-gen$(EXE)
 PGO_BIN         := $(OUTDIR)/$(NAME)-native$(EXE)
 
 ifeq ($(TARGET),mac)
-    PGO_PROFRAW     := obj/pgo-gen/default.profraw
-    PGO_PROFDATA    := obj/pgo-gen/default.profdata
+    PGO_PROFRAW     := obj/pgo/default.profraw
+    PGO_PROFDATA    := obj/pgo/default.profdata
     PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-generate
     PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-use=$(PGO_PROFDATA)
 else
-    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate
-    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use -fno-peel-loops -fno-tracer
+    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate=obj/pgo
+    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use=obj/pgo -fno-peel-loops -fno-tracer
 endif
 
 .PHONY: pgo
 pgo:
 	@echo "=== PGO Phase 1: instrumented build ==="
-	@$(call MKDIR_CMD,obj/pgo-gen)
+	@$(call RMDIR_CMD,obj/pgo)
+	@$(call MKDIR_CMD,obj/pgo)
 	@$(call MKDIR_CMD,$(OUTDIR))
-	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo-gen/$(basename $(src)).o;)
-	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS_GEN) -o $(PGO_BIN_GEN) $(LDFLAGS)
-	@echo "=== PGO Phase 2: collecting profile ==="
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo/$(basename $(src)).o;)
+	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS) -o $(PGO_BIN_GEN) $(LDFLAGS)
+	@echo "=== PGO Phase 2: collecting profile (bench 12) ==="
 ifeq ($(TARGET),mac)
-	LLVM_PROFILE_FILE=$(PGO_PROFRAW) $(PGO_BIN_GEN) bench || true
+	LLVM_PROFILE_FILE=$(PGO_PROFRAW) $(PGO_BIN_GEN) bench 12 || true
 	xcrun llvm-profdata merge -output=$(PGO_PROFDATA) $(PGO_PROFRAW)
 else
-	$(PGO_BIN_GEN) bench || true
+	$(PGO_BIN_GEN) bench 12 || true
 endif
 	@echo "=== PGO Phase 3: optimised build ==="
-	@$(call MKDIR_CMD,obj/pgo-use)
-	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo-use/$(basename $(src)).o;)
-	$(CC) $(PGO_CFLAGS_USE) $(PGO_OBJS_USE) -o $(PGO_BIN) $(LDFLAGS)
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo/$(basename $(src)).o;)
+	$(CC) $(PGO_CFLAGS_USE) $(PGO_OBJS) -o $(PGO_BIN) $(LDFLAGS)
 	@echo "  LD  $(PGO_BIN) (PGO)"
 
 # ---------------------------------------------------------------------------
