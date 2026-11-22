@@ -13,3 +13,4 @@ Use this folder to record platform-specific benchmark results, build/correctness
 | Date | Machine / OS | Commit(s) | Summary | Note |
 | :--- | :--- | :--- | :--- | :--- |
 | 2026-11-22 | MacBook Pro (Apple M5, macOS arm64) | `028b5ba` -> `b0dfc92` | Node-identical verified (`perfttest` 33/33 PASS); **+2.23% to +2.49%** search NPS, **+22.5%** perft NPS; flagged NEON fused-kernel 2-chain bottleneck | [2026-11-22_mac_b0dfc92_opt_bench.md](./2026-11-22_mac_b0dfc92_opt_bench.md) |
+| 2026-11-22 | MacBook Pro (Apple M5, macOS arm64) | `b0dfc92` -> `2ccc5dc` (and cumulative vs `028b5ba`) | Node-identical verified; **+9.92% / +10.74%** 1T `native`, **+8.23%** `apple-silicon`, **+8.70%** 4T SMP; **+14.00%** cumulative depth-15 NPS vs `028b5ba` | [2026-11-22_mac_2ccc5dc_opt_bench.md](./2026-11-22_mac_2ccc5dc_opt_bench.md) |
