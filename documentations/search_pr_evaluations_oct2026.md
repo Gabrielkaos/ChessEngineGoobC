@@ -743,7 +743,7 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 | Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`search/probcut-qsearch`** | **PASSED (`gainer` H1)** | 17628 | 4212 - 4034 - 9382 | 50.50% | **+3.51 ± 2.80** | +2.96 | Accepted (`[0.00, 3.00]`) |
+| **`search/probcut-qsearch`** | **MERGED** | 17628 | 4212 - 4034 - 9382 | 50.50% | **+3.51 ± 2.80** | +2.96 | Accepted (`[0.00, 3.00]`) |
 
 * **Changes (`src/search.c`):**
   1. Gated ProbCut on `!inCheck` and reused `ttCapture` computed once before ProbCut.
@@ -752,7 +752,7 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
   4. Passed `!cutNode` (instead of hardcoded `TRUE`) to the `depth - 4` verification search, guarded by `depth - 4 > 0 && !info->stopped`.
 * **Correctness checks:** TT replacement tests 5/5 passed, mate-in-1 (×2) / mate-in-2 / mate-in-3 tests passed, 2-thread SMP search clean. `bench.py 12`: `726,116` -> `732,499` nodes (`355 ms`, `2.06M` nps); `bench.py 15`: `3,603,707` -> `3,645,480` nodes.
 * **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-probcut-qs tools/sprt/bin/GOOB-base probcut-qsearch 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `06:00:18`. `nElo +6.43 ± 5.13`, `LOS 99.30%`, `DrawRatio 48.39%`, `PairsRatio 1.07`, Pentanomial (0-2) `[109, 2084, 4265, 2232, 124]`, `WL/DD Ratio 0.68`, `LLR +2.96 (100.4%)`. Log: `tools/sprt/logs/probcut-qsearch.log`.
-* **Verdict:** **ACCEPTED (`gainer` H1).** Clear `+3.51 ± 2.80` Elo gain (`99.30%` LOS) on `search/probcut-qsearch`.
+* **Verdict:** **MERGED (`gainer` H1).** Clear `+3.51 ± 2.80` Elo gain (`99.30%` LOS); merged into `main` from `search/probcut-qsearch` (`497ffa4`).
 
 ---
 
@@ -776,7 +776,7 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
 16. `fix/see-xray-queens`: Include `pos->byTypeBB[QUEEN]` in `bishops` and `rooks` within `StaticExchangeEvaluation()` so x-ray queens behind pawns and sliders are discovered (+1.91 ± 3.87 Elo, `nonreg` H1 accepted, `9405cc1`).
 17. `fix/lmr-fixedpoint`: Fixed-point `1024`-scaled LMR (`LMRTable`, smooth history divisors, active `AllNodeScale`/`AllNodeBase` fixing dead `allNode` scaling) plus `lmr_fp1` 8-parameter SPSA retune (+1.46 ± 3.56 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 10,952 games).
 18. NEON output layer (ARM64 only): `nnue_forward_neon()` / `nnue_forward_exact_neon()`, bit-identical to the scalar kernel, +5.4–6.2% NPS on Apple Silicon (node-identical; SPRT stopped at LLR +1.54, inconclusive; see Section 32).
-19. `search/probcut-qsearch` (pending merge): ProbCut `!inCheck` guard, SEE-validated tactical `ttMove`, `Quiescence()` pre-filter at all ProbCut depths (depth-0 `AlphaBeta` fallback on checking captures), and `!cutNode` `depth - 4` verification (+3.51 ± 2.80 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 17,628 games).
+19. `search/probcut-qsearch`: ProbCut `!inCheck` guard, SEE-validated tactical `ttMove`, `Quiescence()` pre-filter at all ProbCut depths (depth-0 `AlphaBeta` fallback on checking captures), and `!cutNode` `depth - 4` verification (+3.51 ± 2.80 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 17,628 games, `497ffa4`).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
