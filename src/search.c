@@ -301,8 +301,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     int maxValue        =INFINITE_BOUND;
     
     S_PVLINE lpv;
-    lpv.count = 0;
-    if (pv != NULL) pv->count = 0;
+    if (pv != NULL) {
+        pv->count = 0;
+        lpv.count = 0;
+    }
     int inCheck         =(pos->st->checkersBB != 0);
     int ttDepth         =0;
     int ttBound         =HFNONE;
@@ -481,10 +483,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 TRACE_INC(pos, nmp_attempted);
                 StateInfo nullSt;
                 makeNullMove(pos, &nullSt);
+                prefetchTT(table, pos->st->posKey);
 
                 R = NMPBase + depth / NMPDepthDiv + MIN(NMPEvalMax, (eval - beta) / NMPEvalDiv);
 
-                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, &lpv);
+                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, NULL);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
 
@@ -506,7 +509,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                     TRACE_INC(pos, nmp_verification_started);
                     pos->nmpMinPly = pos->ply + 3 * (depth - R) / 4;
 
-                    int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE, &lpv);
+                    int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE, NULL);
 
                     pos->nmpMinPly = 0;
 
@@ -565,10 +568,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
                 //if it can exceed beta
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, &lpv);
+                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, NULL);
 
                 //now at shallow depth perform a more deeper search to confirm
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, &lpv);
+                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, NULL);
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
@@ -593,6 +596,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     Score = -AB_BOUND;
     int skipQuiets = 0;
     int pawnHist = 0;
+    ContHistSlice contSlices[CONT_HIST_SLOTS];
+    int contInit = 0;
+    int pawnIdx = -1;
 
     //main move loop
     while((moveInLoop = selectNextMove(mp,pos,skipQuiets)) != NOMOVE){
@@ -602,6 +608,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE || mp->lastStage==STAGE_FOLLOWUP_MOVE);
         int isSpecial     = isExempt || isRefutation;
         int didLmrResearch = 0;
+        int histComputed   = 0;
 
         //Syzygy root filtering
         if(rootNode && pos->tbHit && !TBRootMoveAllowed(pos,moveInLoop)){
@@ -615,10 +622,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
         //count the quiets seen and check if the move is tactical
         quietsSeen+=(quietMove=!moveIsTactical(pos,moveInLoop));
-
-        //get history
-        //get history of the move
-        hist = !quietMove ? getCaptureHistory(pos,moveInLoop, mp->threats):getHistory(pos,moveInLoop,&fmhist,&cmhist, mp->threats);
 
         //Quiet late Move pruning
         if (!rootNode && !info->bruteForceMode && quietMove && bestScore > -ISMATE){
@@ -640,10 +643,16 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 && !isSpecial
                 && lmrDepth <= FutilityPruningDepth) {
                 TRACE_INC(pos, futility_move_attempted);
-                if ((eval + FutilityMargin * lmrDepth) <= alpha
-                    && hist < (improving ? FutilityHistLimitI : FutilityHistLimitNI)){
-                    TRACE_INC(pos, futility_move_pruned);
-                    continue;
+                if ((eval + FutilityMargin * lmrDepth) <= alpha){
+                    if (!histComputed) {
+                        if (!contInit) { getContHistSlices(pos, contSlices); contInit = 1; }
+                        hist = getHistoryFast(pos, moveInLoop, &fmhist, &cmhist, mp->threats, contSlices);
+                        histComputed = 1;
+                    }
+                    if (hist < (improving ? FutilityHistLimitI : FutilityHistLimitNI)){
+                        TRACE_INC(pos, futility_move_pruned);
+                        continue;
+                    }
                 }
             }
 
@@ -662,6 +671,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             if (!isSpecial && depth - R <= CounterMovePruningDepth[improving]) {
                 TRACE_INC(pos, countermove_attempted);
+                if (!histComputed) {
+                    if (!contInit) { getContHistSlices(pos, contSlices); contInit = 1; }
+                    hist = getHistoryFast(pos, moveInLoop, &fmhist, &cmhist, mp->threats, contSlices);
+                    histComputed = 1;
+                }
                 if (cmhist < (improving ? CounterMoveHistLimitI : CounterMoveHistLimitNI)) {
                     TRACE_INC(pos, countermove_pruned);
                     continue;
@@ -670,6 +684,11 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
             if (!isSpecial && depth - R <= FollowUpMovePruningDepth[improving]) {
                 TRACE_INC(pos, followup_attempted);
+                if (!histComputed) {
+                    if (!contInit) { getContHistSlices(pos, contSlices); contInit = 1; }
+                    hist = getHistoryFast(pos, moveInLoop, &fmhist, &cmhist, mp->threats, contSlices);
+                    histComputed = 1;
+                }
                 if (fmhist < (improving ? FollowUpHistLimitI : FollowUpHistLimitNI)) {
                     TRACE_INC(pos, followup_pruned);
                     continue;
@@ -694,6 +713,10 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 }
             } else {
                 TRACE_INC(pos, see_noisy_attempted);
+                if (!histComputed) {
+                    hist = getCaptureHistory(pos, moveInLoop, mp->threats);
+                    histComputed = 1;
+                }
                 if (!StaticExchangeEvaluation(pos, moveInLoop, seeMargin[quietMove] - hist / SEENoisyHistDiv)) {
                     TRACE_INC(pos, see_noisy_pruned);
                     continue;
@@ -704,7 +727,20 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         U64 nodesBeforeMove = pos->search->nodes;
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
-        pawnHist = (quietMove && depth >= 2 && Legal >= 1 + rootNode) ? getPawnHistory(pos, moveInLoop) : 0;
+        if (depth > 2 && Legal >= 1 && !info->bruteForceMode && !histComputed) {
+            if (quietMove) {
+                if (!contInit) { getContHistSlices(pos, contSlices); contInit = 1; }
+                hist = getHistoryFast(pos, moveInLoop, &fmhist, &cmhist, mp->threats, contSlices);
+            } else {
+                hist = getCaptureHistory(pos, moveInLoop, mp->threats);
+            }
+        }
+        if (quietMove && depth >= 2 && Legal >= 1 + rootNode) {
+            if (pawnIdx < 0) pawnIdx = pawnHistIndex(pos);
+            pawnHist = pos->shared->pawnHist[pawnIdx][PTYPE_OF(pos->pieces[FROMSQ(moveInLoop)])][TOSQ(moveInLoop)];
+        } else {
+            pawnHist = 0;
+        }
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -812,7 +848,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //if not, no need to explore deeply
         if(R != 1){
             pos->search->reduction_stack[pos->ply] = R;
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, &lpv);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, NULL);
             pos->search->reduction_stack[pos->ply] = 0;
 
             //the reduced search beat alpha, so a full re-search follows:
@@ -831,12 +867,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 TRACE_INC(pos, lmr_researches);
                 didLmrResearch = 1;
             }
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, &lpv);
+            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, !cutNode, NULL);
         }
 
         //Normal Search
         if(pvNode && (Legal == 1 || Score > alpha)){
-            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, FALSE, &lpv);
+            Score = -AlphaBeta(-beta,-alpha,newDepth - 1,pos,info, table,threadNum,TRUE, FALSE, pv != NULL ? &lpv : NULL);
         }
 
 

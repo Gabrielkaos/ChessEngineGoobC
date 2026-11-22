@@ -320,6 +320,8 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     }
 
                     int fm, cm;
+                    ContHistSlice contSlices[CONT_HIST_SLOTS];
+                    getContHistSlices(pos, contSlices);
                     int pawnIdx = pawnHistIndex(pos);
                     const int16_t (*pawnTable)[64] = pos->shared->pawnHist[pawnIdx];
                     const int16_t (*lowPlyTable)[64] = (pos->ply < LOWPLY_HIST_SLOTS) ? pos->search->lowPlyHistory[pos->ply] : NULL;
@@ -330,11 +332,11 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                         move = mp->list->moves[i].move;
                         int from = FROMSQ(move);
                         int to = TOSQ(move);
-                        int pType = pieceType[pos->pieces[from]];
+                        int pType = PTYPE_OF(pos->pieces[from]);
                         
                         // quiet score: butterfly + continuation histories plus the
                         // shared pawn-structure history (Stockfish: 2 * pawn_entry)
-                        mp->list->moves[i].score = getHistory(pos, move, &fm, &cm, mp->threats)
+                        mp->list->moves[i].score = getHistoryFast(pos, move, &fm, &cm, mp->threats, contSlices)
                                                  + 2 * pawnTable[pType][to];
 
                         // low-ply history boost near the root, fading out with ply

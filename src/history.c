@@ -187,11 +187,27 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats)
     //(Stockfish searches them in qsearch, which updates none either).
     if(depth > 0 && !(length==1 && depth <= 3)){
 
-        int index,bonus,bestBonus,actualMalus,delta,move,piece,to,from,slot,back,pmove,ppiece,pto;
+        int index,bonus,bestBonus,actualMalus,delta,move,piece,to,from,slot;
 
         bonus = stat_bonus(depth);
         bestBonus = (length - 1 > HistMoveCountThreshold) ? (bonus * HistMoveCountBonusMul / 1024) : bonus;
         actualMalus = bonus;
+
+        const int pIdx = pawnHistIndex(pos);
+        int16_t (*pawnTable)[64] = pos->shared->pawnHist[pIdx];
+        int16_t (*lowPlyTable)[64] = (pos->ply < LOWPLY_HIST_SLOTS) ? pos->search->lowPlyHistory[pos->ply] : NULL;
+        int16_t (*contSlices[CONT_HIST_SLOTS])[64];
+        for (slot = 0; slot < CONT_HIST_SLOTS; ++slot) {
+            int back = ContinuationOffsets[slot];
+            if (pos->ply >= back) {
+                int pmove = pos->search->moveStack[pos->ply - back];
+                if (pmove != NOMOVE && pmove != NULLMOVE) {
+                    contSlices[slot] = pos->shared->continuation[slot][pos->search->pieceStack[pos->ply - back]][TOSQ(pmove)];
+                    continue;
+                }
+            }
+            contSlices[slot] = NULL;
+        }
 
         for(index=0;index<length;++index){
             move = moves[index];
@@ -203,37 +219,27 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats)
                 actualMalus = actualMalus * HistMalusDecay / 1024;
             }
 
-            piece = pieceType[pos->pieces[FROMSQ(move)]];
             from  = FROMSQ(move);
             to    = TOSQ(move);
+            piece = PTYPE_OF(pos->pieces[from]);
 
             int threat_from = (threats & (1ULL << from)) ? 1 : 0;
             int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
             histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][piece][to], delta, HistoryDivisor);
 
-            if(pos->ply < LOWPLY_HIST_SLOTS)
-                histGravityUpdate(&pos->search->lowPlyHistory[pos->ply][piece][to],
+            if(lowPlyTable)
+                histGravityUpdate(&lowPlyTable[piece][to],
                                   delta * LowPlyHistUpdate / 1024, LOWPLY_HIST_MAX);
 
             {
-                const int pIdx = pawnHistIndex(pos);
                 const int pBonus = delta * (delta > 0 ? PawnHistBonus : PawnHistMalus) / 1024;
-                histGravityUpdate(&pos->shared->pawnHist[pIdx][piece][to],
-                                  pBonus, PAWN_HIST_MAX);
+                histGravityUpdate(&pawnTable[piece][to], pBonus, PAWN_HIST_MAX);
             }
 
             for(slot=0;slot<CONT_HIST_SLOTS;++slot){
-                back  = ContinuationOffsets[slot];
-                if(pos->ply < back)continue;
-
-                pmove = pos->search->moveStack[pos->ply - back];
-                if(pmove==NOMOVE || pmove==NULLMOVE)continue;
-
-                ppiece = pos->search->pieceStack[pos->ply - back];
-                pto    = TOSQ(pmove);
-
-                histGravityUpdate(&pos->shared->continuation[slot][ppiece][pto][piece][to], delta, HistoryDivisor);
+                if(contSlices[slot])
+                    histGravityUpdate(&contSlices[slot][piece][to], delta, HistoryDivisor);
             }
         }
     }

@@ -982,21 +982,33 @@ static inline int32_t nnue_acc_1add_1sub_forward_neon(
     const int16_t *NNUE_RESTRICT w_them = g_weights->out_w[bucket] + NNUE_HIDDEN_SIZE;
     int32x4_t s0 = vdupq_n_s32(0), s1 = s0, s2 = s0, s3 = s0;
 
-    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
-        int16x8_t v = vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i), vld1q_s16(add_us + i)), vld1q_s16(sub_us + i));
-        vst1q_s16(curr_us + i, v);
-        int16x8_t u = vminq_s16(vmaxq_s16(v, zero), qa);
-        int16x8_t uw = vmulq_s16(u, vld1q_s16(w_us + i));
-        s0 = vmlal_s16(s0, vget_low_s16(uw), vget_low_s16(u));
-        s1 = vmlal_high_s16(s1, uw, u);
+    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 16) {
+        int16x8_t v0 = vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i), vld1q_s16(add_us + i)), vld1q_s16(sub_us + i));
+        int16x8_t v1 = vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i + 8), vld1q_s16(add_us + i + 8)), vld1q_s16(sub_us + i + 8));
+        vst1q_s16(curr_us + i, v0);
+        vst1q_s16(curr_us + i + 8, v1);
+        int16x8_t u0 = vminq_s16(vmaxq_s16(v0, zero), qa);
+        int16x8_t u1 = vminq_s16(vmaxq_s16(v1, zero), qa);
+        int16x8_t uw0 = vmulq_s16(u0, vld1q_s16(w_us + i));
+        int16x8_t uw1 = vmulq_s16(u1, vld1q_s16(w_us + i + 8));
+        s0 = vmlal_s16(s0, vget_low_s16(uw0), vget_low_s16(u0));
+        s1 = vmlal_high_s16(s1, uw0, u0);
+        s2 = vmlal_s16(s2, vget_low_s16(uw1), vget_low_s16(u1));
+        s3 = vmlal_high_s16(s3, uw1, u1);
     }
-    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
-        int16x8_t v = vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i), vld1q_s16(add_them + i)), vld1q_s16(sub_them + i));
-        vst1q_s16(curr_them + i, v);
-        int16x8_t t = vminq_s16(vmaxq_s16(v, zero), qa);
-        int16x8_t tw = vmulq_s16(t, vld1q_s16(w_them + i));
-        s2 = vmlal_s16(s2, vget_low_s16(tw), vget_low_s16(t));
-        s3 = vmlal_high_s16(s3, tw, t);
+    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 16) {
+        int16x8_t v0 = vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i), vld1q_s16(add_them + i)), vld1q_s16(sub_them + i));
+        int16x8_t v1 = vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i + 8), vld1q_s16(add_them + i + 8)), vld1q_s16(sub_them + i + 8));
+        vst1q_s16(curr_them + i, v0);
+        vst1q_s16(curr_them + i + 8, v1);
+        int16x8_t t0 = vminq_s16(vmaxq_s16(v0, zero), qa);
+        int16x8_t t1 = vminq_s16(vmaxq_s16(v1, zero), qa);
+        int16x8_t tw0 = vmulq_s16(t0, vld1q_s16(w_them + i));
+        int16x8_t tw1 = vmulq_s16(t1, vld1q_s16(w_them + i + 8));
+        s0 = vmlal_s16(s0, vget_low_s16(tw0), vget_low_s16(t0));
+        s1 = vmlal_high_s16(s1, tw0, t0);
+        s2 = vmlal_s16(s2, vget_low_s16(tw1), vget_low_s16(t1));
+        s3 = vmlal_high_s16(s3, tw1, t1);
     }
     return nnue_finish(vaddvq_s32(vaddq_s32(vaddq_s32(s0, s1), vaddq_s32(s2, s3))), bucket);
 }
@@ -1013,25 +1025,41 @@ static inline int32_t nnue_acc_1add_2sub_forward_neon(
     const int16_t *NNUE_RESTRICT w_them = g_weights->out_w[bucket] + NNUE_HIDDEN_SIZE;
     int32x4_t s0 = vdupq_n_s32(0), s1 = s0, s2 = s0, s3 = s0;
 
-    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
-        int16x8_t v = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i), vld1q_s16(add_us + i)),
-                                          vld1q_s16(sub0_us + i)),
-                                vld1q_s16(sub1_us + i));
-        vst1q_s16(curr_us + i, v);
-        int16x8_t u = vminq_s16(vmaxq_s16(v, zero), qa);
-        int16x8_t uw = vmulq_s16(u, vld1q_s16(w_us + i));
-        s0 = vmlal_s16(s0, vget_low_s16(uw), vget_low_s16(u));
-        s1 = vmlal_high_s16(s1, uw, u);
+    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 16) {
+        int16x8_t v0 = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i), vld1q_s16(add_us + i)),
+                                           vld1q_s16(sub0_us + i)),
+                                 vld1q_s16(sub1_us + i));
+        int16x8_t v1 = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_us + i + 8), vld1q_s16(add_us + i + 8)),
+                                           vld1q_s16(sub0_us + i + 8)),
+                                 vld1q_s16(sub1_us + i + 8));
+        vst1q_s16(curr_us + i, v0);
+        vst1q_s16(curr_us + i + 8, v1);
+        int16x8_t u0 = vminq_s16(vmaxq_s16(v0, zero), qa);
+        int16x8_t u1 = vminq_s16(vmaxq_s16(v1, zero), qa);
+        int16x8_t uw0 = vmulq_s16(u0, vld1q_s16(w_us + i));
+        int16x8_t uw1 = vmulq_s16(u1, vld1q_s16(w_us + i + 8));
+        s0 = vmlal_s16(s0, vget_low_s16(uw0), vget_low_s16(u0));
+        s1 = vmlal_high_s16(s1, uw0, u0);
+        s2 = vmlal_s16(s2, vget_low_s16(uw1), vget_low_s16(u1));
+        s3 = vmlal_high_s16(s3, uw1, u1);
     }
-    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {
-        int16x8_t v = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i), vld1q_s16(add_them + i)),
-                                          vld1q_s16(sub0_them + i)),
-                                vld1q_s16(sub1_them + i));
-        vst1q_s16(curr_them + i, v);
-        int16x8_t t = vminq_s16(vmaxq_s16(v, zero), qa);
-        int16x8_t tw = vmulq_s16(t, vld1q_s16(w_them + i));
-        s2 = vmlal_s16(s2, vget_low_s16(tw), vget_low_s16(t));
-        s3 = vmlal_high_s16(s3, tw, t);
+    for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 16) {
+        int16x8_t v0 = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i), vld1q_s16(add_them + i)),
+                                           vld1q_s16(sub0_them + i)),
+                                 vld1q_s16(sub1_them + i));
+        int16x8_t v1 = vsubq_s16(vsubq_s16(vaddq_s16(vld1q_s16(prev_them + i + 8), vld1q_s16(add_them + i + 8)),
+                                           vld1q_s16(sub0_them + i + 8)),
+                                 vld1q_s16(sub1_them + i + 8));
+        vst1q_s16(curr_them + i, v0);
+        vst1q_s16(curr_them + i + 8, v1);
+        int16x8_t t0 = vminq_s16(vmaxq_s16(v0, zero), qa);
+        int16x8_t t1 = vminq_s16(vmaxq_s16(v1, zero), qa);
+        int16x8_t tw0 = vmulq_s16(t0, vld1q_s16(w_them + i));
+        int16x8_t tw1 = vmulq_s16(t1, vld1q_s16(w_them + i + 8));
+        s0 = vmlal_s16(s0, vget_low_s16(tw0), vget_low_s16(t0));
+        s1 = vmlal_high_s16(s1, tw0, t0);
+        s2 = vmlal_s16(s2, vget_low_s16(tw1), vget_low_s16(t1));
+        s3 = vmlal_high_s16(s3, tw1, t1);
     }
     return nnue_finish(vaddvq_s32(vaddq_s32(vaddq_s32(s0, s1), vaddq_s32(s2, s3))), bucket);
 }
@@ -1040,8 +1068,8 @@ static inline int32_t nnue_forward_neon(const int16_t *NNUE_RESTRICT us,
                                         const int16_t *NNUE_RESTRICT them, int bucket) {
     const int16x8_t zero = vdupq_n_s16(0);
     const int16x8_t qa = vdupq_n_s16(NNUE_QA);
-    const int16_t *w_us = g_weights->out_w[bucket];
-    const int16_t *w_them = g_weights->out_w[bucket] + NNUE_HIDDEN_SIZE;
+    const int16_t *NNUE_RESTRICT w_us = g_weights->out_w[bucket];
+    const int16_t *NNUE_RESTRICT w_them = g_weights->out_w[bucket] + NNUE_HIDDEN_SIZE;
     int32x4_t s0 = vdupq_n_s32(0), s1 = s0, s2 = s0, s3 = s0;
 
     for (int i = 0; i < NNUE_HIDDEN_SIZE; i += 8) {

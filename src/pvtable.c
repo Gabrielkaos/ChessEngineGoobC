@@ -7,6 +7,9 @@
 #include "some_maths.h"
 #include "board.h"
 #include "string.h"
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
 
 S_PVTABLE pvTable[1];
 
@@ -50,12 +53,20 @@ void InitPvTable(S_PVTABLE *table,const int mb,int noisy){
 
     if(table->pTable != NULL) goob_aligned_free(table->pTable);
 
-    table->pTable=(S_PVBUCKET *) goob_aligned_alloc(64, (size_t)table->numEntries * sizeof(S_PVBUCKET));
+    size_t allocBytes = (size_t)table->numEntries * sizeof(S_PVBUCKET);
+    size_t align = 64;
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    if (allocBytes >= 2 * 1024 * 1024) align = 2 * 1024 * 1024;
+#endif
+    table->pTable=(S_PVBUCKET *) goob_aligned_alloc(align, allocBytes);
 
     if(table->pTable==NULL){
         if(noisy)printf("info string PV HashTable Initialization failed with %d MB\n",mb);
         InitPvTable(table,mb/2,noisy);
     }else{
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+        if (align == 2 * 1024 * 1024) madvise(table->pTable, allocBytes, MADV_HUGEPAGE);
+#endif
         clearPvTable(table);
         if(noisy)printf("info string PV HashTable initialized size %d MB, entries %d (buckets x%d)\n",mb,table->numEntries,TT_BUCKET_SIZE);
     }

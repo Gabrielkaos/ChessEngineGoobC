@@ -64,7 +64,8 @@ INLINE int ProbeTTEntry(S_PVTABLE *table, U64 key, uint64_t *out_data, int *out_
         int16_t ev = bucket->entries[i].eval;
         uint32_t test_key = posFold ^ (uint32_t)(data ^ (data >> 32));
         if (bucket->entries[i].smp_key == test_key) {
-            bucket->entries[i].generation = table->generation;
+            if (bucket->entries[i].generation != table->generation)
+                bucket->entries[i].generation = table->generation;
             *out_data = data;
             if (out_eval) *out_eval = (int)ev;
             return TRUE;
@@ -136,8 +137,7 @@ INLINE void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table, const int move, int s
     bucket->entries[replaceIdx].eval = eval;
     bucket->entries[replaceIdx].generation = table->generation;
     bucket->entries[replaceIdx].smp_data = new_data;
-    __atomic_thread_fence(__ATOMIC_RELEASE);
-    bucket->entries[replaceIdx].smp_key = new_key;
+    __atomic_store_n(&bucket->entries[replaceIdx].smp_key, new_key, __ATOMIC_RELEASE);
 }
 
 #endif //PVTABLE_H
