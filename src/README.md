@@ -101,7 +101,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Beta Pruning / RFP ($D \le 9$).
     * Null Move Pruning with verification search ($D \ge 16$).
     * Internal Iterative Reduction (IIR) with all-node bias.
-    * ProbCut ($D \ge 7$) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`) and verified cutoff storage in TT.
+    * ProbCut ($D \ge 7$, non-PV, not in check) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`), SEE-validated tactical `ttMove` ordering, `Quiescence()` pre-filtering at all ProbCut depths (falling back to depth-0 `AlphaBeta` if the capture gives check), `!cutNode` `depth - 4` verification, and verified cutoff storage in TT.
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
     * Tactical pruning: history-adjusted SEE margin on captures.
     * Static Exchange Evaluation (SEE) pruning on quiet and noisy moves.

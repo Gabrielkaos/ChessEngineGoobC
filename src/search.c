@@ -536,9 +536,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
     }
 
+    //a tactical TT move makes the quiet alternatives less promising
+    int ttCapture = ttMove != NOMOVE && moveIsTactical(pos, ttMove);
+
     //PROBCUT
     //prune unlikely moves
-    //if not bruteforce and not in princiap variation line
+    //if not bruteforce, not in check, and not in principal variation line
     //only in a threshold
     //dont prune moves if in a checkmate scenario to not miss a tactical sequence
     //only prune when the static eval is >= beta meaning we are winning so we can prune safely -
@@ -546,18 +549,22 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //skip it when the TT already tells us this node can't reach rBeta
     int rBeta = MIN(beta + probCutMargin, ISMATE - 1);
     if (!info->bruteForceMode &&
+        !inCheck &&
         !pvNode &&
         !excludedMove &&
-        depth >=probCutDepth &&
+        depth >= probCutDepth &&
         abs(beta) < ISMATE &&
         !(ttHit && ttDepth >= depth - 3 && ttValue < rBeta) &&
-        (eval>=beta || eval + MoveBestCaseValue(pos) >=beta + probCutMargin)){
+        (eval >= beta || eval + MoveBestCaseValue(pos) >= beta + probCutMargin)){
 
             TRACE_INC(pos, probcut_attempted);
             int move_in_prob;
 
             S_MOVEPICKER *probmp = &pos->search->movePickers[pos->ply];
-            initNoisyMovePicker(probmp, rBeta - eval, NOMOVE);
+            int probTtMove = (ttCapture && moveIsPseudoLegal(pos, ttMove)
+                              && StaticExchangeEvaluation(pos, ttMove, rBeta - eval))
+                           ? ttMove : NOMOVE;
+            initNoisyMovePicker(probmp, rBeta - eval, probTtMove);
             while((move_in_prob = selectNextMove(probmp,pos,FALSE)) != NOMOVE){
 
                 if (!legal(pos, move_in_prob)) continue;
@@ -566,12 +573,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                 makeMove(pos, move_in_prob, &probSt);
                 prefetchTT(table, pos->st->posKey);
 
-                //perform a zero width search at ply 1 if the depth is higher than the threshold to quickly confirm
-                //if it can exceed beta
-                if(depth>=2*probCutDepth)value=-AlphaBeta(-rBeta,-rBeta+1,1,pos,info, table,threadNum,TRUE, TRUE, NULL);
+                // Preliminary qsearch (or depth-0 evasion search if the capture gives check)
+                // to filter captures before spending a depth-4 verification search.
+                value = pos->st->checkersBB
+                      ? -AlphaBeta(-rBeta, -rBeta + 1, 0, pos, info, table, threadNum, TRUE, !cutNode, NULL)
+                      : -Quiescence(-rBeta, -rBeta + 1, pos, info, table);
 
-                //now at shallow depth perform a more deeper search to confirm
-                if (depth<2*probCutDepth || value>=rBeta)value=-AlphaBeta(-rBeta,-rBeta+1,depth-4,pos,info, table,threadNum,TRUE, TRUE, NULL);
+                if (value >= rBeta && depth - 4 > 0 && !info->stopped)
+                    value = -AlphaBeta(-rBeta, -rBeta + 1, depth - 4, pos, info, table, threadNum, TRUE, !cutNode, NULL);
 
                 takeMove(pos);
                 if(info->stopped==TRUE)return 0;
@@ -589,9 +598,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     S_MOVEPICKER *mp = excludedMove ? &pos->search->singularMovePickers[pos->ply] : &pos->search->movePickers[pos->ply];
     if (excludedMove) initSingularMovePicker(mp, pos, excludedMove);
     else initMovePicker(mp, pos, ttMove);
-
-    //a tactical TT move makes the quiet alternatives less promising
-    int ttCapture = ttMove != NOMOVE && moveIsTactical(pos, ttMove);
 
     Score = -AB_BOUND;
     int skipQuiets = 0;
