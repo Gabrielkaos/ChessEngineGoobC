@@ -9,6 +9,7 @@
 
 
 
+extern void computeMovePickerThreats(S_MOVEPICKER *mp, const S_BOARD *pos);
 extern void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove);
 extern void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove);
 extern void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove);

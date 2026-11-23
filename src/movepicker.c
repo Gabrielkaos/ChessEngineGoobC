@@ -28,7 +28,7 @@ static int mp_popMoveAt(S_MOVE *moves, int lo, int *size, int index){
     return popped;
 }
 
-static void computeMovePickerThreats(S_MOVEPICKER *mp, const S_BOARD *pos) {
+void computeMovePickerThreats(S_MOVEPICKER *mp, const S_BOARD *pos) {
     int enemy = pos->side ^ 1;
     U64 colorBB = pos->byColorBB[enemy];
     U64 occ = pos->byTypeBB[ALL_PIECES];

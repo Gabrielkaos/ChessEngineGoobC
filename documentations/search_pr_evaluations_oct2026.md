@@ -787,7 +787,22 @@ Tested against `main` at `397d97a` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 36. Summary of All Merged Features on `main`
+## 36. Round 34: Lazy Threat Computation for Refutation Moves in LMR (`fix/refutation-threats`) (November 23, 2026)
+
+Tested against `main` at `aa47124` (baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 719,251 nodes, `bench.py 15` 3,434,542 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/refutation-threats`** | **PASSED (`nonreg` H1)** | 7484 | 1789 - 1736 - 3959 | 50.35% | **+2.46 ± 4.25** | +2.95 | Accepted (`[-3.00, 1.00]`) |
+
+* **Changes (`src/movepicker.h`, `src/movepicker.c`, `src/search.c`):** Exposed `computeMovePickerThreats()` and called it lazily in `AlphaBeta()` right before the LMR `getHistoryFast()` / `getCaptureHistory()` lookup when `!mp->threatsComputed`. Previously, when `STAGE_GENERATE_NOISY` produced 0 captures/promotions, refutation moves (`STAGE_KILLER_1..STAGE_FOLLOWUP_MOVE`) reached LMR with `mp->threats == 0ULL`, reading `histtable[side][0][0][piece][to]` while fail-high updates wrote to the true `[threat_from][threat_to]` slice. Caching `mp->threatsComputed = 1` avoids recomputation in `STAGE_GENERATE_QUIET` and fail-high updates.
+* **Correctness checks:** TT replacement tests 5/5 passed, mate-in-1/2/3 tests passed, 2-thread SMP search clean. `bench.py 12`: `719,251` -> `722,751` nodes (`+0.49%`, `361 ms`, `2.00M` nps); `bench.py 15`: `3,434,542` -> `3,209,203` nodes (**-6.56%**, `1742 ms -> 1623 ms`).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-refutation-threats tools/sprt/bin/GOOB-base refutation-threats 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:32:59`. `nElo +4.56 ± 7.87`, `LOS 87.20%`, `DrawRatio 49.84%`, `PairsRatio 1.05`, Pentanomial (0-2) `[48, 866, 1865, 911, 52]`, `WL/DD Ratio 0.71`, `LLR +2.95 (100.1%)`. Log: `tools/sprt/logs/refutation-threats.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Clean bugfix saving `-6.56%` depth-15 nodes with `+2.46 ± 4.25` Elo (`87.20%` LOS) on `fix/refutation-threats`.
+
+---
+
+## 37. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -808,7 +823,8 @@ Tested against `main` at `397d97a` (baseline binary `GOOB-base`, Gen-3 net, `ben
 17. `fix/lmr-fixedpoint`: Fixed-point `1024`-scaled LMR (`LMRTable`, smooth history divisors, active `AllNodeScale`/`AllNodeBase` fixing dead `allNode` scaling) plus `lmr_fp1` 8-parameter SPSA retune (+1.46 ± 3.56 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 10,952 games).
 18. NEON output layer (ARM64 only): `nnue_forward_neon()` / `nnue_forward_exact_neon()`, bit-identical to the scalar kernel, +5.4–6.2% NPS on Apple Silicon (node-identical; SPRT stopped at LLR +1.54, inconclusive; see Section 32).
 19. `search/probcut-qsearch`: ProbCut `!inCheck` guard, SEE-validated tactical `ttMove`, `Quiescence()` pre-filter at all ProbCut depths (depth-0 `AlphaBeta` fallback on checking captures), and `!cutNode` `depth - 4` verification (+3.51 ± 2.80 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 17,628 games, `497ffa4`).
-20. `fix/lmr-shallower-guard`: Guard LMR zero-window re-search with `newDepth - 1 > lmrDepth` so `doShallower` skips redundant same-depth re-searches (-5.79% depth-15 nodes, +0.70 ± 2.96 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 15,808 games).
+20. `fix/lmr-shallower-guard`: Guard LMR zero-window re-search with `newDepth - 1 > lmrDepth` so `doShallower` skips redundant same-depth re-searches (-5.79% depth-15 nodes, +0.70 ± 2.96 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 15,808 games, `aa47124`).
+21. `fix/refutation-threats` (pending merge): Lazily call `computeMovePickerThreats()` before LMR history lookup when `!mp->threatsComputed` so refutation moves in 0-capture positions read the real `[threat_from][threat_to]` slice (-6.56% depth-15 nodes, +2.46 ± 4.25 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 7,484 games).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -817,7 +833,7 @@ Tested against `main` at `397d97a` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 37. Closing Instructions for GitHub PRs
+## 38. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

@@ -734,6 +734,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         if(!legal(pos, moveInLoop)) continue;
         TRACE_INC(pos, moves_legal);
         if (depth > 2 && Legal >= 1 && !info->bruteForceMode && !histComputed) {
+            if (!mp->threatsComputed) computeMovePickerThreats(mp, pos);
             if (quietMove) {
                 if (!contInit) { getContHistSlices(pos, contSlices); contInit = 1; }
                 hist = getHistoryFast(pos, moveInLoop, &fmhist, &cmhist, mp->threats, contSlices);
