@@ -756,7 +756,38 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 34. Summary of All Merged Features on `main`
+## 34. Round 32: Pawn-Only `pkHash` (Strip Kings from `pawnCorrHist`) (November 23, 2026)
+
+Tested against `main` at `397d97a` (baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 732,499 nodes, `bench.py 15` 3,645,480 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/pawn-corr-no-kings`** | **NOT MERGED** | 16880 | 3926 - 3954 - 9000 | 49.92% | **-0.58 ± 2.84** | -2.97 | Rejected (H0 accepted) |
+
+* **Changes (`src/hashkeys.c`, `src/makemove.c`, `src/history.c`):** Stopped hashing `wK`/`bK` into `pkHash` (since `npHash[WHITE/BLACK]` already hashes both kings and `pawnHistIndex()` was already stripping kings back out), so `pawnCorrHist` keyed strictly on pawn structure like Stockfish (`pawnKey`) and Berserk (`pawnZobrist`) and `makemove.c` dropped `HASH_PK` on castling and king moves.
+* **Correctness checks:** `-DDEBUG` build (`ASSERT(pos->st->pkHash == GeneratePKHash(pos))`) passed across Kiwipete `perft 3` (`97,862`) and 3 tactical depth-8 searches; TT replacement tests 5/5 passed, mate-in-1/2/3 tests passed, 2-thread SMP search clean. `bench.py 12`: `732,499` -> `850,026` nodes; `bench.py 15`: `3,645,480` -> `3,496,247` nodes (-4.1%).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-pawn-corr-no-kings tools/sprt/bin/GOOB-base pawn-corr-no-kings 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `05:41:51`. `nElo -1.06 ± 5.24`, `LOS 34.53%`, `DrawRatio 49.37%`, `PairsRatio 0.99`, Pentanomial (0-2) `[117, 2029, 4167, 2019, 108]`, `WL/DD Ratio 0.68`, `LLR -2.97 (-100.9%)`. Log: `tools/sprt/logs/pawn-corr-no-kings.log`.
+* **Failure analysis:** Essentially Elo-neutral to slightly negative (`-0.58 ± 2.84` Elo over 16.9k games). Keeping kings inside `pkHash` lets `pawnCorrHist` distinguish pawn-shield king-safety errors and king+pawn endgame specifics (and `CorrPawnWeight = 132` was SPSA-tuned with king-included `pkHash`).
+* **Verdict:** **REJECTED.** Branch `search/pawn-corr-no-kings` (commit `adbbd37`) kept locally only, not merged into `main`.
+
+---
+
+## 35. Round 33: LMR `doShallower` Re-Search Depth Guard (`newDepth - 1 > lmrDepth`) (November 23, 2026)
+
+Tested against `main` at `397d97a` (baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 732,499 nodes, `bench.py 15` 3,645,480 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/lmr-shallower-guard`** | **MERGED** | 15808 | 3703 - 3671 - 8434 | 50.10% | **+0.70 ± 2.96** | +2.98 | Accepted (`[-3.00, 1.00]`) |
+
+* **Change (`src/search.c`):** Saved `lmrDepth = newDepth - R` before the reduced LMR search and added `newDepth - 1 > lmrDepth` to the PVS zero-window re-search guard (matching Stockfish 19 and Berserk 14). Previously, when `R == 2` and `Score < bestScore + LMRShallowerMargin` decremented `newDepth` by 1, the PVS branch still ran a redundant same-depth zero-window re-search at `newDepth - 1 == lmrDepth` (and could apply a spurious post-LMR continuation malus if `!cutNode` flipped the result). Full-window PV search still runs whenever `pvNode && Score > alpha`.
+* **Correctness checks:** TT replacement tests 5/5 passed, mate-in-1/2/3 tests passed, 2-thread SMP search clean. `bench.py 12`: `732,499` -> `719,251` nodes (**-1.81%**, `354 ms`, `2.03M` nps); `bench.py 15`: `3,645,480` -> `3,434,542` nodes (**-5.79%**, `1760 ms -> 1666 ms`).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-lmr-shallower-guard tools/sprt/bin/GOOB-base lmr-shallower-guard 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `05:21:49`. `nElo +1.29 ± 5.42`, `LOS 67.91%`, `DrawRatio 47.71%`, `PairsRatio 1.01`, Pentanomial (0-2) `[95, 1960, 3771, 1974, 104]`, `WL/DD Ratio 0.68`, `LLR +2.98 (101.3%)`. Log: `tools/sprt/logs/lmr-shallower-guard.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Clean bugfix saving `-5.8%` depth-15 nodes and verified non-regressive (`+0.70 ± 2.96` Elo) on `fix/lmr-shallower-guard`.
+
+---
+
+## 36. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -777,6 +808,7 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
 17. `fix/lmr-fixedpoint`: Fixed-point `1024`-scaled LMR (`LMRTable`, smooth history divisors, active `AllNodeScale`/`AllNodeBase` fixing dead `allNode` scaling) plus `lmr_fp1` 8-parameter SPSA retune (+1.46 ± 3.56 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 10,952 games).
 18. NEON output layer (ARM64 only): `nnue_forward_neon()` / `nnue_forward_exact_neon()`, bit-identical to the scalar kernel, +5.4–6.2% NPS on Apple Silicon (node-identical; SPRT stopped at LLR +1.54, inconclusive; see Section 32).
 19. `search/probcut-qsearch`: ProbCut `!inCheck` guard, SEE-validated tactical `ttMove`, `Quiescence()` pre-filter at all ProbCut depths (depth-0 `AlphaBeta` fallback on checking captures), and `!cutNode` `depth - 4` verification (+3.51 ± 2.80 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 17,628 games, `497ffa4`).
+20. `fix/lmr-shallower-guard`: Guard LMR zero-window re-search with `newDepth - 1 > lmrDepth` so `doShallower` skips redundant same-depth re-searches (-5.79% depth-15 nodes, +0.70 ± 2.96 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 15,808 games).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -785,7 +817,7 @@ Tested against `main` at `23f9846` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 35. Closing Instructions for GitHub PRs
+## 37. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -807,6 +839,7 @@ For each rejected PR on GitHub:
 - `search/rfp-opp-worsening`
 - `search/incheck-no-eval`
 - `search/lmr-negative-see`
+- `search/pawn-corr-no-kings`
 
 Leave a closing note and close the PR:
 

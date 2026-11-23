@@ -849,12 +849,14 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             R = 1;
         }
 
+        int lmrDepth = newDepth - R;
+
         //LMR
         //see if the move can exceed current alpha
         //if not, no need to explore deeply
         if(R != 1){
             pos->search->reduction_stack[pos->ply] = R;
-            Score = -AlphaBeta(-alpha-1,-alpha,newDepth - R,pos,info, table,threadNum,TRUE, TRUE, NULL);
+            Score = -AlphaBeta(-alpha-1,-alpha,lmrDepth,pos,info, table,threadNum,TRUE, TRUE, NULL);
             pos->search->reduction_stack[pos->ply] = 0;
 
             //the reduced search beat alpha, so a full re-search follows:
@@ -868,8 +870,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         }
 
         //PVS
-        if((R != 1 && Score > alpha) || (R == 1 && !(pvNode && Legal == 1))){
-            if (R != 1 && Score > alpha) {
+        if((R != 1 && Score > alpha && newDepth - 1 > lmrDepth) || (R == 1 && !(pvNode && Legal == 1))){
+            if (R != 1) {
                 TRACE_INC(pos, lmr_researches);
                 didLmrResearch = 1;
             }
