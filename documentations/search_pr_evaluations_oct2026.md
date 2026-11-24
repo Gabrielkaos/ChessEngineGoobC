@@ -802,7 +802,23 @@ Tested against `main` at `aa47124` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 37. Summary of All Merged Features on `main`
+## 37. Round 35: Side-to-Move Dimension for Continuation, Capture, and Pawn History (`fix/history-color-aliasing`) (November 23–24, 2026)
+
+Tested against `main` at `591b1e8` (baseline binary `GOOB-base-591b1e8`, Gen-3 net, `bench.py 12` 722,751 nodes, `bench.py 15` 3,209,203 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/history-color-aliasing`** | **NOT MERGED** | 33636 | 7908 - 7866 - 17862 | 50.06% | **+0.43 ± 2.03** | -2.97 | Rejected (H0 accepted) |
+
+* **Changes (`src/defs.h`, `src/history.h`, `src/history.c`, `src/movepicker.c`, `src/search.c`):** Added a `[2]` side-to-move dimension (`pos->side`) to `ContinuationTable` (`[4][2][6][64][6][64]`), `CaptureHistoryTable` (`[2][6][2][2][64][5]`), and `PawnHistoryTable` (`[8192][2][6][64]`) so White and Black no longer alias each other's colorless `PTYPE_OF` (`0..5`) entries.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, Kiwipete `perft 4 = 4,085,603`, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `722,751` -> `796,483` nodes (`+10.2%`, `437 ms`, `1.82M` nps); `bench.py 15`: `3,209,203` -> `3,739,342` nodes (`+16.5%`, `1961 ms`, `1.91M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-hist-color tools/sprt/bin/GOOB-base-591b1e8 hist-color-aliasing 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `11:25:47`. `nElo +0.79 ± 3.71`, `LOS 66.21%`, `DrawRatio 48.37%`, `PairsRatio 1.00`, Pentanomial (0-2) `[219, 4117, 8135, 4097, 250]`, `WL/DD Ratio 0.69`, `LLR -2.97 (-100.9%)`. Log: `tools/sprt/logs/hist-color-aliasing.log`.
+* **Failure analysis:** Essentially Elo-neutral (`+0.43 ± 2.03` Elo over 33.6k games, H0 accepted). Separating White and Black doubled `PawnHistoryTable` (`6 MB -> 12 MB`) and `ContinuationTable` (`1.125 MB -> 2.25 MB`, +7.1 MB total working set), slowing history saturation on short searches (`+10–16%` bench nodes) and increasing L3 cache pressure under 10-way concurrency, while natural side/rank asymmetry already kept many piece-to squares disjoint. A follow-up could test separating only `chist` + `continuation` (or halving `PAWN_HIST_SIZE` to `4096` to keep `pawnHist` at 6 MB) without inflating memory.
+* **Verdict:** **REJECTED.** Branch `fix/history-color-aliasing` (commit `3e28f0c`) kept locally only, not merged into `main`.
+
+---
+
+## 38. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -833,7 +849,7 @@ Tested against `main` at `aa47124` (baseline binary `GOOB-base`, Gen-3 net, `ben
 
 ---
 
-## 38. Closing Instructions for GitHub PRs
+## 39. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -856,6 +872,7 @@ For each rejected PR on GitHub:
 - `search/incheck-no-eval`
 - `search/lmr-negative-see`
 - `search/pawn-corr-no-kings`
+- `fix/history-color-aliasing`
 
 Leave a closing note and close the PR:
 
