@@ -818,7 +818,24 @@ Tested against `main` at `591b1e8` (baseline binary `GOOB-base-591b1e8`, Gen-3 n
 
 ---
 
-## 38. Summary of All Merged Features on `main`
+## 38. Round 36: Defer Rook/Bishop Underpromotions & Clean `getCaptureHistory()` (`fix/underpromo-good-noisy`) (November 24, 2026)
+
+Tested against `main` at `714a32f` (engine-identical to `591b1e8`, baseline binary `GOOB-base`, Gen-3 net, `bench.py 12` 722,751 nodes, `bench.py 15` 3,209,203 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/underpromo-good-noisy`** | **MERGED** | 11040 | 2595 - 2550 - 5895 | 50.20% | **+1.42 ± 3.53** | +2.98 | Accepted (`[-3.00, 1.00]`) |
+
+* **Changes (`src/history.c`, `src/movepicker.c`):**
+  1. Immediately deferred Rook and Bishop underpromotions out of `STAGE_GOOD_NOISY` into `badNoisies` (and skipped them in `NOISY_PICKER` for QSearch/ProbCut). Previously `-50,000` only sorted them to the end of `STAGE_GOOD_NOISY` while safe `=R`/`=B` promotions still passed `SEE >= 0` and were searched before killers and good quiets.
+  2. Moved the `+64,000` queen-promotion bonus out of `getCaptureHistory()` into `movepicker.c`, removing the `(chist - 64000)` undo hack in `badScore` and letting noisy SEE pruning and noisy LMR in `search.c` read pure capture history.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `722,751` -> `747,495` nodes (`+3.42%`, `392 ms`, `1.91M` nps); `bench.py 15`: `3,209,203` -> `3,362,009` nodes (`+4.76%`, `1746 ms`, `1.93M` nps).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-underpromo tools/sprt/bin/GOOB-base underpromo-good-noisy 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `03:46:12`. `nElo +2.60 ± 6.48`, `LOS 78.40%`, `DrawRatio 49.46%`, `PairsRatio 1.03`, Pentanomial (0-2) `[79, 1296, 2730, 1331, 84]`, `WL/DD Ratio 0.67`, `LLR +2.98 (101.0%)`. Log: `tools/sprt/logs/underpromo-good-noisy.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/underpromo-good-noisy`.
+
+---
+
+## 39. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -841,6 +858,7 @@ Tested against `main` at `591b1e8` (baseline binary `GOOB-base-591b1e8`, Gen-3 n
 19. `search/probcut-qsearch`: ProbCut `!inCheck` guard, SEE-validated tactical `ttMove`, `Quiescence()` pre-filter at all ProbCut depths (depth-0 `AlphaBeta` fallback on checking captures), and `!cutNode` `depth - 4` verification (+3.51 ± 2.80 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 17,628 games, `497ffa4`).
 20. `fix/lmr-shallower-guard`: Guard LMR zero-window re-search with `newDepth - 1 > lmrDepth` so `doShallower` skips redundant same-depth re-searches (-5.79% depth-15 nodes, +0.70 ± 2.96 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 15,808 games, `aa47124`).
 21. `fix/refutation-threats`: Lazily call `computeMovePickerThreats()` before LMR history lookup when `!mp->threatsComputed` so refutation moves in 0-capture positions read the real `[threat_from][threat_to]` slice (-6.56% depth-15 nodes, +2.46 ± 4.25 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 7,484 games).
+22. `fix/underpromo-good-noisy`: Defer Rook/Bishop underpromotions out of `STAGE_GOOD_NOISY` into `badNoisies` (skipping in `NOISY_PICKER`) and move `+64,000` queen-promotion bonus from `getCaptureHistory()` into `movepicker.c` (+1.42 ± 3.53 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 11,040 games).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -849,7 +867,7 @@ Tested against `main` at `591b1e8` (baseline binary `GOOB-base-591b1e8`, Gen-3 n
 
 ---
 
-## 39. Closing Instructions for GitHub PRs
+## 40. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

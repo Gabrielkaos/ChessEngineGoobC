@@ -53,8 +53,7 @@ int getCaptureHistory(S_BOARD *pos,int move, U64 threats){
     int threat_from = (threats & (1ULL << from)) ? 1 : 0;
     int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
-    return pos->shared->chist[piece][threat_from][threat_to][to][captured]
-         + 64000 * (pieceType[PROMOTED(move)] == p_queen);
+    return pos->shared->chist[piece][threat_from][threat_to][to][captured];
 }
 
 void updateCaptureHistory(S_BOARD *pos,int best,int *moves,int length,int depth, U64 threats){

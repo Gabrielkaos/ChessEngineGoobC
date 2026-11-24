@@ -63,7 +63,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   1. Hash move from Transposition Table.
   2. Winning & equal noisy moves:
      * Score = capture history + a victim bonus (`MVVAugment`: Pawn 700, Knight/Bishop 3150, Rook 4725, Queen 9100; quiet promotions count as a pawn victim). There is no attacker (LVA) term here.
-     * `getCaptureHistory()` adds +64,000 to queen promotions; knight promotions get +15,000 and Bishop/Rook underpromotions -50,000 so they do not clog good noisies before quiets.
+     * Promotions are scored in `movepicker.c` (+64,000 for queen promotions, +15,000 for knight promotions, -50,000 for bishop/rook underpromotions) so `getCaptureHistory()` returns pure capture history for SEE pruning and LMR; bishop/rook underpromotions are deferred immediately out of `STAGE_GOOD_NOISY` into `STAGE_BAD_NOISY` (and skipped in `NOISY_PICKER` for QSearch/ProbCut).
      * Gated by Static Exchange Evaluation (SEE $\ge$ threshold, 0 in the main search); failures are deferred to the bad noisy stage.
   3. Killer moves 1 & 2 (with duplicate elimination ensuring `killer2 != killer1`).
   4. Counter move (keyed by opponent's previous move).

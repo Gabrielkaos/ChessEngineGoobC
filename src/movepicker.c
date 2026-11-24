@@ -168,7 +168,9 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     int score = getCaptureHistory(pos, move, mp->threats) + MVVAugment[captured];
                     if(move & MVFLAGPROM){
                         int prom = pieceType[PROMOTED(move)];
-                        if(prom == p_knight){
+                        if(prom == p_queen){
+                            score += 64000;
+                        } else if(prom == p_knight){
                             score += 15000;
                         } else if(prom == p_rook || prom == p_bishop){
                             score -= 50000;
@@ -193,6 +195,19 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                 if(move == mp->counter) mp->counter = NOMOVE;
                 if(move == mp->followup) mp->followup = NOMOVE;
 
+                if(move & MVFLAGPROM){
+                    int prom = pieceType[PROMOTED(move)];
+                    if(prom == p_rook || prom == p_bishop){
+                        if(mp->type == NOISY_PICKER) continue;
+                        if(mp->badNoisyCount < MAXPOSMOVES){
+                            mp->badNoisies[mp->badNoisyCount].move  = move;
+                            mp->badNoisies[mp->badNoisyCount].score = -100000;
+                            mp->badNoisyCount++;
+                        }
+                        continue;
+                    }
+                }
+
                 if(mp->type == NOISY_PICKER){
                     TRACE_INC(pos, qs_see_attempted);
                 }
@@ -212,7 +227,7 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     int badScore;
                     if(move & MVFLAGPROM){
                         if(pieceType[PROMOTED(move)] == p_queen){
-                            badScore = 10000 + (chist - 64000) / 16;
+                            badScore = 10000 + chist / 16;
                         } else if(pieceType[PROMOTED(move)] == p_knight){
                             badScore = (piece_mvv_lva_val(captured) - piece_mvv_lva_val(pt)) * 16 + chist / 16;
                         } else {
