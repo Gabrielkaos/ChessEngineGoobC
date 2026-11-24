@@ -835,7 +835,23 @@ Tested against `main` at `714a32f` (engine-identical to `591b1e8`, baseline bina
 
 ---
 
-## 39. Summary of All Merged Features on `main`
+## 39. Round 37: History-Adjusted SEE Threshold in `STAGE_GOOD_NOISY` (`search/good-noisy-hist-see`) (November 24–25, 2026)
+
+Tested against `main` at `91f4418` (baseline binary `GOOB-base`, Gen-3 net + Round 36, `bench.py 12` 747,495 nodes, `bench.py 15` 3,362,009 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/good-noisy-hist-see`** | **NOT MERGED** | 40000 | 9441 - 9247 - 21312 | 50.24% | **+1.69 ± 1.86** | +0.61 | Inconclusive (40k cap) |
+
+* **Change (`src/movepicker.c`):** Replaced the fixed `SEE >= 0` threshold in `STAGE_GOOD_NOISY` (`NORMAL_PICKER` only; `NOISY_PICKER` untouched) with a history+MVV-scaled threshold `seeThresh = -rawScore / 32` (stripping the `+64,000` / `+15,000` promotion offsets before dividing), matching Berserk's `-chist / 32` scale and Stockfish's `-cur->value / 18` normalized to GOOB's `SEEPieceValues`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `747,495` -> `675,340` nodes (**-9.65%**, `345 ms`, `1.96M` nps); `bench.py 15`: `3,362,009` -> `3,022,895` nodes (**-10.09%**, `1642 ms`, `1.84M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-noisy-hist-see tools/sprt/bin/GOOB-base good-noisy-hist-see 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `13:38:11`. `nElo +3.08 ± 3.40`, `LOS 96.19%`, `DrawRatio 48.31%`, `PairsRatio 1.04`, Pentanomial (0-2) `[271, 4802, 9662, 4992, 273]`, `WL/DD Ratio 0.68`, `LLR +0.61 (20.9%)`. Log: `tools/sprt/logs/good-noisy-hist-see.log`.
+* **Analysis:** Strongly trending positive (`+1.69 ± 1.86` Elo, `96.19%` LOS, `+194` net wins, `-10.1%` bench nodes), but because the true effect sits near the `+1.5` Elo midpoint of `[0.00, 3.00]`, it hit the 40,000-game safety cap without crossing `+2.94`. Kept locally on `search/good-noisy-hist-see` (`1d143f3`) under the conclusive-only rule; worth revisiting with SPSA tuning of the divisor or LTC testing.
+* **Verdict:** **INCONCLUSIVE / NOT MERGED.** Branch `search/good-noisy-hist-see` (`1d143f3`) kept locally only.
+
+---
+
+## 40. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -867,7 +883,7 @@ Tested against `main` at `714a32f` (engine-identical to `591b1e8`, baseline bina
 
 ---
 
-## 40. Closing Instructions for GitHub PRs
+## 41. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
