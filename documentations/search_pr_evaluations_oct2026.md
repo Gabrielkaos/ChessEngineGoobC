@@ -851,7 +851,24 @@ Tested against `main` at `91f4418` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 40. Summary of All Merged Features on `main`
+## 40. Round 38: Dedicated Check-Evasion Generator & Ordering Stage (`search/evasion-movegen`) (November 25, 2026)
+
+Tested against `main` at `c1b6e43` (engine-identical to `91f4418`, baseline binary `GOOB-base`, Gen-3 net + Round 36, `bench.py 12` 747,495 nodes / `1.91M` nps, `bench.py 15` 3,362,009 nodes / `1.93M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/evasion-movegen`** | **MERGED** | 11110 | 2699 - 2550 - 5861 | 50.67% | **+4.66 ± 3.51** | +2.96 | Accepted (`[0.00, 3.00]`) |
+
+* **Changes (`src/defs.h`, `src/movegen.h`, `src/movegen.c`, `src/movepicker.c`):**
+  1. Added `GenerateEvasions()` in `movegen.c`, generating only king moves in double check and king moves + checker captures + `BetweenBB` ray interpositions (plus en passant when capturing the checking pawn or blocking a slider check) in single check.
+  2. Added `STAGE_EVASION_TABLE -> STAGE_GENERATE_EVASIONS -> STAGE_EVASION` in `movepicker.c` (activated in `initMovePicker()` and `initSingularMovePicker()` whenever `pos->st->checkersBB != 0`), skipping killer/counter/followup lookups, skipping threat/history scoring on single-evasion replies, and ordering tactical evasions (MVV-LVA + capture history / 4 + promotion bonus) ahead of quiet evasions (quiet history + `2 * pawnHist`).
+* **Correctness checks:** Exhaustive `GenerateEvasions()` vs `GenerateAllMoves()` + `legal()` equivalence test passed across `4,359` in-check positions (including EP checker capture, EP slider block, promotion block/capture, and double check); TT replacement tests 5/5 passed; mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `747,495 -> 812,612` nodes (`404 ms`, **`2.01M` nps**, `+5.5%` NPS); `bench.py 15`: `3,362,009 -> 3,543,764` nodes (`1800 ms`, **`1.97M` nps**, `+2.2%` NPS).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-evasion tools/sprt/bin/GOOB-base evasion-movegen 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `03:46:45`. `nElo +8.58 ± 6.46`, `LOS 99.54%`, `DrawRatio 49.00%`, `PairsRatio 1.10`, Pentanomial (0-2) `[69, 1278, 2722, 1407, 79]`, `WL/DD Ratio 0.71`, `LLR +2.96 (100.5%)`. Log: `tools/sprt/logs/evasion-movegen.log`.
+* **Verdict:** **ACCEPTED (`gainer` H1).** Strong `+4.66 ± 3.51` Elo gain (`99.54%` LOS); merged into `main` from `search/evasion-movegen`.
+
+---
+
+## 41. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -875,6 +892,7 @@ Tested against `main` at `91f4418` (baseline binary `GOOB-base`, Gen-3 net + Rou
 20. `fix/lmr-shallower-guard`: Guard LMR zero-window re-search with `newDepth - 1 > lmrDepth` so `doShallower` skips redundant same-depth re-searches (-5.79% depth-15 nodes, +0.70 ± 2.96 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 15,808 games, `aa47124`).
 21. `fix/refutation-threats`: Lazily call `computeMovePickerThreats()` before LMR history lookup when `!mp->threatsComputed` so refutation moves in 0-capture positions read the real `[threat_from][threat_to]` slice (-6.56% depth-15 nodes, +2.46 ± 4.25 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 7,484 games).
 22. `fix/underpromo-good-noisy`: Defer Rook/Bishop underpromotions out of `STAGE_GOOD_NOISY` into `badNoisies` (skipping in `NOISY_PICKER`) and move `+64,000` queen-promotion bonus from `getCaptureHistory()` into `movepicker.c` (+1.42 ± 3.53 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 11,040 games).
+23. `search/evasion-movegen`: Dedicated `GenerateEvasions()` check-evasion move generator and `STAGE_EVASION` move-picker path (+4.66 ± 3.51 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 11,110 games, `99.54%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -883,7 +901,7 @@ Tested against `main` at `91f4418` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 41. Closing Instructions for GitHub PRs
+## 42. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

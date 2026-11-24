@@ -56,6 +56,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   * [`GenerateAllMoves()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L204): Full pseudo-legal generator.
   * [`GenerateAllNoisy()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L212): Captures and promotions only.
   * [`GenerateAllQuiet()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L221): Non-tactical moves only; appends to the list after the noisy moves.
+  * [`GenerateEvasions()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c): Dedicated check-evasion generator (king moves always; in single check, captures of the checker, ray interpositions on `BetweenBB`, and en passant when capturing the checking pawn or blocking a slider check).
   * [`moveIsPseudoLegal()`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/movegen.c#L230): Rapid pseudo-legality validator for TT, killer, counter and follow-up moves.
 
 ### Move Ordering & History Heuristics
@@ -71,6 +72,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   6. Quiet moves: scored by butterfly + continuation + pawn history + root low-ply history + threat escape/entry bonuses + safe check bonuses. Caches unified threat bitboards on the move picker (`computeMovePickerThreats()`) to eliminate duplicate slider ray traversals, and short-circuits Static Exchange Evaluation for safe and losing check bonus candidates; loop invariants (4 continuation-history slices via `getContHistSlices()`, `pawnHistIndex(pos)`, `pawnTable`, `lowPlyTable`, and `basePiece`) are hoisted out of the candidate loop. `AlphaBeta()` likewise defers `getHistoryFast()`/`getCaptureHistory()` until a pruning or LMR check reads them (skipping history lookups on move-1 cutoffs and lazily populating `computeMovePickerThreats()` before LMR lookups so refutation moves in 0-capture positions read the real threat slice), hoists node-invariant continuation/pawn indices, and passes `NULL` PV pointers to zero-window searches.
   7. Bad noisy moves (losing captures sorted by least material loss first: `(victimVal - attackerVal) * 16 + chist / 16` to maximize cutoff probability).
   8. Bad quiet moves (moves below `GoodQuietThreshold`).
+  * **Check evasions (`STAGE_EVASION_TABLE` $\to$ `STAGE_GENERATE_EVASIONS` $\to$ `STAGE_EVASION`):** When `pos->st->checkersBB != 0`, switches to `GenerateEvasions()` (skipping killer/counter/followup lookups and skipping threat/history scoring on single-evasion replies), ordering tactical evasions (MVV-LVA + capture history / 4 + promotion bonus) ahead of quiet evasions (quiet history + `2 * pawnHist`).
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
   * Butterfly history with threat context (`[side][threat_from][threat_to][piece][to]`).
   * Capture history (`[piece][threat_from][threat_to][to][captured]`).

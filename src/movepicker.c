@@ -91,7 +91,6 @@ void computeMovePickerThreats(S_MOVEPICKER *mp, const S_BOARD *pos) {
 void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
 
     mp->list->count = 0;
-    mp->stage       = STAGE_TABLE;
     mp->tableMove   = ttMove;
     mp->threshold   = 0;
     mp->type        = NORMAL_PICKER;
@@ -102,6 +101,14 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     mp->split       = 0;
     mp->threats     = 0ULL;
     mp->threatsComputed = 0;
+
+    if(pos->st->checkersBB){
+        mp->stage   = STAGE_EVASION_TABLE;
+        mp->killer1 = mp->killer2 = mp->counter = mp->followup = NOMOVE;
+        return;
+    }
+
+    mp->stage       = STAGE_TABLE;
 
     int counter  = pos->ply > 0 ? pos->search->moveStack[pos->ply - 1] : NOMOVE;
     int cmPiece  = pos->ply > 0 ? pos->search->pieceStack[pos->ply - 1] : 0;
@@ -121,7 +128,7 @@ void initMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
 
 void initSingularMovePicker(S_MOVEPICKER *mp, S_BOARD *pos, int ttMove){
     initMovePicker(mp, pos, ttMove);
-    mp->stage = STAGE_GENERATE_NOISY;   // skip offering ttMove a second time
+    mp->stage = pos->st->checkersBB ? STAGE_GENERATE_EVASIONS : STAGE_GENERATE_NOISY;   // skip offering ttMove a second time
 }
 
 void initNoisyMovePicker(S_MOVEPICKER *mp, int threshold, int ttMove){
@@ -457,6 +464,71 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
 
         case STAGE_DONE:
         default:
+            return NOMOVE;
+
+        case STAGE_EVASION_TABLE:
+            mp->stage = STAGE_GENERATE_EVASIONS;
+            if(moveIsPseudoLegal(pos, mp->tableMove)){
+                mp->lastStage = STAGE_TABLE;
+                return mp->tableMove;
+            }
+            /* fallthrough */
+
+        case STAGE_GENERATE_EVASIONS: {
+            GenerateEvasions(pos, mp->list);
+            mp->noisySize = mp->list->count;
+            if(mp->noisySize > 1){
+                computeMovePickerThreats(mp, pos);
+                int fm, cm;
+                ContHistSlice contSlices[CONT_HIST_SLOTS];
+                getContHistSlices(pos, contSlices);
+                int pawnIdx = pawnHistIndex(pos);
+                const int16_t (*pawnTable)[64] = pos->shared->pawnHist[pawnIdx];
+
+                for(int i = 0; i < mp->noisySize; ++i){
+                    move = mp->list->moves[i].move;
+                    int from  = FROMSQ(move);
+                    int to    = TOSQ(move);
+                    int pType = PTYPE_OF(pos->pieces[from]);
+
+                    if(moveIsTactical(pos, move)){
+                        int captured = pieceType[pos->pieces[to]];
+                        if(move & MVFLAGEP) captured = p_pawn;
+                        else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
+
+                        int score = (1 << 20) + MVVAugment[captured] - piece_mvv_lva_val(pType)
+                                  + getCaptureHistory(pos, move, mp->threats) / 4;
+                        if(move & MVFLAGPROM){
+                            int prom = pieceType[PROMOTED(move)];
+                            if(prom == p_queen)       score += 64000;
+                            else if(prom == p_knight) score += 15000;
+                            else                      score -= 50000;
+                        }
+                        mp->list->moves[i].score = score;
+                    } else {
+                        mp->list->moves[i].score = getHistoryFast(pos, move, &fm, &cm, mp->threats, contSlices)
+                                                 + 2 * pawnTable[pType][to];
+                    }
+                }
+            }
+            mp->stage = STAGE_EVASION;
+        }
+        /* fallthrough */
+
+        case STAGE_EVASION:
+            while(mp->noisySize){
+                best = mp_getBestIndex(mp->list->moves, 0, mp->noisySize);
+                move = mp_popMoveAt(mp->list->moves, 0, &mp->noisySize, best);
+
+                if(move == mp->tableMove) continue;
+
+                int tactical = moveIsTactical(pos, move);
+                if(skipQuiets && !tactical) continue;
+
+                mp->lastStage = tactical ? STAGE_BAD_NOISY : STAGE_GOOD_QUIET;
+                return move;
+            }
+            mp->stage = STAGE_DONE;
             return NOMOVE;
     }
 }

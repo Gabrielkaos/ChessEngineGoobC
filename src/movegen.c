@@ -230,6 +230,95 @@ void GenerateAllQuiet(const S_BOARD *pos, S_MOVELIST *list){
     list->count = (int)(end - list->moves);
 }
 
+//Generates only pseudo-legal check evasions when side to move is in check:
+//king moves always, plus (in single check) captures of the checker and blocks
+//on the king-checker ray (including en passant when it captures or blocks).
+INLINE S_MOVE *generateEvasions(const S_BOARD *pos, S_MOVE *cur, int us){
+    const int them       = us ^ 1;
+    const int ksq        = pos->kingSq[us];
+    const U64 occ        = pos->byTypeBB[ALL_PIECES];
+    const U64 checkers   = pos->st->checkersBB;
+    const U64 capturable = pos->byColorBB[them] & ~pos->byTypeBB[KING];
+
+    ASSERT(pos->st->checkersComputed && checkers);
+
+    // King evasions (always possible, including double check)
+    cur = addPieceMoves(pos, cur, us, KING, occ, capturable, ~occ);
+
+    // Double check: only king moves can evade
+    if (checkers & (checkers - 1))
+        return cur;
+
+    const int checkerSq = LSBINDEX(checkers);
+    const U64 blockMask = BetweenBB[ksq][checkerSq];
+    const U64 capMask   = checkers & capturable;
+
+    // Non-king piece evasions (capture checker or interpose on ray)
+    cur = addPieceMoves(pos, cur, us, KNIGHT, occ, capMask, blockMask);
+    cur = addPieceMoves(pos, cur, us, BISHOP, occ, capMask, blockMask);
+    cur = addPieceMoves(pos, cur, us, ROOK,   occ, capMask, blockMask);
+    cur = addPieceMoves(pos, cur, us, QUEEN,  occ, capMask, blockMask);
+
+    // Pawn evasions
+    const int base    = (us == WHITE) ? wP : bP;
+    const int up      = (us == WHITE) ? 8 : -8;
+    const U64 empty   = ~occ;
+    const U64 pawns   = pos->byColorBB[us] & pos->byTypeBB[PAWN];
+    const U64 promo   = RankBBMask[us == WHITE ? RANK_8 : RANK_1];
+    const U64 dblRank = RankBBMask[us == WHITE ? RANK_3 : RANK_6];
+
+    const U64 pushes = (us == WHITE ? pawns << 8 : pawns >> 8) & empty;
+    U64 t;
+
+    t = pushes & blockMask & promo;
+    while (t) {
+        int to = poplsb(&t);
+        cur = addPromotions(cur, to - up, to, EMPTY, base);
+    }
+
+    t = pushes & blockMask & ~promo;
+    while (t) {
+        int to = poplsb(&t);
+        cur = addMove(cur, MOVE(to - up, to, EMPTY, EMPTY, 0));
+    }
+
+    t = (us == WHITE ? (pushes & dblRank) << 8 : (pushes & dblRank) >> 8) & empty & blockMask;
+    while (t) {
+        int to = poplsb(&t);
+        cur = addMove(cur, MOVE(to - 2 * up, to, EMPTY, EMPTY, MVFLAGPS));
+    }
+
+    if (us == WHITE) {
+        cur = addPawnCaptures(pos, cur, (pawns << 7) & NOT_H_FILE & capMask, 7, promo, base);
+        cur = addPawnCaptures(pos, cur, (pawns << 9) & NOT_A_FILE & capMask, 9, promo, base);
+    } else {
+        cur = addPawnCaptures(pos, cur, (pawns >> 9) & NOT_H_FILE & capMask, -9, promo, base);
+        cur = addPawnCaptures(pos, cur, (pawns >> 7) & NOT_A_FILE & capMask, -7, promo, base);
+    }
+
+    const int ep = pos->st->enPas;
+    if (ep != NO_SQ) {
+        const int epCapSq = (us == WHITE) ? (ep - 8) : (ep + 8);
+        if (checkers == (1ULL << epCapSq) || ((1ULL << ep) & blockMask)) {
+            t = pawn_attacks[them][ep] & pawns;
+            while (t) {
+                int from = poplsb(&t);
+                cur = addMove(cur, MOVE(from, ep, EMPTY, EMPTY, MVFLAGEP));
+            }
+        }
+    }
+
+    return cur;
+}
+
+void GenerateEvasions(const S_BOARD *pos, S_MOVELIST *list){
+    ASSERT(checkBoard(pos));
+
+    S_MOVE *end = (pos->side == WHITE) ? generateEvasions(pos, list->moves, WHITE)
+                                       : generateEvasions(pos, list->moves, BLACK);
+    list->count = (int)(end - list->moves);
+}
+
 int moveIsPseudoLegal(const S_BOARD *pos, int move){
 
     if(move == NOMOVE || move == NULLMOVE) return FALSE;
