@@ -899,7 +899,15 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 43. Summary of All Merged Features on `main`
+## 43. Round 41: Skip Unused `allAttackedSquares()` on Shallow Move-1 Cutoffs (`opt/skip-shallow-threats`) (November 25, 2026)
+
+* **Change (`src/search.c`):** Guarded `allAttackedSquares()` at fail-high history updates on `needThreats = (depth > 0) && (capturesPlayed > 0 || (!bestIsTactical && !(quietsPlayed == 1 && depth <= 3)))`, avoiding full-board enemy attack generation on shallow move-1 quiet cutoffs where `updateHistories()` skips updates (`length == 1 && depth <= 3`), and guarded `updateCaptureHistory()` on `capturesPlayed > 0`.
+* **Verification:** Strictly node-identical (`bench.py 12` = `932,216` nodes, `bench.py 15` = `3,468,190` nodes, identical moves and scores across all 16 positions). Paired 10-round `compare_nps.py` at depth 15: `2,011,101 ± 31,589` vs `2,016,398 ± 27,759` nps (**+0.26%**).
+* **Verdict:** **KEPT (node-identical cleanup/speedup).** Merged into `main` from `opt/skip-shallow-threats` (no SPRT required since the search tree is bit-identical).
+
+---
+
+## 44. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -925,6 +933,7 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 22. `fix/underpromo-good-noisy`: Defer Rook/Bishop underpromotions out of `STAGE_GOOD_NOISY` into `badNoisies` (skipping in `NOISY_PICKER`) and move `+64,000` queen-promotion bonus from `getCaptureHistory()` into `movepicker.c` (+1.42 ± 3.53 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 11,040 games).
 23. `search/evasion-movegen`: Dedicated `GenerateEvasions()` check-evasion move generator and `STAGE_EVASION` move-picker path (+4.66 ± 3.51 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 11,110 games, `99.54%` LOS).
 24. `search/from-to-history`: Index main quiet `HistoryTable` by `[from][to]` instead of `[piece][to]` (`[2][2][2][64][64]`, 64 KB) (+5.13 ± 3.75 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 9,828 games, `99.63%` LOS).
+25. `opt/skip-shallow-threats`: Guard unused `allAttackedSquares()` on shallow move-1 quiet fail-highs (`depth <= 3 && quietsPlayed == 1 && capturesPlayed == 0`) (node-identical, `+0.26%` NPS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -933,7 +942,7 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 44. Closing Instructions for GitHub PRs
+## 45. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

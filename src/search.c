@@ -957,10 +957,13 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //update history counters on a fail high
     if(bestScore>=beta){
-        U64 threats = (mp->threatsComputed || depth <= 0) ? mp->threats : allAttackedSquares(pos, pos->side ^ 1);
-        if(!moveIsTactical(pos,bestMove))
+        int bestIsTactical = moveIsTactical(pos, bestMove);
+        int needThreats = (depth > 0) && (capturesPlayed > 0 || (!bestIsTactical && !(quietsPlayed == 1 && depth <= 3)));
+        U64 threats = (!needThreats || mp->threatsComputed) ? mp->threats : allAttackedSquares(pos, pos->side ^ 1);
+        if(!bestIsTactical)
             updateHistories(pos,quietsTried,quietsPlayed,depth,threats);
-        updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth,threats);
+        if(capturesPlayed > 0)
+            updateCaptureHistory(pos,bestMove,capturesTried,capturesPlayed,depth,threats);
     }
 
     //ttMoveHistory: track how often the TT move actually turns out best,
