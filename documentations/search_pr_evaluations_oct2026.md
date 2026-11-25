@@ -883,7 +883,23 @@ Tested against `main` at `f394d79` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 42. Summary of All Merged Features on `main`
+## 42. Round 40: 3-Ply Continuation History & Weighted Quiet History (`search/conthist-3ply-weighted`) (November 25, 2026)
+
+Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rounds 36, 38 & 39, `bench.py 12` 932,216 nodes / `1.88M` nps, `bench.py 15` 3,468,190 nodes / `1.96M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/conthist-3ply-weighted`** | **NOT MERGED** | 6836 | 1537 - 1610 - 3689 | 49.47% | **-3.71 ± 4.49** | -2.97 | Rejected (H0 accepted) |
+
+* **Changes (`src/defs.h`, `src/history.h`, `src/history.c`):** Added a 5th continuation history slot (`ss-3`, offsets `{1, 2, 3, 4, 6}`) and replaced the unweighted sum in `getHistoryFast()` / `getHistory()` with `(6 * mainHist + 5 * cmhist + 4 * fmhist + 2 * (c3 + c4 + c6)) / 4`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `932,216 -> 922,420` nodes (`-1.05%`, `488 ms`, `1.89M` nps); `bench.py 15`: `3,468,190 -> 3,352,604` nodes (`-3.33%`, `1781 ms`, `1.88M` nps, `-3.8%` NPS).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-conthist-3ply tools/sprt/bin/GOOB-base conthist-3ply-weighted 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:19:24`. `nElo -6.80 ± 8.24`, `LOS 5.28%`, `DrawRatio 48.30%`, `PairsRatio 0.92`, Pentanomial (0-2) `[45, 875, 1651, 802, 45]`, `WL/DD Ratio 0.64`, `LLR -2.97 (-100.7%)`. Log: `tools/sprt/logs/conthist-3ply-weighted.log`.
+* **Failure analysis:** Extra continuation slot updates and lookups cost ~3–4% NPS while down-weighting `c4`/`c6` to `0.5×` and up-weighting `mainHist` inside `getHistoryFast()` shifted GOOB's tuned pruning/LMR history thresholds (`FutilityHistLimit`, `LMRQuietHistDiv`, `GoodQuietThreshold`).
+* **Verdict:** **REJECTED.** Branch `search/conthist-3ply-weighted` (commit `58a0ad3`) kept locally only, not merged into `main`.
+
+---
+
+## 43. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -917,7 +933,7 @@ Tested against `main` at `f394d79` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 43. Closing Instructions for GitHub PRs
+## 44. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
@@ -941,6 +957,7 @@ For each rejected PR on GitHub:
 - `search/lmr-negative-see`
 - `search/pawn-corr-no-kings`
 - `fix/history-color-aliasing`
+- `search/conthist-3ply-weighted`
 
 Leave a closing note and close the PR:
 
