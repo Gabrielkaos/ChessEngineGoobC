@@ -922,7 +922,23 @@ Tested against `main` at `fe753ef` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 45. Summary of All Merged Features on `main`
+## 45. Round 43: Partial Insertion Sort for Quiet Moves (`opt/partial-sort-quiets`) (November 25–26, 2026)
+
+Tested against `main` at `161d16b` (baseline binary `GOOB-base`, Gen-3 net + Rounds 36, 38, 39, 41 & 42, `bench.py 12` 787,438 nodes / `2.03M` nps, `bench.py 15` 2,932,132 nodes / `2.05M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`opt/partial-sort-quiets`** | **NOT MERGED** | 40000 | 9382 - 9249 - 21369 | 50.17% | **+1.16 ± 1.84** | -1.17 | Inconclusive (40k cap) |
+
+* **Changes (`src/defs.h`, `src/movepicker.h`, `src/movepicker.c`, `src/search.c`):** Replaced repeated linear `mp_getBestIndex()` / `mp_popMoveAt()` selection in `STAGE_GOOD_QUIET` and `STAGE_BAD_QUIET` with Stockfish-style `partial_insertion_sort()` using depth-scaled threshold `MIN(GoodQuietThreshold + 1, -3560 * depth)`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `787,438 -> 727,501` nodes (`-7.61%`, `366 ms`, `1.99M` nps); `bench.py 15`: `2,932,132 -> 3,481,178` nodes (`+18.7%`, `1786 ms`, `1.95M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-partial-sort tools/sprt/bin/GOOB-base partial-sort-quiets 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `13:36:58`. `nElo +2.13 ± 3.40`, `LOS 89.04%`, `DrawRatio 48.69%`, `PairsRatio 1.03`, Pentanomial (0-2) `[248, 4812, 9738, 4963, 239]`, `WL/DD Ratio 0.68`, `LLR -1.17 (-39.7%)`. Log: `tools/sprt/logs/partial-sort-quiets.log`.
+* **Analysis:** Slightly positive (`+1.16 ± 1.84` Elo, `89.04%` LOS) over 40,000 games, hitting the pair cap with `LLR = -1.17` on `[0.00, 3.00]` — not strong enough to clear a gainer SPRT (and unsorted bad quiets below `-3560 * depth` did not yield an NPS win on depth-15 bench).
+* **Verdict:** **INCONCLUSIVE / NOT MERGED.** Branch `opt/partial-sort-quiets` (`9e6fb3c`) kept locally only.
+
+---
+
+## 46. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -958,7 +974,7 @@ Tested against `main` at `fe753ef` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 46. Closing Instructions for GitHub PRs
+## 47. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
