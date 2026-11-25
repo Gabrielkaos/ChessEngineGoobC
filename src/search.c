@@ -611,7 +611,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         TRACE_INC(pos, moves_considered);
 
         int isExempt      = (mp->lastStage==STAGE_TABLE || mp->lastStage==STAGE_GOOD_NOISY);
-        int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE || mp->lastStage==STAGE_FOLLOWUP_MOVE);
+        int isRefutation  = (mp->lastStage==STAGE_KILLER_1 || mp->lastStage==STAGE_KILLER_2 || mp->lastStage==STAGE_COUNTER_MOVE);
         int isSpecial     = isExempt || isRefutation;
         int didLmrResearch = 0;
         int histComputed   = 0;
@@ -938,8 +938,6 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                             TRACE_INC(pos, cutoff_killer);
                         } else if (mp->lastStage == STAGE_COUNTER_MOVE) {
                             TRACE_INC(pos, cutoff_counter);
-                        } else if (mp->lastStage == STAGE_FOLLOWUP_MOVE) {
-                            TRACE_INC(pos, cutoff_followup);
                         }
                     } else if (quietMove) {
                         TRACE_INC(pos, cutoff_quiet);

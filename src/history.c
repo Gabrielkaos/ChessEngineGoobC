@@ -172,14 +172,6 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats)
         pos->shared->cmtable[!pos->side][cmPiece][cmTo] = bestMove;
     }
 
-    int fmMove  = pos->ply > 1 ? pos->search->moveStack[pos->ply - 2] : NOMOVE;
-    int fmPiece = pos->ply > 1 ? pos->search->pieceStack[pos->ply - 2] : 0;
-    int fmTo    = TOSQ(fmMove);
-
-    if (fmMove != NOMOVE && fmMove != NULLMOVE){
-        pos->shared->followupTable[pos->side][fmPiece][fmTo] = bestMove;
-    }
-
     //depth 0 only happens at in-check nodes past the horizon, where
     //stat_bonus() turns negative (-118) and would reward the moves that
     //failed and punish the cutoff move. Those nodes update no histories

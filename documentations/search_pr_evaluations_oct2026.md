@@ -907,7 +907,22 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 44. Summary of All Merged Features on `main`
+## 44. Round 42: Remove `STAGE_FOLLOWUP_MOVE` Refutation Stage (`search/remove-followup-stage`) (November 25, 2026)
+
+Tested against `main` at `fe753ef` (baseline binary `GOOB-base`, Gen-3 net + Rounds 36, 38, 39 & 41, `bench.py 12` 932,216 nodes / `2.03M` nps, `bench.py 15` 3,468,190 nodes / `2.04M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/remove-followup-stage`** | **MERGED** | 5284 | 1255 - 1194 - 2835 | 50.58% | **+4.01 ± 5.10** | +2.95 | Accepted (`[-3.00, 1.00]`) |
+
+* **Changes (`src/defs.h`, `src/board.h`, `src/board.c`, `src/history.c`, `src/movepicker.c`, `src/search.c`):** `trace bench` showed `cutoff_followup` accounted for only `2.36%` of fail-highs (`565 / 23,903`) while trying a stale 2-ply-ago move ahead of scored quiet history (with `isSpecial` `-1` ply LMR and pruning exemptions). Removed `STAGE_FOLLOWUP_MOVE`, `FollowupMoveTable`, and `mp->followup` (2-ply continuation history `continuation[1]` and FollowUpMove history pruning remain intact).
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed; dead-field cleanup verified node-identical to the SPRT binary. `bench.py 12`: `932,216 -> 787,438` nodes (**-15.53%**, `387 ms`, `2.03M` nps); `bench.py 15`: `3,468,190 -> 2,932,132` nodes (**-15.46%**, `1428 ms`, **`2.05M` nps**).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-no-followup tools/sprt/bin/GOOB-base remove-followup-stage 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `01:47:56`. `nElo +7.36 ± 9.37`, `LOS 93.83%`, `DrawRatio 48.79%`, `PairsRatio 1.09`, Pentanomial (0-2) `[35, 612, 1289, 669, 37]`, `WL/DD Ratio 0.66`, `LLR +2.95 (100.2%)`. Log: `tools/sprt/logs/remove-followup-stage.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Simplification that cut depth-12/15 nodes by `-15.5%` and scored `+4.01 ± 5.10` Elo (`93.83%` LOS); merged into `main` from `search/remove-followup-stage`.
+
+---
+
+## 45. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -934,6 +949,7 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 23. `search/evasion-movegen`: Dedicated `GenerateEvasions()` check-evasion move generator and `STAGE_EVASION` move-picker path (+4.66 ± 3.51 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 11,110 games, `99.54%` LOS).
 24. `search/from-to-history`: Index main quiet `HistoryTable` by `[from][to]` instead of `[piece][to]` (`[2][2][2][64][64]`, 64 KB) (+5.13 ± 3.75 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 9,828 games, `99.63%` LOS).
 25. `opt/skip-shallow-threats`: Guard unused `allAttackedSquares()` on shallow move-1 quiet fail-highs (`depth <= 3 && quietsPlayed == 1 && capturesPlayed == 0`) (node-identical, `+0.26%` NPS).
+26. `search/remove-followup-stage`: Remove `STAGE_FOLLOWUP_MOVE` refutation stage and `FollowupMoveTable` (-15.5% bench nodes, +4.01 ± 5.10 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 5,284 games, `93.83%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -942,7 +958,7 @@ Tested against `main` at `5f0a83c` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 45. Closing Instructions for GitHub PRs
+## 46. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
