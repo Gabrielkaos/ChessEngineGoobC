@@ -45,7 +45,7 @@ INLINE int getHistoryFast(const S_BOARD *pos, int move, int *fmhist, int *cmhist
     *fmhist = cont[1] ? cont[1][piece][to] : 0;
 
     int total = *cmhist + *fmhist
-              + pos->shared->histtable[pos->side][threat_from][threat_to][piece][to];
+              + pos->shared->histtable[pos->side][threat_from][threat_to][from][to];
     if (cont[2]) total += cont[2][piece][to];
     if (cont[3]) total += cont[3][piece][to];
     return total;

@@ -868,7 +868,22 @@ Tested against `main` at `c1b6e43` (engine-identical to `91f4418`, baseline bina
 
 ---
 
-## 41. Summary of All Merged Features on `main`
+## 41. Round 39: From-To Butterfly History (`search/from-to-history`) (November 25, 2026)
+
+Tested against `main` at `f394d79` (baseline binary `GOOB-base`, Gen-3 net + Rounds 36 & 38, `bench.py 12` 812,612 nodes / `2.01M` nps, `bench.py 15` 3,543,764 nodes / `1.97M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/from-to-history`** | **MERGED** | 9828 | 2359 - 2214 - 5255 | 50.74% | **+5.13 ± 3.75** | +2.96 | Accepted (`[0.00, 3.00]`) |
+
+* **Change (`src/defs.h`, `src/history.h`, `src/history.c`):** Changed main quiet `HistoryTable` from `[2][2][2][6][64]` (`[side][threat_from][threat_to][piece][to]`) to `[2][2][2][64][64]` (`[side][threat_from][threat_to][from][to]`, 64 KB), giving GOOB its first `from`-square-aware quiet history table alongside the `[piece][to]` continuation, pawn, and low-ply tables.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `812,612 -> 932,216` nodes (`495 ms`, `1.88M` nps); `bench.py 15`: `3,543,764 -> 3,468,190` nodes (**-2.13%**, `1772 ms`, `1.96M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-from-to-hist tools/sprt/bin/GOOB-base from-to-history 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `03:23:07`. `nElo +9.39 ± 6.87`, `LOS 99.63%`, `DrawRatio 48.33%`, `PairsRatio 1.12`, Pentanomial (0-2) `[66, 1131, 2375, 1276, 66]`, `WL/DD Ratio 0.67`, `LLR +2.96 (100.7%)`. Log: `tools/sprt/logs/from-to-history.log`.
+* **Verdict:** **ACCEPTED (`gainer` H1).** Strong `+5.13 ± 3.75` Elo gain (`99.63%` LOS) from a 4-line change; merged into `main` from `search/from-to-history`.
+
+---
+
+## 42. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -893,6 +908,7 @@ Tested against `main` at `c1b6e43` (engine-identical to `91f4418`, baseline bina
 21. `fix/refutation-threats`: Lazily call `computeMovePickerThreats()` before LMR history lookup when `!mp->threatsComputed` so refutation moves in 0-capture positions read the real `[threat_from][threat_to]` slice (-6.56% depth-15 nodes, +2.46 ± 4.25 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 7,484 games).
 22. `fix/underpromo-good-noisy`: Defer Rook/Bishop underpromotions out of `STAGE_GOOD_NOISY` into `badNoisies` (skipping in `NOISY_PICKER`) and move `+64,000` queen-promotion bonus from `getCaptureHistory()` into `movepicker.c` (+1.42 ± 3.53 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 11,040 games).
 23. `search/evasion-movegen`: Dedicated `GenerateEvasions()` check-evasion move generator and `STAGE_EVASION` move-picker path (+4.66 ± 3.51 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 11,110 games, `99.54%` LOS).
+24. `search/from-to-history`: Index main quiet `HistoryTable` by `[from][to]` instead of `[piece][to]` (`[2][2][2][64][64]`, 64 KB) (+5.13 ± 3.75 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 9,828 games, `99.63%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -901,7 +917,7 @@ Tested against `main` at `c1b6e43` (engine-identical to `91f4418`, baseline bina
 
 ---
 
-## 42. Closing Instructions for GitHub PRs
+## 43. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

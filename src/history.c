@@ -150,7 +150,7 @@ int getHistory(S_BOARD *pos,int move,int *fmhist,int *cmhist, U64 threats){
     if(fmMove==NOMOVE || fmMove==NULLMOVE)*fmhist = 0;
     else *fmhist = pos->shared->continuation[1][fmPiece][fmTo][piece][to];
 
-    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][threat_from][threat_to][piece][to];
+    int total = *cmhist + *fmhist + pos->shared->histtable[pos->side][threat_from][threat_to][from][to];
 
     for(int slot=2;slot<CONT_HIST_SLOTS;++slot)
         total += getContEntry(pos,slot,piece,to);
@@ -225,7 +225,7 @@ void updateHistories(S_BOARD *pos,int *moves,int length, int depth, U64 threats)
             int threat_from = (threats & (1ULL << from)) ? 1 : 0;
             int threat_to   = (threats & (1ULL << to)) ? 1 : 0;
 
-            histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][piece][to], delta, HistoryDivisor);
+            histGravityUpdate(&pos->shared->histtable[pos->side][threat_from][threat_to][from][to], delta, HistoryDivisor);
 
             if(lowPlyTable)
                 histGravityUpdate(&lowPlyTable[piece][to],

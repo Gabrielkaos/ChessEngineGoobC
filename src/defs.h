@@ -56,7 +56,7 @@ static inline void goob_aligned_free(void* ptr) {
 //1, 2, 4 and 6 plies ago (counter, follow-up, plus two deeper continuations)
 enum{CONT_HIST_SLOTS=4};
 typedef int16_t ContinuationTable[CONT_HIST_SLOTS][6][64][6][64];
-typedef int16_t HistoryTable[2][2][2][6][64];
+typedef int16_t HistoryTable[2][2][2][64][64];
 typedef int16_t CaptureHistoryTable[6][2][2][64][5];
 typedef int CounterMoveTable[2][6][64];
 typedef int FollowupMoveTable[2][6][64];

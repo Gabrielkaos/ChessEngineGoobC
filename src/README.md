@@ -74,7 +74,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
   8. Bad quiet moves (moves below `GoodQuietThreshold`).
   * **Check evasions (`STAGE_EVASION_TABLE` $\to$ `STAGE_GENERATE_EVASIONS` $\to$ `STAGE_EVASION`):** When `pos->st->checkersBB != 0`, switches to `GenerateEvasions()` (skipping killer/counter/followup lookups and skipping threat/history scoring on single-evasion replies), ordering tactical evasions (MVV-LVA + capture history / 4 + promotion bonus) ahead of quiet evasions (quiet history + `2 * pawnHist`).
 * **[`history.h`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.h) / [`history.c`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/history.c):**
-  * Butterfly history with threat context (`[side][threat_from][threat_to][piece][to]`).
+  * Butterfly history with threat context (`[side][threat_from][threat_to][from][to]`).
   * Capture history (`[piece][threat_from][threat_to][to][captured]`).
   * Continuation history across 4 slots (1, 2, 4, 6 plies back), including single-move continuation updates (`updateContinuationHistories`).
   * Low-ply butterfly history (first 5 plies near the root).
