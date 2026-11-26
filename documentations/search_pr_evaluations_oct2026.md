@@ -974,7 +974,23 @@ Tested against `main` at `d3cfe96` (engine-identical to `161d16b`, baseline bina
 
 ---
 
-## 48. Summary of All Merged Features on `main`
+## 48. Round 46: Continuous Root-Effort Time Management Scaling (`search/tm-continuous-effort`) (November 26, 2026)
+
+Tested against `main` at `994a82a` (engine-identical to `4ca200d`, baseline binary `GOOB-base`, `bench.py 12` 854,508 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/tm-continuous-effort`** | **REJECTED** | 7396 | 1739 - 1802 - 3855 | 49.57% | **-2.96 ± 4.18** | -2.95 | `gainer` H0 Accepted |
+
+* **Change (`src/search.c`):** Replaced the binary `currentDepth >= 10 && nodesEffort >= 97000 && elapsed > totalTime * 0.6539` early-stop cliff in `IterativeDeepening()` with Berserk-style continuous effort scaling `effortFactor = CLAMP(0.4499 + 2.2669 * (1.0 - effortFrac), 0.5630, 1.5000)` for `currentDepth >= 8` multiplying `totalTime`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, `bench.py 12` identical (`854,508` nodes), timed UCI recaptures/Kiwipete/2-thread SMP verified.
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-tm-effort tools/sprt/bin/GOOB-base tm-continuous-effort 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:28:26`. `nElo -5.61 ± 7.92`, `LOS 8.27%`, `DrawRatio 50.78%`, `PairsRatio 0.96`, Pentanomial (0-2) `[53, 876, 1878, 863, 28]`, `WL/DD Ratio 0.78`, `LLR -2.95 (-100.0%)`. Log: `tools/sprt/logs/tm-continuous-effort.log`.
+* **Analysis:** Unlike Berserk (which has no separate `bestMoveInstability` multiplier), GOOB already multiplies `totalTime` by both `reduction` (`~1.93x`) and `bestMoveInstability` (`1.0 + 1.8519 * bestMoveChanges`) on root flips; adding `effortFactor > 1.0` (`up to 1.50x`) when `effortFrac < 0.757` stacked multiplicatively and over-spent early clock in `5+0.05` (`53` 0-2 sweeps vs `28` 2-0 sweeps).
+* **Verdict:** **REJECTED (`gainer` H0 accepted).** Left unmerged on branch `search/tm-continuous-effort` (`914da96`).
+
+---
+
+## 49. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1011,7 +1027,7 @@ Tested against `main` at `d3cfe96` (engine-identical to `161d16b`, baseline bina
 
 ---
 
-## 49. Closing Instructions for GitHub PRs
+## 50. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
