@@ -954,7 +954,27 @@ Tested against `main` at `2c27dde` (engine-identical to `161d16b`, baseline bina
 
 ---
 
-## 47. Summary of All Merged Features on `main`
+## 47. Round 45: Preserve Existing TT Move on Fail-Low & Guard IIR / `ttMoveHistory` (`fix/tt-fail-low-move`) (November 26, 2026)
+
+Tested against `main` at `d3cfe96` (engine-identical to `161d16b`, baseline binary `GOOB-base`, Gen-3 net + Rounds 36, 38, 39, 41 & 42, `bench.py 12` 787,438 nodes / `2.03M` nps, `bench.py 15` 2,932,132 nodes / `2.05M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/tt-fail-low-move`** | **MERGED** | 6508 | 1577 - 1523 - 3408 | 50.41% | **+2.88 ± 4.48** | +2.98 | `nonreg` H1 Accepted |
+
+* **Changes (`src/search.c`, `src/pvtable.h`, `src/pvtable.c`):**
+  1. Moved `bestMove = moveInLoop` inside `if (Score > alpha)` in `AlphaBeta()` so ALL-node fail-lows (`Score <= oldAlpha`) keep `bestMove = NOMOVE` instead of overwriting a valid `ttMove` with an arbitrary shallow LMR fail-soft move.
+  2. Preserved `EXTRACT_MOVE(data)` in `StoreHashEntry()` when `finalMove == NOMOVE` overwrites an existing slot with matching `posKey`.
+  3. Gated `ttMoveHistory` updates on `bestMove != NOMOVE` so pure ALL-nodes do not penalize `ttMoveHistory`.
+  4. Guarded ALL-node IIR with `!ttHit` (`if (ttMove == NOMOVE && (!allNode || !ttHit))`) so `HFALPHA` TT hits without a best move do not repeatedly trigger `-2` depth self-reductions on subsequent iterations.
+  5. Added Test 6 to `runTTReplacementTests()` verifying `NOMOVE` same-key preservation vs. different-key eviction.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, Kiwipete `perft 4` (`4,085,603`) passed, mate-in-1 and 2-thread SMP search passed. `bench.py 12`: `787,438 -> 854,508` nodes (`+8.52%`, `419 ms`, `2.04M` nps); `bench.py 15`: `2,932,132 -> 3,293,079` nodes (`+12.31%`, `1631 ms`, `2.02M` nps). First-move beta cutoff rate rose from `80.67%` to `81.53%`.
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-tt-fail-low tools/sprt/bin/GOOB-base tt-fail-low-move 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:11:43`. `nElo +5.44 ± 8.44`, `LOS 89.66%`, `DrawRatio 49.57%`, `PairsRatio 1.06`, Pentanomial (0-2) `[28, 769, 1613, 809, 35]`, `WL/DD Ratio 0.76`, `LLR +2.98 (101.1%)`. Log: `tools/sprt/logs/tt-fail-low-move.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/tt-fail-low-move` (`4ca200d`), baseline `GOOB-base` updated (`bench.py 12 = 854,508`).
+
+---
+
+## 48. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -982,6 +1002,7 @@ Tested against `main` at `2c27dde` (engine-identical to `161d16b`, baseline bina
 24. `search/from-to-history`: Index main quiet `HistoryTable` by `[from][to]` instead of `[piece][to]` (`[2][2][2][64][64]`, 64 KB) (+5.13 ± 3.75 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.96` in 9,828 games, `99.63%` LOS).
 25. `opt/skip-shallow-threats`: Guard unused `allAttackedSquares()` on shallow move-1 quiet fail-highs (`depth <= 3 && quietsPlayed == 1 && capturesPlayed == 0`) (node-identical, `+0.26%` NPS).
 26. `search/remove-followup-stage`: Remove `STAGE_FOLLOWUP_MOVE` refutation stage and `FollowupMoveTable` (-15.5% bench nodes, +4.01 ± 5.10 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 5,284 games, `93.83%` LOS).
+27. `fix/tt-fail-low-move`: Keep `bestMove = NOMOVE` on fail-lows, preserve existing `ttMove` on same-key `NOMOVE` TT overwrites, gate `ttMoveHistory` on `bestMove != NOMOVE`, and guard ALL-node IIR with `!ttHit` (+2.88 ± 4.48 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 6,508 games, `89.66%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -990,7 +1011,7 @@ Tested against `main` at `2c27dde` (engine-identical to `161d16b`, baseline bina
 
 ---
 
-## 48. Closing Instructions for GitHub PRs
+## 49. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
