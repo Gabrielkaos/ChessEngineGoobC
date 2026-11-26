@@ -167,6 +167,18 @@ int runTTReplacementTests(void){
     printf("Test 5 (after 65+ searches wrap, stale eviction + hashfull=%d): %s\n", hashfullTT(table), ok ? "PASS" : "FAIL");
     fails += !ok;
 
+    //Test 6: fail-low store (NOMOVE) on existing key preserves old ttMove,
+    //        while NOMOVE on a new/evicted key stores NOMOVE
+    clearPvTable(table);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, 777, 50, HFBETA, 6, 40);
+    pos->st->posKey = k0; StoreHashEntry(pos, table, NOMOVE, 20, HFALPHA, 7, 40);
+    pos->st->posKey = k1; StoreHashEntry(pos, table, NOMOVE, 10, HFALPHA, 5, 30);
+    int mv0 = -1, mv1 = -1;
+    pos->st->posKey = k0; ok = ProbeHashEntry(pos, table, &mv0, &score, &depth, &bound, &eval) && mv0 == 777 && bound == HFALPHA;
+    pos->st->posKey = k1; ok = ok && ProbeHashEntry(pos, table, &mv1, &score, &depth, &bound, &eval) && mv1 == NOMOVE;
+    printf("Test 6 (preserve ttMove on NOMOVE overwrite): %s\n", ok ? "PASS" : "FAIL");
+    fails += !ok;
+
     printf(fails == 0 ? "\nAll TT tests PASSED\n\n" : "\nTT tests FAILED (%d)\n\n", fails);
 
     if (pos->search) free_search_thread(pos->search);

@@ -530,7 +530,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
     //to have a useful move from the TT.
     if(!info->bruteForceMode && !excludedMove && depth>=IIRDepth) {
         TRACE_INC(pos, iir_attempted);
-        if(ttMove==NOMOVE) {
+        if(ttMove==NOMOVE && (!allNode || !ttHit)) {
             depth -= (1 + allNode);
             TRACE_INC(pos, iir_reduced);
         }
@@ -914,8 +914,8 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         
         if(Score>bestScore){
             bestScore=Score;
-            bestMove=moveInLoop;
             if(Score>alpha){
+                bestMove=moveInLoop;
                 alpha=Score;
                 if (pv != NULL) {
                     pv->moves[0] = moveInLoop;
@@ -966,7 +966,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
     //ttMoveHistory: track how often the TT move actually turns out best,
     //as a trust signal for singular-extension margin scaling
-    if(!pvNode && !excludedMove){
+    if(!pvNode && !excludedMove && bestMove != NOMOVE){
         int bonus = (bestMove == ttMove) ? TTMoveHistBonus : -TTMoveHistMalus;
         int entry = pos->search->ttMoveHistory;
         entry += bonus - entry * abs(bonus) / TTMoveHistoryMax;

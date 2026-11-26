@@ -99,12 +99,11 @@ INLINE void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table, const int move, int s
     S_PVBUCKET *bucket = &table->pTable[index];
 
     score = valueToTT(score, pos->ply);
-    U64 new_data = FOLD_DATA(score, depth, flags, move);
     uint32_t posFold = (uint32_t)(pos->st->posKey ^ (pos->st->posKey >> 32));
-    uint32_t new_key = posFold ^ (uint32_t)(new_data ^ (new_data >> 32));
 
     int replaceIdx = -1;
     int worstScore = INT_MAX;
+    int finalMove  = move;
 
     for (int i = 0; i < TT_BUCKET_SIZE; ++i) {
         uint64_t data = bucket->entries[i].smp_data;
@@ -117,6 +116,7 @@ INLINE void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table, const int move, int s
         uint32_t test_key = posFold ^ (uint32_t)(data ^ (data >> 32));
         if (bucket->entries[i].smp_key == test_key) {
             int existingDepth = EXTRACT_DEPTH(data);
+            if (finalMove == NOMOVE) finalMove = EXTRACT_MOVE(data);
             if ((flags != HFEXACT || depth < 0) && depth < existingDepth - 3) return;
             replaceIdx = i;
             break;
@@ -133,6 +133,9 @@ INLINE void StoreHashEntry(S_BOARD *pos, S_PVTABLE *table, const int move, int s
             replaceIdx = i;
         }
     }
+
+    U64 new_data = FOLD_DATA(score, depth, flags, finalMove);
+    uint32_t new_key = posFold ^ (uint32_t)(new_data ^ (new_data >> 32));
 
     bucket->entries[replaceIdx].eval = eval;
     bucket->entries[replaceIdx].generation = table->generation;
