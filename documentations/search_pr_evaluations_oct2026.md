@@ -938,7 +938,23 @@ Tested against `main` at `161d16b` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 46. Summary of All Merged Features on `main`
+## 46. Round 44: Discovered-Check Detection in `QuietCheckBonus` (`search/discovered-checks-ordering`) (November 26, 2026)
+
+Tested against `main` at `2c27dde` (engine-identical to `161d16b`, baseline binary `GOOB-base`, Gen-3 net + Rounds 36, 38, 39, 41 & 42, `bench.py 12` 787,438 nodes / `2.03M` nps, `bench.py 15` 2,932,132 nodes / `2.05M` nps):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/discovered-checks-ordering`** | **NOT MERGED** | 35080 | 8261 - 8125 - 18694 | 50.19% | **+1.35 ± 1.97** | -0.46 | Stopped, inconclusive |
+
+* **Change (`src/movepicker.c`):** Computed friendly discovered-check blocker candidates (`dcCandidates`) in `STAGE_GENERATE_QUIET` using `rook_pseudo_attacks` / `bishop_pseudo_attacks` + `BetweenBB` against `enemyKingSq`, awarding `QuietCheckBonus` (`+16672`) when a quiet move either gives direct check or moves a blocker off `LineBB[from][to]` with `SEE >= 0`. (Note: a `-75` SEE threshold was omitted because in GOOB's `SEEPieceValues` `{100, 450, 450, 675, 1300}`, quiet moves have no possible exchange outcome strictly between `0` and `-100`, making `-75` identical to `0`.)
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 5/5 passed, mate-in-1 / mate-in-2 and 2-thread SMP search passed. `bench.py 12`: `787,438 -> 903,667` nodes (`+14.8%`, `469 ms`, `1.93M` nps); `bench.py 15`: `2,932,132 -> 3,284,806` nodes (`+12.0%`, `1739 ms`, `1.89M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-disc-checks tools/sprt/bin/GOOB-base discovered-checks-ordering 5+0.05 10` (resumed from `discovered-checks-ordering.state.json` after power interruption), gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`. Stopped by user at `35,080` games: `nElo +2.49 ± 3.64`, `LOS 91.00%`, `DrawRatio 49.02%`, `PairsRatio 1.03`, Pentanomial (0-2) `[224, 4179, 8598, 4315, 224]`, `WL/DD Ratio 0.69`, `LLR -0.46 (-15.5%)`. Log: `tools/sprt/logs/discovered-checks-ordering.log`.
+* **Analysis:** Slightly positive (`+1.35 ± 1.97` Elo, `91.00%` LOS), but after 35k games the 95% CI (`-0.62` to `+3.32`) still spans zero and `LLR` is negative (`-0.46`) on `[0.00, 3.00]`, while the per-node sniper/blocker loop adds overhead on quiet scoring (`-5%` to `-8%` bench NPS). Not worth the added complexity under the conclusive-only rule.
+* **Verdict:** **STOPPED / INCONCLUSIVE / NOT MERGED.** Branch `search/discovered-checks-ordering` (`b85d617`) kept locally only.
+
+---
+
+## 47. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -974,7 +990,7 @@ Tested against `main` at `161d16b` (baseline binary `GOOB-base`, Gen-3 net + Rou
 
 ---
 
-## 47. Closing Instructions for GitHub PRs
+## 48. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
