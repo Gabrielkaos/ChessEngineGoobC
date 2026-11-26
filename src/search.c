@@ -113,7 +113,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
 
 
 //protos
-static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext, StateInfo *ttSt);
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext);
 
 static int isExcludedRootMove(const S_BOARD *pos,int move){
     int i;
@@ -133,10 +133,10 @@ INLINE int adjustEvalOnFmr(const S_BOARD *pos, int eval){
 }
 
 // Detect back-and-forth piece shuffling (A -> B -> A) to prevent singular extension explosions (Stockfish).
-// Called after makeMove(), so pos->st->previous and pos->ply - 1 reflect the pre-move node state.
+// Called before makeMove(), so pos->st and pos->ply reflect the pre-move node state.
 INLINE int is_shuffling(const S_BOARD *pos, int move, int quietMove) {
-    const StateInfo *st = pos->st->previous;
-    int ply = pos->ply - 1;
+    const StateInfo *st = pos->st;
+    int ply = pos->ply;
     if (!quietMove || st->fiftyMove < 10 || st->pliesFromNull < 6 || ply < 20)
         return FALSE;
     int move2 = pos->search->moveStack[ply - 2];
@@ -755,6 +755,24 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         } else {
             pawnHist = 0;
         }
+        int singExt = 0;
+        singular = !info->bruteForceMode
+                 && !rootNode
+                 && !excludedMove
+                 &&  depth >= SingularDepth
+                 &&  moveInLoop == ttMove
+                 &&  abs(ttValue) < TB_WIN_VALUE - MAXDEPTH
+                 &&  ttDepth >= depth - 2
+                 && (ttBound >= HFBETA);
+        if (singular) {
+            TRACE_INC(pos, singular_attempted);
+            singExt = Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, pvNode, ttCapture, baseDext);
+            if (multiCut == TRUE) {
+                TRACE_INC(pos, singular_multicut);
+                return MAX(ttValue - depth * SingularBetaMargin / 16, -AB_BOUND);
+            }
+        }
+
         StateInfo st;
         makeMove(pos, moveInLoop, &st);
         prefetchTT(table, pos->st->posKey);
@@ -763,51 +781,25 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //uci report the current move
         if(threadNum==0 && !info->silent)if((getTimeMs()-info->starttime)>UciCurrMoveTime && rootNode)UciReportCurrentMove(depth,moveInLoop,Legal);
 
-
-        //Singular Extensions and Multi Cut
-        //decides whether the move is the only great move in the position
-        //if the move being considered is the move probed in Transposition Table
-        //then we search this line deeper
         if(!info->bruteForceMode){
-            singular = !rootNode
-                     && !excludedMove
-                     &&  depth >= SingularDepth
-                     &&  moveInLoop == ttMove
-                     &&  abs(ttValue) < TB_WIN_VALUE - MAXDEPTH
-                     &&  ttDepth >= depth - 2
-                     && (ttBound >= HFBETA);
-
-            //check if the move is singular or in check or quiet moves that performed based on history scores
             if (singular) {
-                TRACE_INC(pos, singular_attempted);
-                extension = Singularity(pos, info, table,threadNum,ttValue,depth,beta,ttMove, &multiCut, cutNode, pvNode, ttCapture, baseDext, &st);
-                if (multiCut == TRUE) {
-                    TRACE_INC(pos, singular_multicut);
-                } else if (extension > 1) {
+                extension = singExt;
+                if (extension > 1) {
                     TRACE_INC(pos, singular_double_ext);
                 } else if (extension == 1) {
                     TRACE_INC(pos, singular_single_ext);
                 } else if (extension < 0) {
                     TRACE_INC(pos, singular_negative_ext);
                 }
+            } else if (inCheck) {
+                TRACE_INC(pos, check_ext);
+                extension = 1;
             } else {
-                if (inCheck) {
-                    TRACE_INC(pos, check_ext);
-                    extension = 1;
-                } else {
-                    extension = 0;
-                }
+                extension = 0;
             }
 
             pos->search->dextensions[pos->ply - 1] = baseDext + (extension > 1);
             newDepth = MIN(MAXDEPTH - 2,depth + (rootNode ? 0 : extension));
-
-            //MultiCut, super aggressive pruning
-            //engine thinks that the move is too strong
-            if(multiCut==TRUE){
-                takeMove(pos);
-                return MAX(ttValue - depth * SingularBetaMargin / 16, -AB_BOUND);
-            }
         }else{
             newDepth  = depth;
             extension = 0;
@@ -1009,12 +1001,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 //Singularity
 //checks if the move is truly singular or the only best move in the position
 //also checks if a stornger move if found(MULTICUT)
-static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext, StateInfo *ttSt){
+static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int threadNum,int ttValue,int depth,int beta,int ttMove,int *multiCut, int cutNode, int pvNode, int ttCapture, int baseDext){
 
     int rBeta = MAX(ttValue - depth * SingularBetaMargin / 16, -AB_BOUND);
-
-    //reverts the move
-    takeMove(pos);
 
     pos->search->excludedMove[pos->ply] = ttMove;
     int value = AlphaBeta(rBeta - 1, rBeta, (depth - 1) / 2, pos, info, table, threadNum, FALSE, cutNode, NULL);
@@ -1025,12 +1014,8 @@ static int Singularity(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table, int th
     //we are confident that this is a strong move, we cut off every move and returns early
     if(value >= rBeta && rBeta >= beta && !info->stopped){
         *multiCut = TRUE;
+        return 1;
     }
-
-    //reapply
-    makeMove(pos, ttMove, ttSt);
-
-    if(*multiCut == TRUE) return 1;
 
     if(value < rBeta){
         // Block positive singular extensions on back-and-forth shuffling moves (Stockfish)
