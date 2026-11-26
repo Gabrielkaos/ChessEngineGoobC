@@ -990,7 +990,22 @@ Tested against `main` at `994a82a` (engine-identical to `4ca200d`, baseline bina
 
 ---
 
-## 49. Summary of All Merged Features on `main`
+## 49. Round 47: Seed Root `ttMove` Directly from Thread's Previous Iteration PV (`fix/root-pv-ttmove`) (November 26–27, 2026)
+
+Tested against `main` at `c342b3f` (engine-identical to `4ca200d`, baseline binary `GOOB-base`, `bench.py 12` 854,508 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/root-pv-ttmove`** | **MERGED** | 10094 | 2396 - 2352 - 5346 | 50.22% | **+1.51 ± 3.60** | +2.97 | `nonreg` H1 Accepted |
+
+* **Changes (`src/board.h`, `src/search.c`):** Added thread-local `pos->rootTargetMove` and `pvBestMove[MAXPOSMOVES]` in `IterativeDeepening()` (sorted alongside `depthLines` after each depth and updated on aspiration fail-highs) so root `AlphaBeta()` seeds `ttMove` directly from the worker's own previous-iteration PV move (falling back to the highest-ranked non-excluded PV move in `MultiPV` and filtering excluded TT moves when `rootTargetMove == NOMOVE`). Prevents root `ttMove` loss on TT bucket evictions, Lazy SMP cross-thread root overwrites, and `MultiPV` secondary lines.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, `MultiPV = 3` (`-10.2%` nodes on Kiwipete d12) and `Threads = 2` mate-in-1 verified. `bench.py 12`: `854,508` nodes; `bench.py 15`: `3,293,079` nodes.
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-root-pv tools/sprt/bin/GOOB-base root-pv-ttmove 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `03:24:12`. `nElo +2.85 ± 6.78`, `LOS 79.49%`, `DrawRatio 51.06%`, `PairsRatio 1.03`, Pentanomial (0-2) `[60, 1157, 2577, 1185, 68]`, `WL/DD Ratio 0.72`, `LLR +2.97 (101.0%)`. Log: `tools/sprt/logs/root-pv-ttmove.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/root-pv-ttmove` (`60d1d44`), baseline `GOOB-base` updated.
+
+---
+
+## 50. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1019,6 +1034,7 @@ Tested against `main` at `994a82a` (engine-identical to `4ca200d`, baseline bina
 25. `opt/skip-shallow-threats`: Guard unused `allAttackedSquares()` on shallow move-1 quiet fail-highs (`depth <= 3 && quietsPlayed == 1 && capturesPlayed == 0`) (node-identical, `+0.26%` NPS).
 26. `search/remove-followup-stage`: Remove `STAGE_FOLLOWUP_MOVE` refutation stage and `FollowupMoveTable` (-15.5% bench nodes, +4.01 ± 5.10 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 5,284 games, `93.83%` LOS).
 27. `fix/tt-fail-low-move`: Keep `bestMove = NOMOVE` on fail-lows, preserve existing `ttMove` on same-key `NOMOVE` TT overwrites, gate `ttMoveHistory` on `bestMove != NOMOVE`, and guard ALL-node IIR with `!ttHit` (+2.88 ± 4.48 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 6,508 games, `89.66%` LOS).
+28. `fix/root-pv-ttmove`: Seed root `ttMove` directly from each worker thread's previous-iteration PV (`pos->rootTargetMove` / `pvBestMove[]`) across aspiration re-searches and `MultiPV` lines (+1.51 ± 3.60 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 10,094 games, `79.49%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1027,7 +1043,7 @@ Tested against `main` at `994a82a` (engine-identical to `4ca200d`, baseline bina
 
 ---
 
-## 50. Closing Instructions for GitHub PRs
+## 51. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
