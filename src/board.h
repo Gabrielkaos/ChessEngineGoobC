@@ -154,7 +154,8 @@ typedef struct S_BOARD {
     int excludedRootMoveCount;
     int excludedRootMoves[MAXPOSMOVES];
 
-    int currentPvNum; 
+    int currentPvNum;
+    int rootTargetMove;
 
     
 

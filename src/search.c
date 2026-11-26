@@ -95,6 +95,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     pos->search->nodes  = 0;   //copied into every worker by setupWorkerData
     pos->search->tbhits = 0;
     pos->search->rootEffortCount = 0;
+    pos->rootTargetMove = NOMOVE;
 
     info->depthOneComplete=FALSE; 
 
@@ -384,6 +385,12 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         //ply shallower that fails hard against alpha needs no re-search
 
         ttMove  = EXTRACT_MOVE(ttData);
+    }
+    if (rootNode) {
+        if (pos->rootTargetMove != NOMOVE)
+            ttMove = pos->rootTargetMove;
+        else if (pos->excludedRootMoveCount > 0 && isExcludedRootMove(pos, ttMove))
+            ttMove = NOMOVE;
     }
 
     //Syzygy interior-node probe
@@ -1260,10 +1267,12 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
     int pvAlpha[MAXPOSMOVES];
     int pvBeta[MAXPOSMOVES];
     int pvScore[MAXPOSMOVES];
+    int pvBestMove[MAXPOSMOVES];
     for(pvNum=0;pvNum<multiPV;++pvNum){
         pvAlpha[pvNum]=-INFINITE_BOUND;
         pvBeta[pvNum]= INFINITE_BOUND;
         pvScore[pvNum]=0;
+        pvBestMove[pvNum]=NOMOVE;
     }
 
     int delta,alpha,beta, searchDepth;
@@ -1293,6 +1302,17 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             if(currentDepth >= WindowDepth && !info->bruteForceMode){
                 alpha = MAX(-INFINITE_BOUND, pvScore[pvNum]-delta);
                 beta  = MIN( INFINITE_BOUND, pvScore[pvNum]+delta);
+            }
+
+            pos->rootTargetMove = pvBestMove[pvNum];
+            if(pos->rootTargetMove != NOMOVE && pos->excludedRootMoveCount > 0 && isExcludedRootMove(pos, pos->rootTargetMove)){
+                pos->rootTargetMove = NOMOVE;
+                for(int k = 0; k < lastCompletedCount; ++k){
+                    if(pvBestMove[k] != NOMOVE && !isExcludedRootMove(pos, pvBestMove[k])){
+                        pos->rootTargetMove = pvBestMove[k];
+                        break;
+                    }
+                }
             }
 
             while(TRUE){
@@ -1329,6 +1349,7 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
                 }
                 //fail high: widen upward, allow a shallow depth trim
                 else if(bestScore>=beta){
+                    if(rootPv.count > 0) pos->rootTargetMove = rootPv.moves[0];
                     //window already fully open: accept the upper bound
                     if(beta>=INFINITE_BOUND)break;
                     beta         = MIN(INFINITE_BOUND, beta+delta);
@@ -1378,6 +1399,10 @@ void IterativeDeepening(THREAD_SEARCH_WORKER *workerthread){
             for(int i = 0; i < completedLinesCount; i++){
                 pvScore[i] = depthLines[i].score;
             }
+        }
+        for(int i = 0; i < completedLinesCount; i++){
+            if(depthLines[i].pv.count > 0)
+                pvBestMove[i] = depthLines[i].pv.moves[0];
         }
 
         if(completedLinesCount > 0 && depthLines[0].pv.count > 0){
