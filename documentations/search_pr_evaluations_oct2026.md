@@ -1005,7 +1005,20 @@ Tested against `main` at `c342b3f` (engine-identical to `4ca200d`, baseline bina
 
 ---
 
-## 50. Summary of All Merged Features on `main`
+## 50. Round 48: Run `Singularity()` Before `makeMove()` (`opt/singularity-before-makemove`) (November 27, 2026)
+
+Tested against `main` at `4ef1813` (engine-identical to `60d1d44`, baseline binary `GOOB-base`, `bench.py 12` 854,508 nodes, `bench.py 15` 3,293,079 nodes, 30-pos `bench 13` 2,283,531 nodes):
+
+| Branch / Experiment | Status | Nodes (`bench 13` / `bench.py 15`) | Core-Pinned NPS (`bench 13`, 14 rounds) | Verdict |
+| :--- | :---: | :---: | :---: | :--- |
+| **`opt/singularity-before-makemove`** | **MERGED** | `2,283,531` / `3,293,079` (**100% identical**) | `1,896,209 -> 1,904,068` (**+0.41%**) | Node-identical speedup (no SPRT per rule) |
+
+* **Changes (`src/search.c`):** Moved `Singularity()` verification before `makeMove(pos, moveInLoop, &st)` (removing `takeMove(pos)` + `makeMove(pos, ttMove, ttSt)` from `Singularity()` and `takeMove(pos)` on `multiCut == TRUE`, and updating `is_shuffling()` to inspect pre-move `pos->st` / `pos->ply` directly), while keeping `check_ext`, `dextensions`, and `newDepth` inside the post-`makeMove()` `prefetchTT()` latency shadow.
+* **Verification:** 100% bit-for-bit node/score/move identical across all 16 `bench.py 12` (`854,508`) and `bench.py 15` (`3,293,079`) positions and all 30 `bench 13` (`2,283,531`) positions; `+0.41%` mean NPS over 14 interleaved `taskset -c 2` rounds (`-15` lines net). Merged into `main` (`62945c8`) and updated `GOOB-base`.
+
+---
+
+## 51. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1035,6 +1048,7 @@ Tested against `main` at `c342b3f` (engine-identical to `4ca200d`, baseline bina
 26. `search/remove-followup-stage`: Remove `STAGE_FOLLOWUP_MOVE` refutation stage and `FollowupMoveTable` (-15.5% bench nodes, +4.01 ± 5.10 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 5,284 games, `93.83%` LOS).
 27. `fix/tt-fail-low-move`: Keep `bestMove = NOMOVE` on fail-lows, preserve existing `ttMove` on same-key `NOMOVE` TT overwrites, gate `ttMoveHistory` on `bestMove != NOMOVE`, and guard ALL-node IIR with `!ttHit` (+2.88 ± 4.48 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 6,508 games, `89.66%` LOS).
 28. `fix/root-pv-ttmove`: Seed root `ttMove` directly from each worker thread's previous-iteration PV (`pos->rootTargetMove` / `pvBestMove[]`) across aspiration re-searches and `MultiPV` lines (+1.51 ± 3.60 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 10,094 games, `79.49%` LOS).
+29. `opt/singularity-before-makemove`: Run `Singularity()` before `makeMove()` while keeping `dextensions`/`newDepth` inside the post-`makeMove()` `prefetchTT()` shadow (100% node-identical, `+0.41%` core-pinned NPS, `-15` lines).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1043,7 +1057,7 @@ Tested against `main` at `c342b3f` (engine-identical to `4ca200d`, baseline bina
 
 ---
 
-## 51. Closing Instructions for GitHub PRs
+## 52. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
