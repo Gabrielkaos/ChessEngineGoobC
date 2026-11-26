@@ -812,7 +812,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             TRACE_INC(pos, lmr_quiet_attempted);
             int r = LMRTable[MIN(depth, 63)][MIN(Legal, 63)];
 
-            r += (!improving + !pvNode + extension) * 1024;
+            r += (!improving + !pvNode) * 1024;
 
             r += (inCheck && pieceKing[pos->pieces[TOSQ(moveInLoop)]]) * 1024;
 
