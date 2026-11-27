@@ -1067,7 +1067,23 @@ Tested against `main` at `8ca223e` (engine-identical to `bf7ae3e`, baseline bina
 
 ---
 
-## 54. Summary of All Merged Features on `main`
+## 54. Round 52: `!improving` and `cutNode` LMR Reductions on `STAGE_BAD_NOISY` (`search/noisy-lmr-cutnode`) (November 27–28, 2026)
+
+Tested against `main` at `5797b22` (engine-identical to `da9f929`, baseline binary `GOOB-base`, `bench.py 12` 873,255 nodes, `bench.py 15` 3,089,324 nodes, 30-pos `bench 13` 2,507,195 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/noisy-lmr-cutnode`** | **REJECTED** | 12112 | 2825 - 2872 - 6415 | 49.81% | **-1.35 ± 3.34** | -2.94 | `gainer` H0 Accepted |
+
+* **Change (`src/search.c`):** Added `if (!inCheck && mp->lastStage == STAGE_BAD_NOISY) r += (!improving + cutNode) * 1024;` in noisy LMR (`!quietMove && depth > 2 && Legal > 1`).
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, 2-thread SMP mate-in-2 verified. `bench.py 12`: `873,255 -> 833,670` nodes (`-4.53%`); `bench.py 15`: `3,089,324 -> 3,542,494` nodes; 30-pos `bench 13`: `2,507,195 -> 2,147,487` nodes (`-14.35%`).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-noisy-lmr tools/sprt/bin/GOOB-base noisy-lmr-cutnode 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `04:06:50`. `nElo -2.50 ± 6.19`, `LOS 21.41%`, `DrawRatio 49.39%`, `PairsRatio 0.96`, Pentanomial (0-2) `[68, 1496, 2991, 1417, 84]`, `WL/DD Ratio 0.71`, `LLR -2.94 (-100.0%)`. Log: `tools/sprt/logs/noisy-lmr-cutnode.log`.
+* **Analysis:** Consistent with Round 26 (`search/lmr-negative-see`, `-1.72` Elo), `STAGE_BAD_NOISY` already appears late in move ordering (`Legal == 15..25+` after all good quiets), receiving `+1.5` to `+2.0` plies higher base `LMRTable` reduction than `STAGE_GOOD_NOISY`; adding up to `+2` more plies (`!improving + cutNode`) over-reduced tactical sacrifices.
+* **Verdict:** **REJECTED (`gainer` H0 accepted).** Left unmerged on branch `search/noisy-lmr-cutnode` (`e957323`).
+
+---
+
+## 55. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1108,7 +1124,7 @@ Tested against `main` at `8ca223e` (engine-identical to `bf7ae3e`, baseline bina
 
 ---
 
-## 55. Closing Instructions for GitHub PRs
+## 56. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
