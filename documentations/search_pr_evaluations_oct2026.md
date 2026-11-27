@@ -1049,7 +1049,25 @@ Tested against `main` at `0e26007` (engine-identical to `bf7ae3e`, baseline bina
 
 ---
 
-## 53. Summary of All Merged Features on `main`
+## 53. Round 51: Fix Null-Move `cutNode` Alternation & Verification Guards (`fix/nmp-cutnode-guards`) (November 27, 2026)
+
+Tested against `main` at `8ca223e` (engine-identical to `bf7ae3e`, baseline binary `GOOB-base`, `bench.py 12` 930,655 nodes, `bench.py 15` 3,525,367 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/nmp-cutnode-guards`** | **MERGED** | 7490 | 1762 - 1708 - 4020 | 50.36% | **+2.50 ± 4.26** | +2.96 | `nonreg` H1 Accepted |
+
+* **Changes (`src/board.h`, `src/search.c`):**
+  1. Passed `!cutNode` instead of hardcoded `FALSE` to the null-move child `AlphaBeta(..., !cutNode, NULL)` (matching Berserk 14 and Schoenemann 0.5.0) so null-move refutation searches from `allNode`s are marked as expected `cutNode`s instead of triggering `-2` `allNode` IIR and `allNode` LMR scaling.
+  2. Removed the non-standard `moveStack[pos->ply - 2] != NULLMOVE` guard that blocked normal NMP two plies below a null move after an intervening real move.
+  3. Added `pos->nmpSide` alongside `pos->nmpMinPly` (`pos->ply >= pos->nmpMinPly || pos->side != pos->nmpSide`) so opponent NMP stays enabled during `depth >= 16` verification searches.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, depth-18 rook+pawn endgame and 2-thread SMP mate-in-1 verified. `bench.py 12`: `930,655 -> 873,255` nodes (`-6.17%`, `470 ms`, `1.86M` nps); `bench.py 15`: `3,525,367 -> 3,089,324` nodes (`-12.37%`, `1601 ms`, `1.93M` nps).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-nmp-fix tools/sprt/bin/GOOB-base nmp-cutnode-guards 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:33:12`. `nElo +4.62 ± 7.87`, `LOS 87.53%`, `DrawRatio 48.52%`, `PairsRatio 1.05`, Pentanomial (0-2) `[41, 900, 1817, 938, 49]`, `WL/DD Ratio 0.67`, `LLR +2.96 (100.7%)`. Log: `tools/sprt/logs/nmp-cutnode-guards.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/nmp-cutnode-guards` (`da9f929`), baseline `GOOB-base` updated (`bench.py 12 = 873,255`, `bench.py 15 = 3,089,324`).
+
+---
+
+## 54. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1081,6 +1099,7 @@ Tested against `main` at `0e26007` (engine-identical to `bf7ae3e`, baseline bina
 28. `fix/root-pv-ttmove`: Seed root `ttMove` directly from each worker thread's previous-iteration PV (`pos->rootTargetMove` / `pvBestMove[]`) across aspiration re-searches and `MultiPV` lines (+1.51 ± 3.60 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 10,094 games, `79.49%` LOS).
 29. `opt/singularity-before-makemove`: Run `Singularity()` before `makeMove()` while keeping `dextensions`/`newDepth` inside the post-`makeMove()` `prefetchTT()` shadow (100% node-identical, `+0.41%` core-pinned NPS, `-15` lines).
 30. `fix/check-ext-lmr`: Remove leftover `+ extension` from quiet LMR so quiet check interpositions retain their `+1` check extension and king evasions are not double-reduced (+0.79 ± 3.04 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 14,506 games, `69.47%` LOS).
+31. `fix/nmp-cutnode-guards`: Pass `!cutNode` to null-move child, drop `moveStack[ply - 2] != NULLMOVE` block, and scope verification NMP lockout to `nmpSide` (-12.37% depth-15 nodes, +2.50 ± 4.26 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.96` in 7,490 games, `87.53%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1089,7 +1108,7 @@ Tested against `main` at `0e26007` (engine-identical to `bf7ae3e`, baseline bina
 
 ---
 
-## 54. Closing Instructions for GitHub PRs
+## 55. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`

@@ -100,7 +100,7 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
     * Syzygy tablebase WDL probing at interior nodes.
     * Hindsight depth adjustments (+1 extension / -1 reduction).
     * Beta Pruning / RFP ($D \le 9$).
-    * Null Move Pruning with verification search ($D \ge 16$).
+    * Null Move Pruning (`!cutNode` child alternation, side-scoped verification search via `nmpSide` at $D \ge 16$).
     * Internal Iterative Reduction (IIR) with all-node bias (guarded by `!ttHit` on ALL-nodes so fail-low TT entries without a move do not repeatedly trigger extra reductions).
     * ProbCut ($D \ge 7$, non-PV, not in check) with TT refutation check (`!(ttHit && ttDepth >= depth - 3 && ttValue < rBeta)`), SEE-validated tactical `ttMove` ordering, `Quiescence()` pre-filtering at all ProbCut depths (falling back to depth-0 `AlphaBeta` if the capture gives check), `!cutNode` `depth - 4` verification, and verified cutoff storage in TT.
     * Quiet pruning: Futility Pruning, Late Move Pruning (LMP), CounterMove/Followup pruning.
