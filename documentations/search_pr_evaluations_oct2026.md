@@ -1018,7 +1018,22 @@ Tested against `main` at `4ef1813` (engine-identical to `60d1d44`, baseline bina
 
 ---
 
-## 51. Summary of All Merged Features on `main`
+## 51. Round 49: Preserve Check Extensions in Quiet LMR (`fix/check-ext-lmr`) (November 27, 2026)
+
+Tested against `main` at `91b3538` (engine-identical to `62945c8`, baseline binary `GOOB-base`, `bench.py 12` 854,508 nodes, `bench.py 15` 3,293,079 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/check-ext-lmr`** | **MERGED** | 14506 | 3420 - 3387 - 7699 | 50.11% | **+0.79 ± 3.04** | +2.97 | `nonreg` H1 Accepted |
+
+* **Change (`src/search.c`):** Removed the leftover `+ extension` term from `r += (!improving + !pvNode + extension) * 1024` in quiet LMR (inherited from Ethereal 12.75's removed History Extensions and already removed in Ethereal 14.00). At `Legal > 1`, `singular` is always `0` so `extension == inCheck`, meaning `+ extension` previously erased `+1` check extensions on quiet check interpositions and double-reduced king check evasions by `+2` plies alongside `(inCheck && pieceKing[...]) * 1024`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, mate-in-1 and 2-thread SMP search verified. `bench.py 12`: `854,508 -> 930,655` nodes (`+8.91%`, `497 ms`, `1.87M` nps); `bench.py 15`: `3,293,079 -> 3,525,367` nodes (`+7.05%`, `1846 ms`, `1.91M` nps).
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-check-ext-lmr tools/sprt/bin/GOOB-base check-ext-lmr 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `04:53:55`. `nElo +1.47 ± 5.65`, `LOS 69.47%`, `DrawRatio 49.97%`, `PairsRatio 1.03`, Pentanomial (0-2) `[104, 1685, 3624, 1754, 86]`, `WL/DD Ratio 0.70`, `LLR +2.97 (100.9%)`. Log: `tools/sprt/logs/check-ext-lmr.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/check-ext-lmr` (`bf7ae3e`), baseline `GOOB-base` updated (`bench.py 12 = 930,655`, `bench.py 15 = 3,525,367`).
+
+---
+
+## 52. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1049,6 +1064,7 @@ Tested against `main` at `4ef1813` (engine-identical to `60d1d44`, baseline bina
 27. `fix/tt-fail-low-move`: Keep `bestMove = NOMOVE` on fail-lows, preserve existing `ttMove` on same-key `NOMOVE` TT overwrites, gate `ttMoveHistory` on `bestMove != NOMOVE`, and guard ALL-node IIR with `!ttHit` (+2.88 ± 4.48 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.98` in 6,508 games, `89.66%` LOS).
 28. `fix/root-pv-ttmove`: Seed root `ttMove` directly from each worker thread's previous-iteration PV (`pos->rootTargetMove` / `pvBestMove[]`) across aspiration re-searches and `MultiPV` lines (+1.51 ± 3.60 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 10,094 games, `79.49%` LOS).
 29. `opt/singularity-before-makemove`: Run `Singularity()` before `makeMove()` while keeping `dextensions`/`newDepth` inside the post-`makeMove()` `prefetchTT()` shadow (100% node-identical, `+0.41%` core-pinned NPS, `-15` lines).
+30. `fix/check-ext-lmr`: Remove leftover `+ extension` from quiet LMR so quiet check interpositions retain their `+1` check extension and king evasions are not double-reduced (+0.79 ± 3.04 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 14,506 games, `69.47%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1057,7 +1073,7 @@ Tested against `main` at `4ef1813` (engine-identical to `60d1d44`, baseline bina
 
 ---
 
-## 52. Closing Instructions for GitHub PRs
+## 53. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
