@@ -1033,7 +1033,23 @@ Tested against `main` at `91b3538` (engine-identical to `62945c8`, baseline bina
 
 ---
 
-## 52. Summary of All Merged Features on `main`
+## 52. Round 50: Reduce Sibling Depth After Raising Alpha at Interior PV Nodes (`search/pv-alpha-raise-reduce`) (November 27, 2026)
+
+Tested against `main` at `0e26007` (engine-identical to `bf7ae3e`, baseline binary `GOOB-base`, `bench.py 12` 930,655 nodes, `bench.py 15` 3,525,367 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/pv-alpha-raise-reduce`** | **REJECTED** | 37540 | 8830 - 8771 - 19939 | 50.08% | **+0.55 ± 1.93** | -2.96 | `gainer` H0 Accepted |
+
+* **Change (`src/search.c`):** Decremented `depth--` (and recomputed `seeMargin`) inside `if (Score > alpha)` after `if (alpha >= beta) break` when `!rootNode && !info->bruteForceMode && depth >= 3 && depth <= 11 && abs(Score) < TB_WIN_VALUE - MAXDEPTH`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, mate-1/2/3 and 2-thread SMP search verified. `bench.py 12`: `930,655 -> 487,506` nodes (`-47.6%`, `261 ms`, `1.87M` nps); `bench.py 15`: `3,525,367 -> 2,316,312` nodes (`-34.3%`, `1207 ms`, `1.92M` nps).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-pv-reduce tools/sprt/bin/GOOB-base pv-alpha-raise-reduce 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `12:39:41`. `nElo +1.00 ± 3.51`, `LOS 71.06%`, `DrawRatio 47.71%`, `PairsRatio 1.01`, Pentanomial (0-2) `[241, 4643, 8955, 4678, 253]`, `WL/DD Ratio 0.69`, `LLR -2.96 (-100.4%)`. Log: `tools/sprt/logs/pv-alpha-raise-reduce.log`.
+* **Analysis:** Nearly neutral (`+0.55 ± 1.93` Elo over 37,540 games), failing the `[0, 3]` gainer bound. While reducing interior PV siblings cuts nominal-depth node counts by ~35–48%, storing the decremented `depth - 1` on `HFEXACT` PV entries shifts iterative deepening nominal depth upward without net strength per millisecond.
+* **Verdict:** **REJECTED (`gainer` H0 accepted).** Left unmerged on branch `search/pv-alpha-raise-reduce` (`d278246`).
+
+---
+
+## 53. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1073,7 +1089,7 @@ Tested against `main` at `91b3538` (engine-identical to `62945c8`, baseline bina
 
 ---
 
-## 53. Closing Instructions for GitHub PRs
+## 54. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
