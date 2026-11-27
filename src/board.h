@@ -163,6 +163,7 @@ typedef struct S_BOARD {
 
 
     int nmpMinPly;   // null-move verification: ply threshold below which NMP is disabled
+    int nmpSide;     // side to move whose NMP is disabled during verification
 
 
     S_SHARED_TABLES *shared;

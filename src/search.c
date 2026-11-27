@@ -100,6 +100,7 @@ INLINE void InitSearcher(S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *table){
     info->depthOneComplete=FALSE; 
 
     pos->nmpMinPly = 0;
+    pos->nmpSide   = 0;
 
     //low-ply history is refreshed every search (Stockfish fills it with 102)
     clearLowPlyHistory(pos);
@@ -481,10 +482,9 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
             if(!rootNode &&
                 eval >= beta &&
                 depth >= defaultNullMoveDepth &&
-                pos->ply >= pos->nmpMinPly &&
+                (pos->ply >= pos->nmpMinPly || pos->side != pos->nmpSide) &&
                 boardHasNonPawnMaterial(pos,pos->side) &&
                 (pos->ply < 1 || pos->search->moveStack[pos->ply-1] != NULLMOVE) &&
-                (pos->ply < 2 || pos->search->moveStack[pos->ply-2] != NULLMOVE) &&
                 (!ttHit || !(ttBound == HFALPHA) || ttValue >= beta)){
 
                 TRACE_INC(pos, nmp_attempted);
@@ -494,7 +494,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
 
                 R = NMPBase + depth / NMPDepthDiv + MIN(NMPEvalMax, (eval - beta) / NMPEvalDiv);
 
-                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, FALSE, NULL);
+                int valueNull=-AlphaBeta(-beta,-beta+1,depth-R,pos,info, table,threadNum,FALSE, !cutNode, NULL);
                 takeNullMove(pos);
                 if(info->stopped==TRUE)return 0;
 
@@ -510,15 +510,17 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
                         return beta;
                     }
 
-                    //verification search: disable NMP until ply passes this
-                    //threshold, to avoid a recursive false-positive, then
+                    //verification search: disable NMP for this side until ply passes
+                    //this threshold, to avoid a recursive false-positive, then
                     //confirm the cutoff holds without the null-move shortcut
                     TRACE_INC(pos, nmp_verification_started);
                     pos->nmpMinPly = pos->ply + 3 * (depth - R) / 4;
+                    pos->nmpSide   = pos->side;
 
                     int v = AlphaBeta(beta-1,beta,depth-R,pos,info,table,threadNum,FALSE, FALSE, NULL);
 
                     pos->nmpMinPly = 0;
+                    pos->nmpSide   = 0;
 
                     if(info->stopped==TRUE)return 0;
                     if(v >= beta) {
