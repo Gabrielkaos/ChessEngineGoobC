@@ -208,10 +208,16 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     }
                 }
 
+                int chist = 0;
+                int seeThresh = mp->threshold;
                 if(mp->type == NOISY_PICKER){
                     TRACE_INC(pos, qs_see_attempted);
+                } else {
+                    chist = getCaptureHistory(pos, move, mp->threats);
+                    seeThresh = -chist / 32;
+                    if(seeThresh < -160) seeThresh = -160;
                 }
-                if(!StaticExchangeEvaluation(pos, move, mp->threshold)){
+                if(!StaticExchangeEvaluation(pos, move, seeThresh)){
                     if(mp->type == NOISY_PICKER){
                         TRACE_INC(pos, qs_see_pruned);
                         continue;
@@ -223,7 +229,6 @@ int selectNextMove(S_MOVEPICKER *mp, S_BOARD *pos, int skipQuiets){
                     if(move & MVFLAGEP)   captured = p_pawn;
                     else if((move & MVFLAGPROM) && pos->pieces[to] == EMPTY) captured = p_pawn;
 
-                    int chist = getCaptureHistory(pos, move, mp->threats);
                     int badScore;
                     if(move & MVFLAGPROM){
                         if(pieceType[PROMOTED(move)] == p_queen){
