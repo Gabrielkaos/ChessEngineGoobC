@@ -1098,7 +1098,22 @@ Tested against `main` at `ac31aa0` (engine-identical to `da9f929`, baseline bina
 
 ---
 
-## 56. Summary of All Merged Features on `main`
+## 56. Round 54: Downgrade Unreachable 50-Move Mate & TB Scores in `valueFromTT()` (`fix/tt-fmr-mate-downgrade`) (November 28, 2026)
+
+Tested against `main` at `c38f20f` (engine-identical to `25cd6cd`, baseline binary `GOOB-base`, `bench.py 12` 680,105 nodes, `bench.py 15` 3,333,301 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`fix/tt-fmr-mate-downgrade`** | **MERGED** | 7282 | 1770 - 1718 - 3794 | 50.36% | **+2.48 ± 4.26** | +2.95 | `nonreg` H1 Accepted |
+
+* **Changes (`src/pvtable.h`, `src/pvtable.c`, `src/search.c`):** Updated `valueFromTT(score, pos)` (inside the cold `abs(score) >= TB_WIN_VALUE - MAXDEPTH` branch so normal eval probes incur zero extra loads) to downgrade mate (`AB_BOUND - abs(score) > 100 - fiftyMove`) and Syzygy TB (`TB_WIN_VALUE - abs(score) > 100 - fiftyMove`) scores to `±(TB_WIN_VALUE - MAXDEPTH - 1)` when `pos->useFiftyMoveRule` is active, matching Stockfish 19 (`value_from_tt`). Added Test 7 in `runTTReplacementTests()`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 7/7 passed, real-board KRvK `fiftyMove=92` false-mate prevention verified. `bench.py 12`: `680,105` nodes; `bench.py 15`: `3,333,301` nodes.
+* **Match:** `MODE=nonreg tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-tt-fmr tools/sprt/bin/GOOB-base tt-fmr-mate-downgrade 5+0.05 10`, non-regression SPRT `[-3.00, 1.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `02:27:16`. `nElo +4.65 ± 7.98`, `LOS 87.34%`, `DrawRatio 50.51%`, `PairsRatio 1.06`, Pentanomial (0-2) `[44, 832, 1839, 880, 46]`, `WL/DD Ratio 0.77`, `LLR +2.95 (100.2%)`. Log: `tools/sprt/logs/tt-fmr-mate-downgrade.log`.
+* **Verdict:** **ACCEPTED (`nonreg` H1).** Merged into `main` from `fix/tt-fmr-mate-downgrade` (`c6e90d0`), baseline `GOOB-base` updated.
+
+---
+
+## 57. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1132,6 +1147,7 @@ Tested against `main` at `ac31aa0` (engine-identical to `da9f929`, baseline bina
 30. `fix/check-ext-lmr`: Remove leftover `+ extension` from quiet LMR so quiet check interpositions retain their `+1` check extension and king evasions are not double-reduced (+0.79 ± 3.04 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 14,506 games, `69.47%` LOS).
 31. `fix/nmp-cutnode-guards`: Pass `!cutNode` to null-move child, drop `moveStack[ply - 2] != NULLMOVE` block, and scope verification NMP lockout to `nmpSide` (-12.37% depth-15 nodes, +2.50 ± 4.26 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.96` in 7,490 games, `87.53%` LOS).
 32. `search/good-noisy-chist-see`: Gate `STAGE_GOOD_NOISY` (`NORMAL_PICKER`) SEE threshold on pure capture history `MAX(-160, -chist / 32)` (-22.1% depth-12 nodes, +3.94 ± 3.08 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.97` in 13,920 games, `99.40%` LOS).
+33. `fix/tt-fmr-mate-downgrade`: Downgrade unreachable 50-move mate and Syzygy TB scores in `valueFromTT()` to `±(TB_WIN_VALUE - MAXDEPTH - 1)` (+2.48 ± 4.26 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.95` in 7,282 games, `87.34%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1140,7 +1156,7 @@ Tested against `main` at `ac31aa0` (engine-identical to `da9f929`, baseline bina
 
 ---
 
-## 57. Closing Instructions for GitHub PRs
+## 58. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
