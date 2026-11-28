@@ -141,7 +141,9 @@ This directory contains the complete C source code for **GOOB 2.2-BETA**, a high
 ## Subdirectories & Assets
 
 * **[`bin/linux/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/bin/linux/):** Output directory for compiled Linux binaries (e.g., `GOOB-2.2-BETA-native`, `GOOB-2.2-BETA-universal`).
+* **`bin/windows/`:** Output directory for compiled Windows `.exe` binaries (e.g., `GOOB-2.2-BETA-universal.exe`, `GOOB-2.2-BETA-x86-64-v3.exe`).
 * **`bin/mac/`:** Output directory for compiled macOS binaries (e.g., `GOOB-2.2-BETA-apple-silicon`, `GOOB-2.2-BETA-native`).
+* **`obj/<target>/<arch>/`:** Per-OS, per-ISA object directories (`obj/mac/`, `obj/linux/`, `obj/windows/`) so multi-OS builds never clobber each other's object files.
 * **[`weights/`](file:///home/gabriel/Desktop/ChessEngineGoobC/src/weights/):** Quantized NNUE weights. Not tracked in git (see `.gitignore`), but required to build:
   * `quantised.bin`: Production network (`GOOBNNUE` v2, 6,326,336 bytes, horizontal king mirroring `NNUE_MIRROR=1` + 4 factorized king buckets `NNUE_KING_BUCKETS=4`), embedded into the binary at build time through `incbin` (`EVALFILE` in the makefile). `EvalFile` loads a different file at runtime. Since 2026-11-10 this is the NNUE Round 2 Gen-3 net (`tools/nnue_project/checkpoints/exp_r2_gen3/A`, sha256 `7f18a0fb…`, +6.9 ± 4.6 Elo over the previous net; `bench.py 12` 887,490 nodes).
   * `quantised_d1_50m_old.bin`: Previous production network until 2026-11-10 (`exp_datagen_d1_50m`, same architecture, 6,326,336 bytes, read-only; `bench.py 12` 1,083,787 nodes).

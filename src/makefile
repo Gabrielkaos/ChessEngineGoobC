@@ -38,8 +38,9 @@
 #
 # Key design decisions
 # -----------------------------------------------------------------------------
-#  * Each tier gets its own obj subdirectory so parallel builds never clobber
-#    each other (obj/x86-64, obj/x86-64-v2, obj/apple-silicon, …).
+#  * Each OS + tier gets its own obj subdirectory (obj/<target>/<arch>/) so
+#    parallel and multi-OS builds never clobber each other (obj/linux/x86-64,
+#    obj/windows/x86-64, obj/mac/apple-silicon, …).
 #  * USE_PEXT is passed for x86 tiers only (not apple-silicon, not native on an
 #    ARM64 host).  attacks.c gates actual PEXT use on __BMI2__ which is only
 #    set when -march implies BMI2 (v3 / native); x86-64 / v2 and ARM64 use
@@ -212,15 +213,17 @@ endif
 # Build rule generator macro
 # ---------------------------------------------------------------------------
 # For each ISA tier we synthesise:
-#   * A dedicated obj directory   obj/<arch>/ (or obj/<arch>-trace/)
-#   * A pattern rule              obj/<arch>/%.o : %.c
+#   * A dedicated obj directory   obj/<target>/<arch>/ (or ...-trace/)
+#   * A pattern rule              obj/<target>/<arch>/%.o : %.c
 #   * A link rule                 $(OUTDIR)/NAME-<arch>[.exe]
 #   * A phony shorthand           make universal  make x86-64-v3  (etc.)
 #
 # Invoked as: $(call ISA_RULES,<arch>)
 # ---------------------------------------------------------------------------
+OBJDIR := obj/$(TARGET)
+
 define ISA_RULES
-OBJS_$(1)   := $$(patsubst %.c, obj/$(1)$(OBJ_SUFFIX)/%.o, $(SRCS))
+OBJS_$(1)   := $$(patsubst %.c, $(OBJDIR)/$(1)$(OBJ_SUFFIX)/%.o, $(SRCS))
 BIN_$(1)    := $(OUTDIR)/$(NAME)-$(1)$(BIN_SUFFIX)$(EXE)
 CFLAGS_$(1) := $(BASE_CFLAGS) $$(MARCH_$(1))
 
@@ -233,11 +236,11 @@ ifeq ($(TRACE),1)
 	@cp -f $$@ $(OUTDIR)/$(NAME)-$(1)$(EXE) 2>/dev/null || true
 endif
 
-obj/$(1)$(OBJ_SUFFIX)/%.o: %.c | obj/$(1)$(OBJ_SUFFIX)
+$(OBJDIR)/$(1)$(OBJ_SUFFIX)/%.o: %.c | $(OBJDIR)/$(1)$(OBJ_SUFFIX)
 	$(CC) $$(CFLAGS_$(1)) -c $$< -o $$@
 
-obj/$(1)$(OBJ_SUFFIX):
-	@$$(call MKDIR_CMD,obj/$(1)$(OBJ_SUFFIX))
+$(OBJDIR)/$(1)$(OBJ_SUFFIX):
+	@$$(call MKDIR_CMD,$(OBJDIR)/$(1)$(OBJ_SUFFIX))
 
 .PHONY: $(1)
 $(1): $$(BIN_$(1))
@@ -270,7 +273,7 @@ tune:
 
 .PHONY: datagen
 datagen: native
-	$(CC) $(CFLAGS_native) -I. ../tools/datagen.c $(filter-out obj/native/main.o, $(OBJS_native)) -o ../tools/datagen $(LDFLAGS)
+	$(CC) $(CFLAGS_native) -I. ../tools/datagen.c $(filter-out $(OBJDIR)/native/main.o, $(OBJS_native)) -o ../tools/datagen $(LDFLAGS)
 	@echo "  LD  ../tools/datagen"
 
 # ---------------------------------------------------------------------------
@@ -330,29 +333,30 @@ rebuild: clean all
 # Profile-Guided Optimization (PGO) — native tier only
 # Three-phase build: instrument → profile → optimise.  Yields ~5-10% NPS.
 # Note: GCC mangles the .o path into each .gcda filename, so Phase 1 and
-# Phase 3 MUST compile into the same object directory (obj/pgo/).
+# Phase 3 MUST compile into the same object directory (obj/<target>/pgo/).
 # ---------------------------------------------------------------------------
-PGO_OBJS        := $(patsubst %.c, obj/pgo/%.o, $(SRCS))
+PGO_DIR         := $(OBJDIR)/pgo
+PGO_OBJS        := $(patsubst %.c, $(PGO_DIR)/%.o, $(SRCS))
 PGO_BIN_GEN     := $(OUTDIR)/$(NAME)-pgo-gen$(EXE)
 PGO_BIN         := $(OUTDIR)/$(NAME)-native$(EXE)
 
 ifeq ($(TARGET),mac)
-    PGO_PROFRAW     := obj/pgo/default.profraw
-    PGO_PROFDATA    := obj/pgo/default.profdata
+    PGO_PROFRAW     := $(PGO_DIR)/default.profraw
+    PGO_PROFDATA    := $(PGO_DIR)/default.profdata
     PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-generate
     PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-instr-use=$(PGO_PROFDATA)
 else
-    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate=obj/pgo
-    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use=obj/pgo -fno-peel-loops -fno-tracer
+    PGO_CFLAGS_GEN  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-generate=$(PGO_DIR)
+    PGO_CFLAGS_USE  := $(BASE_CFLAGS) $(MARCH_native) -fprofile-use=$(PGO_DIR) -fno-peel-loops -fno-tracer
 endif
 
 .PHONY: pgo
 pgo:
 	@echo "=== PGO Phase 1: instrumented build ==="
-	@$(call RMDIR_CMD,obj/pgo)
-	@$(call MKDIR_CMD,obj/pgo)
+	@$(call RMDIR_CMD,$(PGO_DIR))
+	@$(call MKDIR_CMD,$(PGO_DIR))
 	@$(call MKDIR_CMD,$(OUTDIR))
-	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o obj/pgo/$(basename $(src)).o;)
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_GEN) -c $(src) -o $(PGO_DIR)/$(basename $(src)).o;)
 	$(CC) $(PGO_CFLAGS_GEN) $(PGO_OBJS) -o $(PGO_BIN_GEN) $(LDFLAGS)
 	@echo "=== PGO Phase 2: collecting profile (bench 12) ==="
 ifeq ($(TARGET),mac)
@@ -362,7 +366,7 @@ else
 	$(PGO_BIN_GEN) bench 12 || true
 endif
 	@echo "=== PGO Phase 3: optimised build ==="
-	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o obj/pgo/$(basename $(src)).o;)
+	$(foreach src,$(SRCS),$(CC) $(PGO_CFLAGS_USE) -c $(src) -o $(PGO_DIR)/$(basename $(src)).o;)
 	$(CC) $(PGO_CFLAGS_USE) $(PGO_OBJS) -o $(PGO_BIN) $(LDFLAGS)
 	@echo "  LD  $(PGO_BIN) (PGO)"
 
@@ -370,7 +374,7 @@ endif
 # Auto-generated header dependency includes (-MMD -MP)
 # Rebuilds dependents whenever a header changes.
 # ---------------------------------------------------------------------------
--include $(wildcard obj/*/*.d)
+-include $(wildcard obj/*/*/*.d)
 
 # Rebuild nnue_loader.o whenever the embedded network binary changes
 obj/%/nnue_loader.o: $(EVALFILE)
@@ -380,5 +384,5 @@ obj/%/nnue_loader.o: $(EVALFILE)
 # ---------------------------------------------------------------------------
 .PHONY: depend
 depend: $(SRCS)
-	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|obj/x86-64/\1.o:|' > .depend
+	$(CC) -MM $(SRCS) | sed 's|^\(.*\)\.o:|$(OBJDIR)/x86-64/\1.o:|' > .depend
 -include .depend

@@ -33,6 +33,7 @@ The tooling is divided into three primary operational domains:
 4. **SPRT & Strength Testing Framework:** Centered in [`sprt/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt), this provides automated fastchess / cutechess-cli SPRT matches ([`run_sprt.sh`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/run_sprt.sh)), 12-position fixed-depth sanity benchmarks ([`bench.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/bench.py)), and testing guides ([`README.md`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/sprt/README.md)).
 5. **EPD Benchmarks & Matchless Elo Estimation:** Centered in [`suites/`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/suites) and [`epd_test.py`](file:///home/gabriel/Desktop/ChessEngineGoobC/tools/epd_test.py), this provides standard match-free strength and Elo estimation using canonical test suites (BT-2630, STS 1–15, Bratko-Kopec, Win At Chess).
 6. **Goob Research Laboratory:** Interactive web platform and experimentation dashboard ([`research_lab/`](file:///home/gabriel/Desktop/ChessEngineGoobC/research_lab)) integrating live position exploration, iterative deepening analysis, search heuristic telemetry, cutechess tournaments, SPSA parameter management, and persistent experiment tracking. Launched via `python3 run_lab.py`.
+7. **Cross-Platform Build & Test Suite:** Centered in [`cross/`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross), this lets macOS hosts build, run, and verify macOS, Linux x86-64, and Windows x86-64 `.exe` binaries (including Rosetta, QEMU CPU-model ISA dispatch, and Wine) via Docker/OrbStack.
 
 ---
 
@@ -199,6 +200,21 @@ The tooling is divided into three primary operational domains:
 
   # Full 1500-position Strategic Test Suite (CCRL 40/4 Elo estimate):
   python3 tools/epd_test.py --suite sts1-15 --movetime 100 --save-json sts_results.json
+  ```
+
+### 10. Cross-Platform Build & Test Suite ([`tools/cross/`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross))
+* **Purpose:** Builds and tests macOS (native), Linux x86-64 (GCC + Rosetta/QEMU), and Windows x86-64 `.exe` (MinGW-w64 + Wine) binaries from macOS using Docker/OrbStack.
+* **Key Components:**
+  * [`Dockerfile`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross/Dockerfile): `debian:trixie-slim` (`linux/amd64`) image with GCC, `gcc-mingw-w64-x86-64`, `qemu-user`, headless `wine`, and Python 3.
+  * [`cross.sh`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross/cross.sh): CLI driver (`setup`, `build`, `run`, `bench`, `test`, `shell`) mounting `src/weights` read-only.
+  * [`test_matrix.py`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross/test_matrix.py): Automated matrix verifying binary format, `compiler` ISA/SIMD/PEXT detection, TT unit tests, `perft 4`, bit-exact `eval` and `bench` node counts across all OSes/ISAs, and 2-thread UCI smoke tests.
+  * [`README.md`](file:///Users/gabriel/Desktop/ChessEngineGoobC/tools/cross/README.md): Full usage reference.
+* **Usage:**
+  ```bash
+  make cross-setup   # one-time Docker image build
+  make cross-build   # build macOS + Linux + Windows binaries
+  make cross-test    # build & run full cross-platform verification matrix
+  ./tools/cross/cross.sh run windows x86-64-v3 bench 8
   ```
 
 ---
