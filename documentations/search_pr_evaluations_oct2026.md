@@ -1083,7 +1083,22 @@ Tested against `main` at `5797b22` (engine-identical to `da9f929`, baseline bina
 
 ---
 
-## 55. Summary of All Merged Features on `main`
+## 55. Round 53: Gate `STAGE_GOOD_NOISY` SEE Threshold on Pure Capture History (`search/good-noisy-chist-see`) (November 28, 2026)
+
+Tested against `main` at `ac31aa0` (engine-identical to `da9f929`, baseline binary `GOOB-base`, `bench.py 12` 873,255 nodes, `bench.py 15` 3,089,324 nodes, 30-pos `bench 13` 2,507,195 nodes):
+
+| Branch / Experiment | Status | Games | Record (W - L - D) | Score | Elo Diff | LLR | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`search/good-noisy-chist-see`** | **MERGED** | 13920 | 3356 - 3198 - 7366 | 50.57% | **+3.94 ± 3.08** | +2.97 | `gainer` H1 Accepted |
+
+* **Change (`src/movepicker.c`):** Replaced fixed `SEE >= 0` in `STAGE_GOOD_NOISY` (`NORMAL_PICKER` only; `NOISY_PICKER` untouched) with pure capture-history threshold `seeThresh = MAX(-160, -chist / 32)` (reusing `chist` in `badScore`). Unlike Round 37 (`-(chist + MVVAugment) / 32`), omitting `MVVAugment` immediately demotes bad-history equal trades (`PxP`, `NxN`, `BxN`, `RxR`, `QxQ` with `chist <= -32`) behind killers and good quiets while `-160` prevents `-225`+ losing exchanges (`RxN`, `BxP`) from slipping into `isExempt` `STAGE_GOOD_NOISY`.
+* **Correctness checks:** Clean `-O3` native build (0 warnings), TT replacement tests 6/6 passed, 2-thread SMP mate-in-2 verified. `bench.py 12`: `873,255 -> 680,105` nodes (`-22.1%`, `357 ms`, `1.91M` nps); `bench.py 15`: `3,089,324 -> 3,333,301` nodes; 30-pos `bench 13`: `2,507,195 -> 2,301,701` nodes (`-8.20%`).
+* **Match:** `tools/sprt/run_sprt.sh tools/sprt/bin/GOOB-chist-see tools/sprt/bin/GOOB-base good-noisy-chist-see 5+0.05 10`, gainer SPRT `[0.00, 3.00]` logistic, `fastchess` pentanomial, `5+0.05`, `1` thread, `32 MB` hash, `10` concurrent games, `tools/book.epd`, `04:41:45`. `nElo +7.39 ± 5.77`, `LOS 99.40%`, `DrawRatio 49.28%`, `PairsRatio 1.08`, Pentanomial (0-2) `[63, 1633, 3430, 1751, 83]`, `WL/DD Ratio 0.72`, `LLR +2.97 (100.8%)`. Log: `tools/sprt/logs/good-noisy-chist-see.log`.
+* **Verdict:** **ACCEPTED (`gainer` H1).** Strong `+3.94 ± 3.08` Elo gain (`99.40%` LOS); merged into `main` from `search/good-noisy-chist-see` (`25cd6cd`), baseline `GOOB-base` updated (`bench.py 12 = 680,105`).
+
+---
+
+## 56. Summary of All Merged Features on `main`
 
 1. `search/pawn-history-key`: Pawn history indexed strictly by pawn structure (`pawnHistIndex()`).
 2. `search/probcut-tt`: ProbCut refutation check against TT and cutoff hash storage.
@@ -1116,6 +1131,7 @@ Tested against `main` at `5797b22` (engine-identical to `da9f929`, baseline bina
 29. `opt/singularity-before-makemove`: Run `Singularity()` before `makeMove()` while keeping `dextensions`/`newDepth` inside the post-`makeMove()` `prefetchTT()` shadow (100% node-identical, `+0.41%` core-pinned NPS, `-15` lines).
 30. `fix/check-ext-lmr`: Remove leftover `+ extension` from quiet LMR so quiet check interpositions retain their `+1` check extension and king evasions are not double-reduced (+0.79 ± 3.04 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.97` in 14,506 games, `69.47%` LOS).
 31. `fix/nmp-cutnode-guards`: Pass `!cutNode` to null-move child, drop `moveStack[ply - 2] != NULLMOVE` block, and scope verification NMP lockout to `nmpSide` (-12.37% depth-15 nodes, +2.50 ± 4.26 Elo, `nonreg` `[-3, 1]` H1 accepted, LLR `+2.96` in 7,490 games, `87.53%` LOS).
+32. `search/good-noisy-chist-see`: Gate `STAGE_GOOD_NOISY` (`NORMAL_PICKER`) SEE threshold on pure capture history `MAX(-160, -chist / 32)` (-22.1% depth-12 nodes, +3.94 ± 3.08 Elo, `gainer` `[0, 3]` H1 accepted, LLR `+2.97` in 13,920 games, `99.40%` LOS).
 
 
 **Removed again in Round 17 (ablation):** the gives-check LMR deduction from item 12 and the capture futility pruning from item 4, together with Surprise-SRD, the TT research-margin cutoff and history extensions, which predate this report.
@@ -1124,7 +1140,7 @@ Tested against `main` at `5797b22` (engine-identical to `da9f929`, baseline bina
 
 ---
 
-## 56. Closing Instructions for GitHub PRs
+## 57. Closing Instructions for GitHub PRs
 
 For each rejected PR on GitHub:
 - `search/tt-value-as-eval`
