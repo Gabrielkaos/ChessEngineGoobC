@@ -179,6 +179,21 @@ int runTTReplacementTests(void){
     printf("Test 6 (preserve ttMove on NOMOVE overwrite): %s\n", ok ? "PASS" : "FAIL");
     fails += !ok;
 
+    //Test 7: 50-move rule downgrades unreachable TT mate/TB scores in valueFromTT()
+    pos->ply = 4;
+    pos->useFiftyMoveRule = 1;
+    pos->st->fiftyMove = 70; // 30 plies left >= 20 plies to mate: valid
+    ok = (valueFromTT(AB_BOUND - 20, pos) == AB_BOUND - 24);
+    pos->st->fiftyMove = 85; // 15 plies left < 20 plies to mate: downgrade
+    ok = ok && (valueFromTT(AB_BOUND - 20, pos) == TB_WIN_VALUE - MAXDEPTH - 1);
+    ok = ok && (valueFromTT(-AB_BOUND + 20, pos) == -(TB_WIN_VALUE - MAXDEPTH - 1));
+    ok = ok && (valueFromTT(TB_WIN_VALUE - 20, pos) == TB_WIN_VALUE - MAXDEPTH - 1);
+    ok = ok && (valueFromTT(-TB_WIN_VALUE + 20, pos) == -(TB_WIN_VALUE - MAXDEPTH - 1));
+    pos->useFiftyMoveRule = 0; // FMR disabled: keep mate score
+    ok = ok && (valueFromTT(AB_BOUND - 20, pos) == AB_BOUND - 24);
+    printf("Test 7 (downgrade unreachable 50-move TT mates/TB): %s\n", ok ? "PASS" : "FAIL");
+    fails += !ok;
+
     printf(fails == 0 ? "\nAll TT tests PASSED\n\n" : "\nTT tests FAILED (%d)\n\n", fails);
 
     if (pos->search) free_search_thread(pos->search);

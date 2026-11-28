@@ -215,7 +215,7 @@ int Quiescence(int alpha,int beta,S_BOARD *pos,S_SEARCHINFO *info, S_PVTABLE *ta
         ttHit = TRUE;
         TRACE_INC(pos, qs_tt_hits);
         ttBound = EXTRACT_FLAGS(ttData);
-        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos->ply);
+        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos);
         if(pos->st->fiftyMove < 96){
             if(ttBound==HFEXACT || (ttBound==HFALPHA && ttValue<=alpha) || (ttBound==HFBETA && ttValue>=beta)){
                 TRACE_INC(pos, qs_tt_cutoffs);
@@ -370,7 +370,7 @@ int AlphaBeta(int alpha,int beta,int depth,S_BOARD *pos,S_SEARCHINFO *info, S_PV
         TRACE_INC(pos, tt_hits);
 
         ttBound = EXTRACT_FLAGS(ttData);
-        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos->ply);
+        ttValue = valueFromTT(EXTRACT_SCORE(ttData), pos);
         ttDepth = EXTRACT_DEPTH(ttData);
 
         if(ttDepth >= depth && (depth==0 || !pvNode) && pos->st->fiftyMove < 96){

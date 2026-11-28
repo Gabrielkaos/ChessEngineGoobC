@@ -24,13 +24,32 @@ extern void InitPvTable(S_PVTABLE *table, const int mb, int noisy);
 extern void clearPvTable(S_PVTABLE *table);
 extern int runTTReplacementTests(void);
 
-// Fast inlined mate / Syzygy score scaling
-INLINE int valueFromTT(int score, int ply) {
+// Fast inlined mate / Syzygy score scaling (downgrades unreachable 50-move mates/TB wins)
+INLINE int valueFromTT(int score, const S_BOARD *pos) {
     if (__builtin_expect(abs(score) >= TB_WIN_VALUE - MAXDEPTH, 0)) {
-        if (score > ISMATE)       score -= ply;
-        else if (score < -ISMATE) score += ply;
-        else if (score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) score -= ply;
-        else if (score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) score += ply;
+        int ply = pos->ply;
+        int maxPlies = 100 - pos->st->fiftyMove;
+        int fmr = pos->useFiftyMoveRule;
+        if (score > ISMATE) {
+            if (fmr && AB_BOUND - score > maxPlies)
+                return TB_WIN_VALUE - MAXDEPTH - 1;
+            return score - ply;
+        }
+        if (score < -ISMATE) {
+            if (fmr && AB_BOUND + score > maxPlies)
+                return -(TB_WIN_VALUE - MAXDEPTH - 1);
+            return score + ply;
+        }
+        if (score > TB_WIN_VALUE - MAXDEPTH && score < TB_WIN_VALUE + MAXDEPTH) {
+            if (fmr && TB_WIN_VALUE - score > maxPlies)
+                return TB_WIN_VALUE - MAXDEPTH - 1;
+            return score - ply;
+        }
+        if (score < -(TB_WIN_VALUE - MAXDEPTH) && score > -(TB_WIN_VALUE + MAXDEPTH)) {
+            if (fmr && TB_WIN_VALUE + score > maxPlies)
+                return -(TB_WIN_VALUE - MAXDEPTH - 1);
+            return score + ply;
+        }
     }
     return score;
 }
